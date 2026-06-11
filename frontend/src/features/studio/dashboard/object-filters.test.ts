@@ -45,3 +45,72 @@ describe('applyWidgetFilters - list[object] leaf filtering', () => {
     expect(ids(out)).toEqual(['a', 'b', 'c']);
   });
 });
+
+// Post-level condition eval (categorical / custom / numeric) via applyWidgetFilters.
+function cposts(): DashboardPost[] {
+  return [
+    { post_id: 'a', sentiment: 'positive', themes: ['pricing', 'support'], content: 'love it',
+      custom_fields: { score: 8, note: 'great value', tier: 'gold', men: [{ name: 'Alice' }] } },
+    { post_id: 'b', sentiment: 'negative', themes: ['bugs'], content: 'broken',
+      custom_fields: { score: 2, note: 'meh', tier: 'silver', men: [{ name: 'Bob' }] } },
+  ] as unknown as DashboardPost[];
+}
+const cids = (ps: DashboardPost[]) => ps.map((p) => p.post_id);
+
+describe('applyWidgetFilters - categorical & custom conditions', () => {
+  it('isAnyOf on a scalar built-in', () => {
+    const out = applyWidgetFilters(cposts(), {
+      conditions: [{ field: 'sentiment', operator: 'isAnyOf', value: '', values: ['positive'] }],
+    });
+    expect(cids(out)).toEqual(['a']);
+  });
+
+  it('isNoneOf on a scalar built-in', () => {
+    const out = applyWidgetFilters(cposts(), {
+      conditions: [{ field: 'sentiment', operator: 'isNoneOf', value: '', values: ['positive'] }],
+    });
+    expect(cids(out)).toEqual(['b']);
+  });
+
+  it('isAnyOf on a multi-valued built-in (theme intersection)', () => {
+    const out = applyWidgetFilters(cposts(), {
+      conditions: [{ field: 'themes', operator: 'isAnyOf', value: '', values: ['support'] }],
+    });
+    expect(cids(out)).toEqual(['a']);
+  });
+
+  it('numeric custom field with greaterThan', () => {
+    const out = applyWidgetFilters(cposts(), {
+      conditions: [{ field: 'custom:score', operator: 'greaterThan', value: 5 }],
+    });
+    expect(cids(out)).toEqual(['a']);
+  });
+
+  it('str custom field with contains', () => {
+    const out = applyWidgetFilters(cposts(), {
+      conditions: [{ field: 'custom:note', operator: 'contains', value: 'value' }],
+    });
+    expect(cids(out)).toEqual(['a']);
+  });
+
+  it('isAnyOf on an object leaf', () => {
+    const out = applyWidgetFilters(cposts(), {
+      conditions: [{ field: 'custom:men.name', operator: 'isAnyOf', value: '', values: ['Bob'] }],
+    });
+    expect(cids(out)).toEqual(['b']);
+  });
+
+  it('empty values is a no-op', () => {
+    const out = applyWidgetFilters(cposts(), {
+      conditions: [{ field: 'sentiment', operator: 'isAnyOf', value: '', values: [] }],
+    });
+    expect(cids(out)).toEqual(['a', 'b']);
+  });
+
+  it('a post_count condition never drops posts at the post level', () => {
+    const out = applyWidgetFilters(cposts(), {
+      conditions: [{ field: 'post_count', operator: 'greaterThan', value: 100 }],
+    });
+    expect(cids(out)).toEqual(['a', 'b']);
+  });
+});

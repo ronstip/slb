@@ -938,22 +938,39 @@ export function normalizeWidgetAggregation<T extends { aggregation: SocialAggreg
 
 // ─── Filter conditions (advanced per-widget rules) ──────────────────────────
 
+/** Built-in numeric/date/text post fields, the synthetic `post_count`
+ *  group-row filter, categorical built-ins, and dynamic `custom:<name>` fields. */
 export type FilterConditionField =
   | 'like_count' | 'view_count' | 'comment_count' | 'share_count'
-  | 'engagement_total' | 'posted_at' | 'text';
+  | 'engagement_total' | 'posted_at' | 'text'
+  | 'post_count'                                   // aggregation row filter (by `dimension`)
+  | 'sentiment' | 'emotion' | 'platform' | 'language'
+  | 'content_type' | 'channel_type' | 'channel_handle'
+  | 'themes' | 'entities' | 'brands'
+  | `custom:${string}`;
 
 export type FilterConditionOperator =
   | 'greaterThan' | 'lessThan' | 'equals' | 'between'
   | 'before' | 'after' | 'contains' | 'notContains'
-  | 'isEmpty' | 'isNotEmpty';
+  | 'isEmpty' | 'isNotEmpty'
+  | 'isAnyOf' | 'isNoneOf';                         // categorical multi-select
 
 export interface FilterCondition {
   field: FilterConditionField;
   operator: FilterConditionOperator;
   value: string | number;
   value2?: string | number;
+  /** Selected values for `isAnyOf` / `isNoneOf`. */
+  values?: string[];
+  /** Group-by dimension counted when `field === 'post_count'`. */
+  dimension?: CustomDimension;
 }
 
+/** Discriminates how a condition field is edited + evaluated. */
+export type ConditionFieldKind = 'numeric' | 'date' | 'text' | 'categorical' | 'postCount';
+
+/** Base (always-present) field options; the form augments this with `post_count`,
+ *  categorical built-ins, and per-custom-field entries at render time. */
 export const CONDITION_FIELD_OPTIONS: Array<{ value: FilterConditionField; label: string }> = [
   { value: 'like_count', label: 'Likes' },
   { value: 'view_count', label: 'Views' },
@@ -969,10 +986,18 @@ export const NUMERIC_CONDITION_FIELDS: FilterConditionField[] = [
 ];
 export const DATE_CONDITION_FIELDS: FilterConditionField[] = ['posted_at'];
 export const TEXT_CONDITION_FIELDS: FilterConditionField[] = ['text'];
+/** Categorical built-ins: scalar (sentiment…channel_handle) + multi-valued. */
+export const CATEGORICAL_CONDITION_FIELDS: FilterConditionField[] = [
+  'sentiment', 'emotion', 'platform', 'language', 'content_type', 'channel_type', 'channel_handle',
+  'themes', 'entities', 'brands',
+];
+/** Built-in multi-valued categorical fields (custom `list[str]` detected at runtime). */
+export const MULTIVALUED_CONDITION_FIELDS: FilterConditionField[] = ['themes', 'entities', 'brands'];
 
 export const NUMERIC_OPERATORS: FilterConditionOperator[] = ['greaterThan', 'lessThan', 'equals', 'between'];
 export const DATE_OPERATORS: FilterConditionOperator[] = ['before', 'after', 'between'];
 export const TEXT_OPERATORS: FilterConditionOperator[] = ['contains', 'notContains', 'isEmpty', 'isNotEmpty'];
+export const CATEGORICAL_OPERATORS: FilterConditionOperator[] = ['isAnyOf', 'isNoneOf'];
 
 export const OPERATOR_LABELS: Record<FilterConditionOperator, string> = {
   greaterThan: 'Greater than',
@@ -985,7 +1010,53 @@ export const OPERATOR_LABELS: Record<FilterConditionOperator, string> = {
   notContains: 'Does not contain',
   isEmpty: 'Is empty',
   isNotEmpty: 'Is not empty',
+  isAnyOf: 'Is any of',
+  isNoneOf: 'Is none of',
 };
+
+/** True for the synthetic group-count row filter (handled at the aggregation
+ *  layer, never at the post level). */
+export function isPostCountCondition(cond: FilterCondition): boolean {
+  return cond.field === 'post_count';
+}
+
+/** Classify a condition field to pick its operators + input widget. Custom
+ *  fields resolve their kind from `customFieldDefs` (numeric `int`/`float` →
+ *  numeric, `list[str]`/`literal`/`bool` → categorical, `str` → text); object
+ *  leaves (`custom:men.name`) and unknown custom fields fall back to categorical. */
+export function conditionFieldKind(
+  field: FilterConditionField,
+  customFieldDefs?: CustomFieldDef[] | null,
+): ConditionFieldKind {
+  if (field === 'post_count') return 'postCount';
+  if (NUMERIC_CONDITION_FIELDS.includes(field)) return 'numeric';
+  if (DATE_CONDITION_FIELDS.includes(field)) return 'date';
+  if (TEXT_CONDITION_FIELDS.includes(field)) return 'text';
+  if (CATEGORICAL_CONDITION_FIELDS.includes(field)) return 'categorical';
+  if (field.startsWith(CUSTOM_DIM_PREFIX)) {
+    const name = customFieldName(field as `custom:${string}`);
+    if (name.includes('.')) return 'categorical'; // object leaf
+    const def = customFieldDefs?.find((d) => d.name === name);
+    if (def?.type === 'int' || def?.type === 'float') return 'numeric';
+    if (def?.type === 'str') return 'text';
+    return 'categorical'; // bool, literal, list[str], or unknown
+  }
+  return 'text';
+}
+
+/** Operators valid for a field, by kind. */
+export function operatorsForConditionField(
+  field: FilterConditionField,
+  customFieldDefs?: CustomFieldDef[] | null,
+): FilterConditionOperator[] {
+  switch (conditionFieldKind(field, customFieldDefs)) {
+    case 'numeric': return NUMERIC_OPERATORS;
+    case 'postCount': return NUMERIC_OPERATORS;
+    case 'date': return DATE_OPERATORS;
+    case 'categorical': return CATEGORICAL_OPERATORS;
+    default: return TEXT_OPERATORS;
+  }
+}
 
 // ─── Widget filters (per-widget overrides on top of global filters) ────────────
 

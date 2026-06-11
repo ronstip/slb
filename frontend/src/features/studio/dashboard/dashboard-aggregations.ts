@@ -537,7 +537,7 @@ export function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartC
   return dateStr.slice(0, 7);
 }
 
-function getDimensionKeys(p: DashboardPost, dim: CustomDimension, timeBucket: string): string[] {
+export function getDimensionKeys(p: DashboardPost, dim: CustomDimension, timeBucket: string): string[] {
   if (dim === 'themes') return p.themes?.length ? p.themes : [];
   if (dim === 'entities') return p.entities?.length ? p.entities : [];
   if (dim === 'brands') return p.detected_brands?.length ? p.detected_brands : [];
