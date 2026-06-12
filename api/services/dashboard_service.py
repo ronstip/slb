@@ -339,6 +339,49 @@ def build_topic_response(row: dict) -> TopicMetricsResponse:
     )
 
 
+def _collection_names_map(name_rows: list[dict]) -> dict[str, str]:
+    return {
+        r["collection_id"]: r.get("original_question", r["collection_id"])
+        for r in name_rows
+    }
+
+
+def _kpis_dict(kpi_rows: list[dict]) -> dict:
+    row = kpi_rows[0] if kpi_rows else {}
+    return {
+        "total_posts": int(row.get("total_posts") or 0),
+        "total_views": int(row.get("total_views") or 0),
+        "total_likes": int(row.get("total_likes") or 0),
+        "total_comments": int(row.get("total_comments") or 0),
+        "total_shares": int(row.get("total_shares") or 0),
+    }
+
+
+def assemble_dashboard_core(
+    rows: list[dict],
+    topic_rows: list[dict],
+    kpi_rows: list[dict],
+    name_rows: list[dict],
+    truncated: bool,
+) -> dict:
+    """Assemble the cacheable, jsonable dashboard core shared by both endpoints.
+
+    Returns plain dicts (not Pydantic models) so the value can be cached and
+    re-encoded with orjson on every hit without re-running per-row model
+    validation. The shape is a superset of both responses: the authed endpoint
+    returns it as-is (it matches ``DashboardDataResponse``); the public share
+    endpoint takes ``posts``/``topics``/``collection_names``/``truncated`` and
+    drops ``kpis``, wrapping the rest with its own per-share metadata.
+    """
+    return {
+        "posts": [build_post_response(r).model_dump() for r in rows],
+        "topics": [build_topic_response(r).model_dump() for r in topic_rows],
+        "kpis": _kpis_dict(kpi_rows),
+        "collection_names": _collection_names_map(name_rows),
+        "truncated": truncated,
+    }
+
+
 def build_post_response(row: dict) -> DashboardPostResponse:
     return DashboardPostResponse(
         post_id=row["post_id"],

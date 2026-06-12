@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import type { Layout, LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
@@ -84,6 +84,17 @@ export function SocialDashboardGrid({
   const isDragging = useRef(false);
   const { width, containerRef } = useContainerWidth({ initialWidth: 1280 });
 
+  // Intrinsic aspect ratios of media widgets, reported by MediaWidget once the
+  // image/video loads. Used to size media cells to their natural proportions on
+  // compact (mobile) breakpoints instead of inheriting the desktop row count.
+  const [mediaAspect, setMediaAspect] = useState<Record<string, number>>({});
+  const handleMediaAspect = useCallback((id: string, ratio: number) => {
+    setMediaAspect((prev) =>
+      // Ignore sub-pixel jitter so a reload can't churn the layout.
+      Math.abs((prev[id] ?? 0) - ratio) < 0.01 ? prev : { ...prev, [id]: ratio },
+    );
+  }, []);
+
   // Viewport-based mobile flag. Independent of the grid's measured container
   // width so toggling the vertical clamp can't feed back into the breakpoint
   // calculation and oscillate. The 600 threshold matches BREAKPOINTS.lg.
@@ -99,33 +110,50 @@ export function SocialDashboardGrid({
     return () => mq.removeEventListener('change', update);
   }, []);
 
-  const lgLayout: LayoutItem[] = widgets.map((w) => ({
-    i: w.i,
-    x: w.x,
-    y: w.y,
-    w: w.w,
-    h: w.h,
-    minW: w.chartType === 'number-card' || w.aggregation === 'media' ? 2 : 3,
-    // Text/embed cards are content-scrollable, so allow them to shrink below the
-    // generic 3-row floor for fine manual sizing. Text cards go all the way to a
-    // single row so a one-line title (~34px) can hug its row without a fixed gap;
-    // embeds and media keep a 2-row floor (an embed needs vertical room; media
-    // just scales the image/video to fit, so a small 2-row card is fine).
-    minH: w.chartType === 'number-card' || w.aggregation === 'text'
-      ? 1
-      : w.aggregation === 'embeds' || w.aggregation === 'media'
-        ? 2
-        : 3,
-    isDraggable: isEditMode && currentBreakpoint === 'lg',
-    isResizable: isEditMode && currentBreakpoint === 'lg',
-  }));
+  const lgLayout: LayoutItem[] = useMemo(
+    () =>
+      widgets.map((w) => ({
+        i: w.i,
+        x: w.x,
+        y: w.y,
+        w: w.w,
+        h: w.h,
+        minW: w.chartType === 'number-card' || w.aggregation === 'media' ? 2 : 3,
+        // Text/embed cards are content-scrollable, so allow them to shrink below the
+        // generic 3-row floor for fine manual sizing. Text cards go all the way to a
+        // single row so a one-line title (~34px) can hug its row without a fixed gap;
+        // embeds and media keep a 2-row floor (an embed needs vertical room; media
+        // just scales the image/video to fit, so a small 2-row card is fine).
+        minH: w.chartType === 'number-card' || w.aggregation === 'text'
+          ? 1
+          : w.aggregation === 'embeds' || w.aggregation === 'media'
+            ? 2
+            : 3,
+        isDraggable: isEditMode && currentBreakpoint === 'lg',
+        isResizable: isEditMode && currentBreakpoint === 'lg',
+      })),
+    [widgets, isEditMode, currentBreakpoint],
+  );
 
-  const layouts = {
-    lg: lgLayout,
-    md: buildCompactLayout(widgets, COLS.md),
-    sm: buildCompactLayout(widgets, COLS.sm),
-    xs: buildCompactLayout(widgets, COLS.xs),
-  };
+  // Rebuilt only when an input that actually shapes the compact layouts changes
+  // (widgets, measured width, the mobile inset, or a media cell's measured
+  // aspect). Without this the three buildCompactLayout passes ran on every
+  // render — including each resize tick and every unrelated state change.
+  const layouts = useMemo(() => {
+    // Pixel width of a full-width compact cell = grid width minus the horizontal
+    // container padding (see `containerPadding` below - 4px each side on mobile).
+    // Feeds media aspect-ratio sizing in buildCompactLayout.
+    const compactOptions = {
+      mediaAspect,
+      fullWidthPx: Math.max(0, width - (isNarrowViewport ? 8 : 0)),
+    };
+    return {
+      lg: lgLayout,
+      md: buildCompactLayout(widgets, COLS.md, compactOptions),
+      sm: buildCompactLayout(widgets, COLS.sm, compactOptions),
+      xs: buildCompactLayout(widgets, COLS.xs, compactOptions),
+    };
+  }, [lgLayout, widgets, mediaAspect, width, isNarrowViewport]);
 
   // Id of the widget the user just resized, captured on resize-stop and consumed
   // by the very next handleLayoutChange (RGL fires onResizeStop then
@@ -245,13 +273,14 @@ export function SocialDashboardGrid({
                 filteredPosts={filteredPosts}
                 topics={topics}
                 isEditMode={isEditMode}
-                onConfigure={() => onConfigure(widget.i)}
-                onRemove={() => onRemove(widget.i)}
-                onDuplicate={onDuplicate ? () => onDuplicate(widget.i) : undefined}
+                onConfigure={onConfigure}
+                onRemove={onRemove}
+                onDuplicate={onDuplicate}
                 onFilterToggle={onFilterToggle}
                 onTopicNavigate={onTopicNavigate}
                 serverKpis={serverKpis}
                 onAutoSize={onAutoSize}
+                onMediaAspect={handleMediaAspect}
               />
             </div>
           );

@@ -105,6 +105,30 @@ describe('buildCompactLayout', () => {
     sorted.forEach((l) => expect(l.w).toBe(4));
   });
 
+  it('sizes a media cell to its aspect ratio on compact, not the desktop height', () => {
+    // A 4:1 banner sized tall (h=8) on desktop must collapse to a short cell on
+    // a narrow viewport so object-cover doesn't crop it into a near-square box.
+    const widgets: SocialDashboardWidget[] = [
+      makeWidget('media', 0, 0, 'bar', { aggregation: 'media', h: 8, title: '' }),
+    ];
+    const layout = buildCompactLayout(widgets, 4, {
+      mediaAspect: { media: 4 }, // 4:1 banner
+      fullWidthPx: 360,
+    });
+    const media = layout.find((l) => l.i === 'media')!;
+    // 360 / 4 = 90px tall → ~2 rows (90+14)/(48+14) ≈ 1.7 → round 2.
+    expect(media.h).toBe(2);
+    expect(media.h).toBeLessThan(8);
+  });
+
+  it('falls back to the desktop height for media until its aspect is known', () => {
+    const widgets: SocialDashboardWidget[] = [
+      makeWidget('media', 0, 0, 'bar', { aggregation: 'media', h: 5, title: '' }),
+    ];
+    const layout = buildCompactLayout(widgets, 4); // no aspect provided
+    expect(layout.find((l) => l.i === 'media')!.h).toBe(5);
+  });
+
   it('does not floor a short text card to the 4-row chart minimum', () => {
     // A text card auto-sized to hug a one-line title (h=1) on desktop must not
     // be inflated to 4 rows on mobile, which leaves a big empty gap below it.

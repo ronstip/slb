@@ -31,6 +31,8 @@ dependencies = [
     "apify-client>=1.7,<2",
     "hikerapi>=1.7.9",
     "sentry-sdk[fastapi]>=2.61.1",
+    "cachetools>=5.3",
+    "orjson>=3.10",
 ]
 
 [project.scripts]

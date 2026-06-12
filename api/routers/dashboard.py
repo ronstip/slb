@@ -2,9 +2,11 @@
 
 import asyncio
 import logging
+import time
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import ORJSONResponse
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
@@ -13,13 +15,18 @@ from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs
 from api.schemas.requests import DashboardDataRequest
 from api.schemas.responses import DashboardDataResponse, DashboardKpis
+from api.services.dashboard_cache import (
+    get_core,
+    make_freshness_stamp,
+    perf_logger,
+    set_core,
+)
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
     MAX_ROWS,
+    assemble_dashboard_core,
     build_dashboard_kpis_sql,
     build_dashboard_sql,
-    build_post_response,
-    build_topic_response,
     build_topics_sql,
     derive_agent_id_for_collections,
 )
@@ -94,50 +101,53 @@ async def get_dashboard_data(
             ),
         )
 
-    # +1 to detect truncation
-    posts_sql, posts_params = build_dashboard_sql(
-        request.collection_ids, agent_id, MAX_ROWS + 1
+    # Passive-invalidation response cache. The stamp is the max
+    # collection_status.updated_at across the (already-fetched) statuses, which
+    # the pipeline bumps when post counts change - so the cache busts exactly
+    # when this agent's data changes and otherwise serves the assembled payload
+    # without touching BigQuery. See api/services/dashboard_cache.py.
+    stamp = make_freshness_stamp(statuses)
+    t0 = time.perf_counter()
+    core = get_core(agent_id, request.collection_ids, stamp)
+    cache_hit = core is not None
+    gather_ms = serialize_ms = 0.0
+
+    if core is None:
+        # +1 to detect truncation
+        posts_sql, posts_params = build_dashboard_sql(
+            request.collection_ids, agent_id, MAX_ROWS + 1
+        )
+        kpis_sql, kpis_params = build_dashboard_kpis_sql(
+            request.collection_ids, agent_id
+        )
+        topics_sql, topics_params = build_topics_sql(agent_id)
+
+        rows, kpi_rows, topic_rows, name_rows = await asyncio.gather(
+            asyncio.to_thread(bq.query, posts_sql, posts_params),
+            asyncio.to_thread(bq.query, kpis_sql, kpis_params),
+            asyncio.to_thread(bq.query, topics_sql, topics_params),
+            asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, {"collection_ids": request.collection_ids}),
+        )
+        gather_ms = (time.perf_counter() - t0) * 1000
+
+        truncated = len(rows) > MAX_ROWS
+        if truncated:
+            rows = rows[:MAX_ROWS]
+
+        ts = time.perf_counter()
+        core = assemble_dashboard_core(rows, topic_rows, kpi_rows, name_rows, truncated)
+        serialize_ms = (time.perf_counter() - ts) * 1000
+        set_core(agent_id, request.collection_ids, stamp, core)
+
+    perf_logger.info(
+        "dashboard.data agent=%s cols=%d cache=%s posts=%d gather_ms=%.0f serialize_ms=%.0f",
+        agent_id, len(request.collection_ids), "HIT" if cache_hit else "MISS",
+        len(core["posts"]), gather_ms, serialize_ms,
     )
-    kpis_sql, kpis_params = build_dashboard_kpis_sql(
-        request.collection_ids, agent_id
-    )
-    topics_sql, topics_params = build_topics_sql(agent_id)
 
-    rows, kpi_rows, topic_rows, name_rows = await asyncio.gather(
-        asyncio.to_thread(bq.query, posts_sql, posts_params),
-        asyncio.to_thread(bq.query, kpis_sql, kpis_params),
-        asyncio.to_thread(bq.query, topics_sql, topics_params),
-        asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, {"collection_ids": request.collection_ids}),
-    )
-
-    truncated = len(rows) > MAX_ROWS
-    if truncated:
-        rows = rows[:MAX_ROWS]
-
-    collection_names = {
-        r["collection_id"]: r.get("original_question", r["collection_id"])
-        for r in name_rows
-    }
-
-    posts = [build_post_response(row) for row in rows]
-    topics = [build_topic_response(row) for row in topic_rows]
-
-    kpi_row = kpi_rows[0] if kpi_rows else {}
-    kpis = DashboardKpis(
-        total_posts=int(kpi_row.get("total_posts") or 0),
-        total_views=int(kpi_row.get("total_views") or 0),
-        total_likes=int(kpi_row.get("total_likes") or 0),
-        total_comments=int(kpi_row.get("total_comments") or 0),
-        total_shares=int(kpi_row.get("total_shares") or 0),
-    )
-
-    return DashboardDataResponse(
-        posts=posts,
-        topics=topics,
-        collection_names=collection_names,
-        truncated=truncated,
-        kpis=kpis,
-    )
+    # Return the cached/assembled core directly (already matches
+    # DashboardDataResponse) via orjson, skipping a second per-row validation.
+    return ORJSONResponse(core)
 
 
 # ---------------------------------------------------------------------------
