@@ -317,7 +317,16 @@ export function SocialDashboardView({
           }
           yMap.set(w._origIdx, cursorY);
         }
-        const repacked = next.map((w, i) => ({ ...w, y: yMap.get(i) ?? w.y }));
+        // Preserve each widget's object reference when its y is unchanged.
+        // The memoized SocialWidgetRenderer compares props by reference, so
+        // spreading every widget here (even untouched ones) would re-render and
+        // re-draw every chart on each text/embed auto-size — a real storm on
+        // first load while cards settle. Only the rows that actually moved get
+        // a new reference.
+        const repacked = next.map((w, i) => {
+          const ny = yMap.get(i) ?? w.y;
+          return ny === w.y ? w : { ...w, y: ny };
+        });
         return repacked;
       });
     },

@@ -57,6 +57,21 @@ ChartJS.register(
   Filler,
 );
 
+// Perf baseline mixed into every chart's options. On a dashboard with ~10
+// canvases these two settings are the dominant lever:
+//  - `animation: false` removes the per-frame enter animation that otherwise
+//    runs ~1s × every chart on the main thread on each (cold) load.
+//  - `resizeDelay` debounces ResizeObserver-driven redraws. Without it, the
+//    react-grid-layout transition between the 12-col desktop and stacked mobile
+//    layouts fires a redraw on every animation frame for every chart (a redraw
+//    storm); with it each chart redraws once after the resize settles.
+// Hover/tooltip interactivity is unaffected. Drop `animation: false` if the
+// mount fade-in is wanted back.
+const BASE_CHART_PERF = {
+  animation: false as const,
+  resizeDelay: 200,
+};
+
 // ── Palettes ──────────────────────────────────────────────────────────────────
 
 function isDarkMode(): boolean {
@@ -416,6 +431,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     const options = {
       responsive: true,
       maintainAspectRatio: false,
+      ...BASE_CHART_PERF,
       interaction: { mode: 'index' as const, intersect: false },
       plugins: {
         legend: {
@@ -480,6 +496,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     const options = {
       responsive: true,
       maintainAspectRatio: false,
+      ...BASE_CHART_PERF,
       interaction: { mode: 'index' as const, intersect: false },
       plugins: {
         legend: { display: false },
@@ -554,6 +571,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     const options = {
       responsive: true,
       maintainAspectRatio: false,
+      ...BASE_CHART_PERF,
       ...(isHorizontal ? { indexAxis: 'y' as const } : {}),
       layout: { padding: { top: 12, bottom: 4 } },
       plugins: {
@@ -623,6 +641,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       const options: ChartOptions<'doughnut' | 'pie'> = {
         responsive: true,
         maintainAspectRatio: false,
+        ...BASE_CHART_PERF,
         cutout: chartType === 'doughnut' ? '62%' : undefined,
         plugins: {
           legend: {
@@ -697,6 +716,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     const options = {
       responsive: true,
       maintainAspectRatio: false,
+      ...BASE_CHART_PERF,
       ...(isHorizontal ? { indexAxis: 'y' as const } : {}),
       plugins: {
         legend: { display: false },

@@ -34,6 +34,7 @@ import { TableDataForm } from './TableDataForm.tsx';
 import { WidgetFilterForm } from './WidgetFilterForm.tsx';
 import { WidgetStyleForm } from './WidgetStyleForm.tsx';
 import { ChartStyleEditor } from './ChartStyleEditor.tsx';
+import { widgetContainerVisible } from '../widget-container.ts';
 import { aggregateCustom, aggregatePlatforms, aggregateSentiment, aggregateTable } from '../dashboard-aggregations.ts';
 import { aggregateObjectList, aggregateObjectTable } from '../object-list-aggregations.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from '../topic-aggregations.ts';
@@ -62,6 +63,35 @@ const TOPIC_DISABLED_CHART_TYPES: ReadonlySet<SocialChartType> = new Set(['line'
 const TABLE_ACCENT_COLORS = [
   '#4A7C8F', '#2B5066', '#6B3040', '#9A7B3C', '#3E6B52', '#6B4A6E',
 ];
+
+// ── Container visibility toggle ─────────────────────────────────────────────────
+// Controls whether the widget renders its card chrome (surface + border +
+// shadow) or floats transparently on the page. Shown in every widget's config
+// (text/media/embed panels + the chart/table/kpi Style tab). The displayed
+// state reflects the effective default until the user sets it explicitly.
+
+function ContainerToggle({
+  draft,
+  onChange,
+}: {
+  draft: SocialDashboardWidget;
+  onChange: (show: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <Label className="text-xs">Container</Label>
+        <p className="text-[11px] text-muted-foreground">
+          Show the card background, border and shadow.
+        </p>
+      </div>
+      <Switch
+        checked={widgetContainerVisible(draft)}
+        onCheckedChange={onChange}
+      />
+    </div>
+  );
+}
 
 // ── Public wrapper ─────────────────────────────────────────────────────────────
 
@@ -403,6 +433,13 @@ function SocialWidgetConfigDialogInner({
 
                 <Separator />
 
+                <ContainerToggle
+                  draft={draft}
+                  onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
+                />
+
+                <Separator />
+
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     Markdown
@@ -637,7 +674,12 @@ function SocialWidgetConfigDialogInner({
                   />
                 </TabsContent>
 
-                <TabsContent value="style" className="mt-0 p-5">
+                <TabsContent value="style" className="mt-0 p-5 space-y-4">
+                  <ContainerToggle
+                    draft={draft}
+                    onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
+                  />
+                  <Separator />
                   <StyleTab
                     draft={draft}
                     previewPosts={previewPosts}
@@ -1299,6 +1341,13 @@ function MediaConfigPanel({
 
       <Separator />
 
+      <ContainerToggle
+        draft={draft}
+        onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
+      />
+
+      <Separator />
+
       {/* Source: Upload | URL */}
       <div className="space-y-2">
         <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -1485,6 +1534,13 @@ function EmbedConfigPanel({
           placeholder="Optional subtitle"
         />
       </div>
+
+      <Separator />
+
+      <ContainerToggle
+        draft={draft}
+        onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
+      />
 
       <Separator />
 

@@ -1187,6 +1187,12 @@ export interface SocialDashboardWidget {
    *  auto-fit-height behaviour so the saved `h` is respected (content scrolls
    *  if it overflows). Undefined → legacy auto-fit for untouched cards. */
   manualHeight?: boolean;
+  /** Explicit container (card surface + border + shadow) visibility. Undefined
+   *  → the per-widget default (see {@link widgetContainerVisible}): visible for
+   *  everything except a heading-only text widget (the "header"). A set value
+   *  overrides that default so the user can frame a header or unframe any
+   *  widget. */
+  showContainer?: boolean;
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────
