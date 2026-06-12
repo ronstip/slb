@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
 import { DATE_CONDITION_FIELDS, isPostCountCondition, isCustomFieldDimension, customFieldName, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, getDimensionMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
@@ -30,6 +30,7 @@ import {
 } from './dashboard-aggregations.ts';
 import { resolveSparklineEnabled, toCumulativeSeries } from './sparkline-visibility.ts';
 import { shouldAutoSizeWidget } from './text-card-sizing.ts';
+import { widgetContainerVisible } from './widget-container.ts';
 import type { ColumnDef } from '../../../components/DataTable/DataTable.tsx';
 import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 import { BrandIcon } from '../../../components/BrandIcon.tsx';
@@ -985,6 +986,10 @@ interface FrameProps {
    * the grid receives a suggested new grid-row height. Used to auto-fit text
    * widgets to their content (no inner scroll). */
   onAutoSize?: (i: string, h: number) => void;
+  /** Optional callback: a media widget reports its intrinsic aspect ratio
+   * (natural width / height) once the image/video loads. The grid uses it to
+   * size the cell to the media's proportions on compact (mobile) breakpoints. */
+  onMediaAspect?: (i: string, ratio: number) => void;
 }
 
 // ── Sub-components (each calls hooks unconditionally) ─────────────────────────
@@ -1003,6 +1008,7 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
       onConfigure={onConfigure}
       onRemove={onRemove}
       onDuplicate={onDuplicate}
+      containerHidden={!widgetContainerVisible(widget)}
     />
   );
 }
@@ -1013,7 +1019,7 @@ function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onD
     [posts, widget.filters],
   );
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
       <SocialWordCloudWidget
         data={cloudData}
         onWordClick={onFilterToggle ? (v) => onFilterToggle('themes', v) : undefined}
@@ -1037,7 +1043,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     // EntityTable only when neither the widget nor the dimension has defaults.
     const tableConfig = widget.tableConfig ?? defaultTableConfigFor('entities');
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
         <ConfigurableTableWidget
           posts={posts}
           filters={widget.filters}
@@ -1049,7 +1055,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     );
   }
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
       <SocialProgressListWidget
         data={listData}
         seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1068,7 +1074,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
   if (widget.chartType === 'table') {
     const tableConfig = widget.tableConfig ?? defaultTableConfigFor('channel_handle');
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
         <ConfigurableTableWidget
           posts={posts}
           filters={widget.filters}
@@ -1080,7 +1086,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
     );
   }
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
       <SocialProgressListWidget
         data={listData}
         seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1201,7 +1207,7 @@ function CustomWidget({
 
   if (!config) {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
         <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
           Configure this widget to select a metric
         </div>
@@ -1221,13 +1227,14 @@ function CustomWidget({
         onConfigure={onConfigure}
         onRemove={onRemove}
         onDuplicate={onDuplicate}
+        containerHidden={!widgetContainerVisible(widget)}
       />
     );
   }
 
   if (widget.chartType === 'word-cloud') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
         <SocialWordCloudWidget data={cloudData} />
       </SocialWidgetFrame>
     );
@@ -1235,7 +1242,7 @@ function CustomWidget({
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
         <SocialProgressListWidget
           data={data ?? undefined}
           accent={widget.styleOverrides?.accent ?? widget.accent}
@@ -1261,7 +1268,7 @@ function CustomWidget({
           : undefined);
     if (tableConfig) {
       return (
-        <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction}>
+        <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
           <ConfigurableTableWidget
             posts={posts}
             filters={widget.filters}
@@ -1276,14 +1283,14 @@ function CustomWidget({
       );
     }
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
         <GenericTableView data={data ?? undefined} labelOverrides={widget.styleOverrides?.seriesLabels} />
       </SocialWidgetFrame>
     );
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
       <SocialChartWidget
         chartType={widget.chartType}
         data={data ?? undefined}
@@ -1348,7 +1355,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
         <SocialProgressListWidget
           data={chartData ?? undefined}
           seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1358,7 +1365,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
       <SocialChartWidget
         chartType={widget.chartType}
         data={chartData ?? undefined}
@@ -1374,20 +1381,12 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
 
 // ── Text (markdown) widget ────────────────────────────────────────────────────
 
-/** A text widget whose content is only heading(s)/horizontal rules (e.g. the
- *  dashboard title `# …` or a section divider `## …`) reads as a page/section
- *  header — it renders frameless (big serif heading on the page) rather than as
- *  a boxed card. A text widget with real body copy (the summary's lead + bullets)
- *  gets the card chrome so it matches the design's boxed report card. */
-function isHeadingOnlyText(md: string): boolean {
-  const lines = md.split('\n').map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) return true;
-  return lines.every((l) => l.startsWith('#') || /^(\*\*\*|---|___)$/.test(l));
-}
-
 function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize }: FrameProps) {
   const content = widget.markdownContent ?? '';
-  const boxed = content.trim().length > 0 && !isHeadingOnlyText(content);
+  // Container visibility: a heading-only text widget (page/section header)
+  // renders frameless by default; body copy gets the boxed report card. The
+  // user can override either way via the config dialog (`showContainer`).
+  const boxed = widgetContainerVisible(widget);
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-fit the widget grid height to its rendered content. Avoids inner
@@ -1515,8 +1514,13 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
 // does NOT auto-size - the user sizes the frame and the media fits inside it
 // (object-contain by default, object-cover to fill). GIFs render as <img>.
 
-function MediaWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps) {
+function MediaWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, onMediaAspect }: FrameProps) {
   const media = widget.media;
+  const reportAspect = (naturalW: number, naturalH: number) => {
+    if (onMediaAspect && naturalW > 0 && naturalH > 0) {
+      onMediaAspect(widget.i, naturalW / naturalH);
+    }
+  };
   const src = media?.uploadPath
     ? mediaServeUrl(media.uploadPath)
     : (media?.src ?? '').trim();
@@ -1539,6 +1543,7 @@ function MediaWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }:
       onDuplicate={onDuplicate}
       icon={widgetHeaderIcon(widget)}
       contentClassName={fullBleed ? 'p-0' : undefined}
+      containerHidden={!widgetContainerVisible(widget)}
     >
       <div
         className={`flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden ${
@@ -1562,6 +1567,7 @@ function MediaWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }:
             muted={(media?.muted ?? false) || (media?.autoplay ?? false)}
             autoPlay={media?.autoplay ?? false}
             playsInline
+            onLoadedMetadata={(e) => reportAspect(e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
           />
         ) : (
           <img
@@ -1569,6 +1575,7 @@ function MediaWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate }:
             alt={media?.alt ?? ''}
             className={fitClass}
             draggable={false}
+            onLoad={(e) => reportAspect(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
           />
         )}
       </div>
@@ -1626,6 +1633,7 @@ function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, 
       onRemove={onRemove}
       onDuplicate={onDuplicate}
       icon={widgetHeaderIcon(widget)}
+      containerHidden={!widgetContainerVisible(widget)}
     >
       <div ref={contentRef} className="w-full" data-embed-widget="1">
         {urls.length === 0 ? (
@@ -1703,7 +1711,7 @@ const POST_TABLE_COLUMNS = postColumns<PostTableRow>({ summaryField: 'content', 
 function PostsTableWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
   const rows = useMemo(() => toPostTableRows(posts), [posts]);
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
       <DataTable
         data={rows}
         columns={POST_TABLE_COLUMNS}
@@ -1732,18 +1740,23 @@ interface SocialWidgetRendererProps {
    *  `dataSource: 'posts'` ignore this. Empty array when no agent context. */
   topics?: TopicMetric[];
   isEditMode: boolean;
-  onConfigure: () => void;
-  onRemove: () => void;
-  onDuplicate?: () => void;
+  /** Id-taking callbacks (bound to this widget internally). Keeping them
+   *  id-taking lets the grid pass its stable parent handlers straight through,
+   *  so this component can be `memo`'d and skip re-render on breakpoint /
+   *  resize churn that doesn't touch its own props. */
+  onConfigure: (id: string) => void;
+  onRemove: (id: string) => void;
+  onDuplicate?: (id: string) => void;
   onFilterToggle?: (key: string, value: string) => void;
   /** Called when a topic widget item is clicked. Undefined disables
    *  click-through (e.g. on public/shared dashboards). */
   onTopicNavigate?: (clusterId: string) => void;
   serverKpis?: DashboardKpis;
   onAutoSize?: (i: string, h: number) => void;
+  onMediaAspect?: (i: string, ratio: number) => void;
 }
 
-export function SocialWidgetRenderer({
+function SocialWidgetRendererImpl({
   widget: rawWidget,
   widgetIndex = 0,
   filteredPosts,
@@ -1756,6 +1769,7 @@ export function SocialWidgetRenderer({
   onTopicNavigate,
   serverKpis,
   onAutoSize,
+  onMediaAspect,
 }: SocialWidgetRendererProps) {
   // Legacy aggregations (`volume`, `sentiment-over-time`) are rewritten to
   // `aggregation: 'custom'` here so the dispatch below stays uniform.
@@ -1780,7 +1794,16 @@ export function SocialWidgetRenderer({
     [filteredPosts, widget.filters],
   );
 
-  const frameProps = { widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize };
+  // Bind the id-taking grid handlers to this widget once. Stable identities so
+  // the frame/sub-components don't see a new callback every render.
+  const handleConfigure = useCallback(() => onConfigure(widget.i), [onConfigure, widget.i]);
+  const handleRemove = useCallback(() => onRemove(widget.i), [onRemove, widget.i]);
+  const handleDuplicate = useMemo(
+    () => (onDuplicate ? () => onDuplicate(widget.i) : undefined),
+    [onDuplicate, widget.i],
+  );
+
+  const frameProps = { widget, isEditMode, onConfigure: handleConfigure, onRemove: handleRemove, onDuplicate: handleDuplicate, onAutoSize, onMediaAspect };
 
   if (widget.aggregation === 'text') {
     return <TextWidget {...frameProps} />;
@@ -1820,3 +1843,10 @@ export function SocialWidgetRenderer({
   }
   return <GenericChartWidget {...frameProps} posts={widgetPosts} />;
 }
+
+// Memoized: a breakpoint switch or resize re-renders the grid but does not
+// change any individual widget's props (filteredPosts, widget and all callbacks
+// are referentially stable), so each widget — and its Chart.js canvas — skips
+// the re-render entirely. This is the main win for the slow desktop⇄mobile and
+// refresh transitions.
+export const SocialWidgetRenderer = memo(SocialWidgetRendererImpl);

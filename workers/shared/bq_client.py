@@ -29,6 +29,29 @@ _BACKOFF_BASE = 2.0  # seconds: 2, 4, 8
 _BACKOFF_MAX = 30.0
 
 
+def _normalize_rows(rows: list[dict], json_cols: set[str]) -> list[dict]:
+    """Normalize raw downloaded rows to query()'s public contract, in place.
+
+    - JSON-typed columns (``json_cols``) arrive parsed (dict/list) over REST but
+      as raw JSON strings over the Storage API; parse the strings so both paths
+      yield the same dict/list. Malformed JSON is left as the raw string.
+    - Any value with ``isoformat`` (datetime/date/time) is stringified, matching
+      the original REST behavior so downstream JSON serialization is unchanged.
+    """
+    for row_dict in rows:
+        for key, value in row_dict.items():
+            if value is None:
+                continue
+            if key in json_cols and isinstance(value, str):
+                try:
+                    row_dict[key] = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    pass  # leave malformed JSON as the raw string
+            elif hasattr(value, "isoformat"):
+                row_dict[key] = value.isoformat()
+    return rows
+
+
 def _is_transient(exc: Exception) -> bool:
     """Check if an exception is transient and worth retrying."""
     if isinstance(exc, _TRANSIENT_EXCEPTIONS):
@@ -66,6 +89,13 @@ class BQClient:
             project=self._settings.gcp_project_id,
             location=self._settings.gcp_region,
         )
+        # Lazily-created BigQuery Storage Read API client. Row download via the
+        # default REST path (tabledata.list) is the dominant cost for large
+        # result sets - e.g. the dashboard's ~5k wide rows took ~20s to stream
+        # over REST vs ~6s via the Storage API. None = not tried yet, False =
+        # tried and unavailable (fall back to REST), else a live client reused
+        # across queries. See docs/bugs/api-dashboard-slow-row-download.md.
+        self._bqstorage: object | None = None
 
     @property
     def dataset(self) -> str:
@@ -159,15 +189,53 @@ class BQClient:
         query_job = _retry(self._client.query, sql, job_config=job_config)
         results = _retry(query_job.result)
 
-        rows = []
-        for row in results:
-            row_dict = dict(row)
-            # Convert non-serializable types
-            for key, value in row_dict.items():
-                if hasattr(value, "isoformat"):
-                    row_dict[key] = value.isoformat()
-            rows.append(row_dict)
-        return rows
+        # JSON-typed columns come back parsed (dict/list) over REST but as raw
+        # JSON strings over the Storage API. Track them from the schema so we
+        # can normalize the Storage path back to REST's shape - keeping query()
+        # output byte-identical regardless of which download path is used.
+        json_cols = {f.name for f in results.schema if f.field_type == "JSON"}
+
+        rows = self._download_rows(results)
+        return _normalize_rows(rows, json_cols)
+
+    def _download_rows(self, results) -> list[dict]:
+        """Download a query's rows as plain dicts.
+
+        Prefers the BigQuery Storage Read API (fast Arrow stream); falls back to
+        REST row iteration when the Storage client is unavailable (e.g. the
+        service account lacks ``bigquery.readsessions.create``) or the Arrow
+        download fails. The Storage path consumes the iterator only on success,
+        so the REST fallback re-reads cleanly on a setup-time failure.
+        """
+        bqs = self._bqstorage_read_client()
+        if bqs is not None:
+            try:
+                table = _retry(results.to_arrow, bqstorage_client=bqs)
+                return table.to_pylist()
+            except Exception:  # noqa: BLE001 - any Storage failure -> REST
+                logger.warning(
+                    "Storage API download failed; falling back to REST", exc_info=True
+                )
+        return [dict(r) for r in results]
+
+    def _bqstorage_read_client(self):
+        """Return a reused BigQueryReadClient, or None if unavailable.
+
+        Cached on the instance: ``None`` = not yet attempted, ``False`` =
+        attempted and unavailable (don't retry), otherwise a live client.
+        """
+        if self._bqstorage is None:
+            try:
+                from google.cloud import bigquery_storage
+
+                self._bqstorage = bigquery_storage.BigQueryReadClient()
+            except Exception:  # noqa: BLE001 - missing dep/perms -> REST path
+                logger.warning(
+                    "BigQuery Storage client unavailable; using REST row download",
+                    exc_info=True,
+                )
+                self._bqstorage = False
+        return self._bqstorage or None
 
     def query_from_file(
         self, sql_file: str, params: dict | None = None

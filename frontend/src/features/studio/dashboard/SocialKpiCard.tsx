@@ -79,6 +79,9 @@ interface SocialKpiCardProps {
   onConfigure?: () => void;
   onRemove?: () => void;
   onDuplicate?: () => void;
+  /** When true, drop the card surface + border + shadow so the metric floats
+   *  transparently on the page. */
+  containerHidden?: boolean;
 }
 
 function Sparkline({ data, color, height }: { data: number[]; color: string; height: number }) {
@@ -124,7 +127,7 @@ function Sparkline({ data, color, height }: { data: number[]; color: string; hei
   );
 }
 
-export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, isEditMode, onConfigure, onRemove, onDuplicate }: SocialKpiCardProps) {
+export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, isEditMode, onConfigure, onRemove, onDuplicate, containerHidden = false }: SocialKpiCardProps) {
   const { theme } = useTheme();
   const isDark =
     theme === 'dark' ||
@@ -149,8 +152,12 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, 
 
   return (
     <Card
-      style={{ backgroundColor: 'var(--widget-surface)' }}
-      className={`h-full relative group overflow-hidden py-0 gap-0 rounded-[14px] shadow-[0_1px_2px_rgba(35,30,22,0.04),0_1px_1px_rgba(35,30,22,0.03)] transition-[box-shadow,transform] duration-150 hover:shadow-[0_6px_24px_-10px_rgba(35,30,22,0.18),0_2px_6px_rgba(35,30,22,0.05)] hover:-translate-y-px ${
+      style={containerHidden ? undefined : { backgroundColor: 'var(--widget-surface)' }}
+      className={`h-full relative group overflow-hidden py-0 gap-0 ${
+        containerHidden
+          ? 'bg-transparent border-transparent shadow-none'
+          : 'rounded-[14px] shadow-[0_1px_2px_rgba(35,30,22,0.04),0_1px_1px_rgba(35,30,22,0.03)] transition-[box-shadow,transform] duration-150 hover:shadow-[0_6px_24px_-10px_rgba(35,30,22,0.18),0_2px_6px_rgba(35,30,22,0.05)] hover:-translate-y-px'
+      } ${
         isEditMode ? 'drag-handle ring-1 ring-dashed ring-primary/30 cursor-grab active:cursor-grabbing' : ''
       }`}
     >

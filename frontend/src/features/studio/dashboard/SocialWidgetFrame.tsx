@@ -28,6 +28,11 @@ interface SocialWidgetFrameProps {
    *  full-bleed body (media widgets) so content fills the card edge-to-edge.
    *  Undefined → the default padded body. */
   contentClassName?: string;
+  /** When true, drop the container chrome (surface fill + border + shadow) so
+   *  the widget floats transparently on the page. Header/content still render.
+   *  In edit mode a dashed outline is kept so the (now invisible) card stays
+   *  grabbable. */
+  containerHidden?: boolean;
   children: React.ReactNode;
 }
 
@@ -42,16 +47,24 @@ export function SocialWidgetFrame({
   icon,
   figureText,
   contentClassName,
+  containerHidden = false,
   children,
 }: SocialWidgetFrameProps) {
   const trimmed = title?.trim() ?? '';
   const isPlaceholder = PLACEHOLDER_TITLES.has(trimmed);
   const showTitle = trimmed.length > 0 && (isEditMode || !isPlaceholder);
   const showHeader = showTitle || !!description || !!headerAction;
+  // Chrome classes only when the container is visible; otherwise the card is
+  // transparent and borderless so the widget reads as floating on the page.
+  const chromeClass = containerHidden
+    ? 'border-transparent shadow-none'
+    : 'rounded-[14px] shadow-[0_1px_2px_rgba(35,30,22,0.04),0_1px_1px_rgba(35,30,22,0.03)] transition-shadow duration-150 hover:shadow-[0_6px_24px_-10px_rgba(35,30,22,0.18),0_2px_6px_rgba(35,30,22,0.05)]';
   return (
     <Card
-      style={{ backgroundColor: 'var(--widget-surface)' }}
-      className={`h-full flex flex-col overflow-hidden relative group py-0 gap-0 rounded-[14px] shadow-[0_1px_2px_rgba(35,30,22,0.04),0_1px_1px_rgba(35,30,22,0.03)] transition-shadow duration-150 hover:shadow-[0_6px_24px_-10px_rgba(35,30,22,0.18),0_2px_6px_rgba(35,30,22,0.05)] ${
+      style={containerHidden ? undefined : { backgroundColor: 'var(--widget-surface)' }}
+      className={`h-full flex flex-col overflow-hidden relative group py-0 gap-0 ${
+        containerHidden ? 'bg-transparent' : ''
+      } ${chromeClass} ${
       isEditMode ? 'ring-1 ring-dashed ring-primary/30' : ''
     }`}
     >

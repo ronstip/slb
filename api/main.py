@@ -22,6 +22,8 @@ init_firebase()
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import ORJSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -98,12 +100,26 @@ async def lifespan(app_: FastAPI):
     yield
 
 
-app = FastAPI(title="Scolto", version="0.1.0", lifespan=lifespan)
+# orjson encodes JSON several× faster than the stdlib encoder used by the
+# default JSONResponse - a meaningful win on the large dashboard/share payloads
+# and every other JSON route. Routes that return a Response directly (SSE,
+# explicit ORJSONResponse) are unaffected.
+app = FastAPI(
+    title="Scolto",
+    version="0.1.0",
+    lifespan=lifespan,
+    default_response_class=ORJSONResponse,
+)
 
 # Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Compress large JSON responses. The dashboard/share payload is ~8MB of post
+# JSON sent uncompressed; gzip cuts that several-fold over the wire. minimum_size
+# skips tiny responses where compression overhead isn't worth it.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # Global safety net for unhandled exceptions - keep AFTER more specific
 # handlers (e.g. RateLimitExceeded). FastAPI runs `HTTPException` through

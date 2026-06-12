@@ -4,9 +4,11 @@ import asyncio
 import logging
 import re
 import secrets
+import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import ORJSONResponse
 
 from api.auth.admin import is_super_admin_email
 from api.auth.dependencies import CurrentUser, get_current_user
@@ -21,12 +23,18 @@ from api.schemas.responses import (
     SharedDashboardDataResponse,
     SharedDashboardMetaResponse,
 )
+from api.services.dashboard_cache import (
+    get_core,
+    make_freshness_stamp,
+    perf_logger,
+    set_core,
+)
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
     MAX_ROWS,
+    assemble_dashboard_core,
+    build_dashboard_kpis_sql,
     build_dashboard_sql,
-    build_post_response,
-    build_topic_response,
     build_topics_sql,
     derive_agent_id_for_collections,
 )
@@ -358,18 +366,17 @@ async def get_shared_dashboard(
         resolve_share_collection_ids, fs, collection_ids, agent_id
     )
 
-    name_rows = await asyncio.to_thread(
-        bq.query, COLLECTION_NAMES_SQL, {"collection_ids": collection_ids}
-    )
-    collection_names = {
-        r["collection_id"]: r.get("original_question", r["collection_id"])
-        for r in name_rows
-    }
-
     if not agent_id:
         # Orphan share - collections were never linked to an agent. Return
         # empty rather than running cross-agent SQL that conflicts with the
         # rest of the agent-scoped surfaces.
+        name_rows = await asyncio.to_thread(
+            bq.query, COLLECTION_NAMES_SQL, {"collection_ids": collection_ids}
+        )
+        collection_names = {
+            r["collection_id"]: r.get("original_question", r["collection_id"])
+            for r in name_rows
+        }
         asyncio.create_task(_record_access(fs, token))
         return SharedDashboardDataResponse(
             posts=[],
@@ -384,35 +391,68 @@ async def get_shared_dashboard(
             filterBarHidden=filter_bar_hidden,
         )
 
-    posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
-    topics_sql, topics_params = build_topics_sql(agent_id)
-
-    rows, topic_rows = await asyncio.gather(
-        asyncio.to_thread(bq.query, posts_sql, posts_params),
-        asyncio.to_thread(bq.query, topics_sql, topics_params),
+    # Passive-invalidation response cache, shared with the authed endpoint. The
+    # stamp is the max collection_status.updated_at across the resolved
+    # collections, which the pipeline bumps when post counts change - so a new
+    # run's data busts the cache while static data serves without any BigQuery.
+    # The share path reads the statuses itself (the authed path gets them from
+    # its access check); these Firestore reads are cheap vs the ~8s posts query.
+    statuses = await asyncio.gather(
+        *(asyncio.to_thread(fs.get_collection_status, cid) for cid in collection_ids)
     )
+    stamp = make_freshness_stamp(statuses)
+    t0 = time.perf_counter()
+    core = get_core(agent_id, collection_ids, stamp)
+    cache_hit = core is not None
+    gather_ms = serialize_ms = 0.0
 
-    truncated = len(rows) > MAX_ROWS
-    if truncated:
-        rows = rows[:MAX_ROWS]
+    if core is None:
+        posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
+        kpis_sql, kpis_params = build_dashboard_kpis_sql(collection_ids, agent_id)
+        topics_sql, topics_params = build_topics_sql(agent_id)
 
-    posts = [build_post_response(row) for row in rows]
-    topics = [build_topic_response(row) for row in topic_rows]
+        rows, kpi_rows, topic_rows, name_rows = await asyncio.gather(
+            asyncio.to_thread(bq.query, posts_sql, posts_params),
+            asyncio.to_thread(bq.query, kpis_sql, kpis_params),
+            asyncio.to_thread(bq.query, topics_sql, topics_params),
+            asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, {"collection_ids": collection_ids}),
+        )
+        gather_ms = (time.perf_counter() - t0) * 1000
+
+        truncated = len(rows) > MAX_ROWS
+        if truncated:
+            rows = rows[:MAX_ROWS]
+
+        ts = time.perf_counter()
+        core = assemble_dashboard_core(rows, topic_rows, kpi_rows, name_rows, truncated)
+        serialize_ms = (time.perf_counter() - ts) * 1000
+        set_core(agent_id, collection_ids, stamp, core)
+
+    perf_logger.info(
+        "dashboard.share token=%s agent=%s cache=%s posts=%d gather_ms=%.0f serialize_ms=%.0f",
+        token, agent_id, "HIT" if cache_hit else "MISS",
+        len(core["posts"]), gather_ms, serialize_ms,
+    )
 
     # Fire-and-forget telemetry update
     asyncio.create_task(_record_access(fs, token))
 
-    return SharedDashboardDataResponse(
-        posts=posts,
-        topics=topics,
-        collection_names=collection_names,
-        truncated=truncated,
-        meta=meta,
-        layout=layout,
-        filterBarFilters=filter_bar_filters,
-        orientation=orientation,
-        reportScope=report_scope,
-        filterBarHidden=filter_bar_hidden,
+    # Wrap the cached core (posts/topics/collection_names/truncated) with this
+    # share's per-request metadata; kpis in the core are unused here. Returned
+    # raw via orjson - shape matches SharedDashboardDataResponse.
+    return ORJSONResponse(
+        {
+            "posts": core["posts"],
+            "topics": core["topics"],
+            "collection_names": core["collection_names"],
+            "truncated": core["truncated"],
+            "meta": meta.model_dump(),
+            "layout": layout,
+            "filterBarFilters": filter_bar_filters,
+            "orientation": orientation,
+            "reportScope": report_scope,
+            "filterBarHidden": filter_bar_hidden,
+        }
     )
 
 
