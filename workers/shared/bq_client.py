@@ -195,17 +195,19 @@ class BQClient:
         # output byte-identical regardless of which download path is used.
         json_cols = {f.name for f in results.schema if f.field_type == "JSON"}
 
-        rows = self._download_rows(results)
+        rows = self._download_rows(results, query_job)
         return _normalize_rows(rows, json_cols)
 
-    def _download_rows(self, results) -> list[dict]:
+    def _download_rows(self, results, query_job) -> list[dict]:
         """Download a query's rows as plain dicts.
 
         Prefers the BigQuery Storage Read API (fast Arrow stream); falls back to
         REST row iteration when the Storage client is unavailable (e.g. the
         service account lacks ``bigquery.readsessions.create``) or the Arrow
-        download fails. The Storage path consumes the iterator only on success,
-        so the REST fallback re-reads cleanly on a setup-time failure.
+        download fails. A failed ``to_arrow`` may have *already started* the
+        ``results`` iterator, so the REST fallback must re-fetch a fresh
+        iterator from the job's destination table rather than re-iterate the
+        poisoned one (which raises "Iterator has already started").
         """
         bqs = self._bqstorage_read_client()
         if bqs is not None:
@@ -216,6 +218,7 @@ class BQClient:
                 logger.warning(
                     "Storage API download failed; falling back to REST", exc_info=True
                 )
+                results = self._client.list_rows(query_job.destination)
         return [dict(r) for r in results]
 
     def _bqstorage_read_client(self):
