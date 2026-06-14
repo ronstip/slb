@@ -8,6 +8,7 @@ import { useSessionStore } from '../../../stores/session-store.ts';
 import { useAgentStore } from '../../../stores/agent-store.ts';
 import { useSourcesStore } from '../../../stores/sources-store.ts';
 import { useStudioStore } from '../../../stores/studio-store.ts';
+import { useExplorerLayoutStore } from '../../../stores/explorer-layout-store.ts';
 import { useUIStore } from '../../../stores/ui-store.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { useModelSettingsStore } from '../../../stores/model-settings-store.ts';
@@ -65,6 +66,12 @@ export function useSSEChat() {
             message: text,
             session_id: cs.sessionId ?? undefined,
             agent_id: useAgentStore.getState().activeAgentId ?? undefined,
+            // The dashboard currently selected in the explorer, if any. Lets
+            // the chat agent edit / run Story Mode on the report the user has
+            // open (the backend binds it as Active Dashboard in the agent's
+            // context; ownership is verified server-side).
+            active_dashboard_id:
+              useExplorerLayoutStore.getState().activeLayoutId ?? undefined,
             model: modelSettings.model,
             thinking_level: modelSettings.thinkingLevel,
             search_grounding: modelSettings.searchGrounding,

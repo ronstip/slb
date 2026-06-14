@@ -91,3 +91,4 @@ api/agent/evals/runs/**/transcripts/
 
 # Ignore sandbox folder
 sandbox/
+.mcp.json

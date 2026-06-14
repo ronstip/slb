@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -67,6 +68,25 @@ def _require_dashboard_access(
         raise HTTPException(status_code=403, detail="Access denied")
 
 
+# Widths at or below the small (sm=4) breakpoint's column count. A desktop
+# layout authored on the 12-col grid never crams every widget into <=4 cols at
+# x=0 - that signature only appears when react-grid-layout's compact (mobile)
+# layout leaks into the canonical desktop slot. Story Mode stacks full-width
+# (w=12), so it is never caught.
+_COMPACT_MAX_W = 4
+
+
+def _is_collapsed_mobile_layout(layout: list[SocialDashboardWidget]) -> bool:
+    """True when a layout looks like a persisted MOBILE/compact layout rather
+    than an authored desktop one: 3+ widgets, ALL at x=0, none wider than the
+    small breakpoint. Persisting this collapses the dashboard to one long narrow
+    column on desktop and on shared links (see test_layout_collapse_guard.py).
+    """
+    if len(layout) < 3:
+        return False
+    return all(w.x == 0 for w in layout) and all(w.w <= _COMPACT_MAX_W for w in layout)
+
+
 class LayoutSaveRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -129,6 +149,24 @@ async def save_dashboard_layout(
                 detail=f"layout[{idx}]: x ({w.x}) + w ({w.w}) exceeds grid width {GRID_COLS}",
             )
 
+    # Backstop against the single-column corruption: refuse to overwrite the
+    # canonical desktop layout with a collapsed mobile/compact layout. This doc
+    # is shared across local/dev/prod and read live by the public share endpoint,
+    # so a stale or buggy client must not be able to poison it.
+    if _is_collapsed_mobile_layout(request.layout):
+        logger.warning(
+            "Rejected collapsed-mobile layout save for %s (user=%s, %d widgets)",
+            artifact_id, user.uid, len(request.layout),
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Refused to save: this looks like a collapsed mobile layout "
+                "(every widget at x=0, narrow). The desktop layout was not "
+                "overwritten."
+            ),
+        )
+
     doc_ref = fs._db.collection(COLLECTION).document(artifact_id)
     doc = await asyncio.to_thread(doc_ref.get)
     share_doc = await asyncio.to_thread(_resolve_share_doc, fs, artifact_id)
@@ -156,6 +194,10 @@ async def save_dashboard_layout(
             "orientation": request.orientation,
             "reportScope": serialized_scope,
             "filterBarHidden": request.filterBarHidden,
+            # Stamp editor saves too (the agent's update_dashboard already does).
+            # Without this, a manual save left updated_at showing the last *agent*
+            # write, which masked when the layout actually changed.
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         },
         merge=True,
     )

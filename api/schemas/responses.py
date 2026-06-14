@@ -53,6 +53,27 @@ class FeedPostResponse(BaseModel):
     is_quote: bool | None = None
 
 
+class TopicBreakdownEntry(BaseModel):
+    value: str
+    count: int = 0
+
+
+class FeedKpis(BaseModel):
+    """KPI-strip aggregates for the data tab, computed server-side over the
+    whole filtered window (independent of the posts query's row LIMIT)."""
+
+    total_posts: int = 0
+    total_views: int = 0
+    total_likes: int = 0
+    total_comments: int = 0
+    total_shares: int = 0
+    unique_handles: int = 0
+    platforms: list[TopicBreakdownEntry] = []
+    sentiments: list[TopicBreakdownEntry] = []
+    top_themes: list[TopicBreakdownEntry] = []
+    top_entities: list[TopicBreakdownEntry] = []
+
+
 class FeedResponse(BaseModel):
     posts: list[FeedPostResponse]
     total: int
@@ -60,6 +81,8 @@ class FeedResponse(BaseModel):
     total_sources: int = 0
     offset: int
     limit: int
+    # Present only when the request set `include_kpis` (agent-scoped path).
+    kpis: FeedKpis | None = None
 
 
 class DashboardPostResponse(BaseModel):
@@ -83,6 +106,9 @@ class DashboardPostResponse(BaseModel):
     detected_brands: list[str] = []
     channel_type: str | None = None
     media_refs: str | None = None
+    # Topic cluster ids this post belongs to in the latest clustering run
+    # (empty when unclustered). Powers the dashboard `topics` filter dimension.
+    topic_ids: list[str] = []
     like_count: int = 0
     view_count: int = 0
     comment_count: int = 0
@@ -95,11 +121,6 @@ class DashboardKpis(BaseModel):
     total_likes: int = 0
     total_comments: int = 0
     total_shares: int = 0
-
-
-class TopicBreakdownEntry(BaseModel):
-    value: str
-    count: int = 0
 
 
 class TopicPlatformEntry(BaseModel):

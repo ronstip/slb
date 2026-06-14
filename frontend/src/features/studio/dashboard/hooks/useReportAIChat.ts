@@ -45,7 +45,13 @@ const UPDATE_TOAST_DURATION_MS = 12_000;
 interface UseReportAIChatResult {
   messages: ReportChatMessage[];
   isStreaming: boolean;
-  sendMessage: (text: string, attached?: AttachedWidget[]) => Promise<void>;
+  /** `displayText`, when given, is what the user bubble shows; `text` is what
+   *  the model receives (e.g. a story request with a protocol preamble). */
+  sendMessage: (
+    text: string,
+    attached?: AttachedWidget[],
+    displayText?: string,
+  ) => Promise<void>;
   cancel: () => void;
   reset: () => void;
 }
@@ -96,7 +102,7 @@ export function useReportAIChat({
   }, [artifactId]);
 
   const sendMessage = useCallback(
-    async (text: string, attached: AttachedWidget[] = []) => {
+    async (text: string, attached: AttachedWidget[] = [], displayText?: string) => {
       if (!text.trim() || isStreaming) return;
 
       abortRef.current?.abort();
@@ -110,7 +116,7 @@ export function useReportAIChat({
       const userMsg: ReportChatMessage = {
         id: `u-${Date.now()}`,
         role: 'user',
-        text,
+        text: displayText ?? text,
         attachments: attached.length > 0 ? attached.map((w) => w.title) : undefined,
       };
       const assistantId = `a-${Date.now()}`;
@@ -138,11 +144,24 @@ export function useReportAIChat({
       };
       const appendNote = (note: string) => {
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, toolNotes: [...(m.toolNotes ?? []), note] }
-              : m,
-          ),
+          prev.map((m) => {
+            if (m.id !== assistantId) return m;
+            const notes = m.toolNotes ?? [];
+            // Collapse consecutive identical notes (e.g. three back-to-back
+            // execute_sql calls -> "Running a quick query… (3)") so a multi-step
+            // story turn doesn't spam the same line.
+            const last = notes[notes.length - 1];
+            const base = note.replace(/ \(\d+\)$/, '');
+            if (last && last.replace(/ \(\d+\)$/, '') === base) {
+              const match = last.match(/ \((\d+)\)$/);
+              const count = match ? Number(match[1]) + 1 : 2;
+              return {
+                ...m,
+                toolNotes: [...notes.slice(0, -1), `${base} (${count})`],
+              };
+            }
+            return { ...m, toolNotes: [...notes, note] };
+          }),
         );
       };
 
@@ -199,7 +218,17 @@ export function useReportAIChat({
                 result.status === 'error'
               ) {
                 const msg = (result.message as string) || 'Update failed.';
-                appendNote(`Couldn't apply: ${msg}`);
+                // A schema/cross-field validation error is recoverable: the
+                // agent gets the full tool_result and retries with a corrected
+                // layout in the same turn. Surfacing a scary "Couldn't apply"
+                // mid-stream (right before a successful retry) confused users,
+                // so log it for debugging and stay quiet. Non-validation errors
+                // (e.g. access denied) are terminal - show those.
+                if (result.validation_errors) {
+                  console.warn('update_dashboard validation error:', msg, result.validation_errors);
+                } else {
+                  appendNote(`Couldn't apply: ${msg}`);
+                }
               }
               break;
             }

@@ -646,6 +646,7 @@ export function applyWidgetFilters(
     if (filters.themes?.length && !filters.themes.some((t) => (p.themes ?? []).includes(t))) return false;
     if (filters.entities?.length && !filters.entities.some((e) => (p.entities ?? []).includes(e))) return false;
     if (filters.brands?.length && !filters.brands.some((b) => (p.detected_brands ?? []).includes(b))) return false;
+    if (filters.topics?.length && !filters.topics.some((t) => (p.topic_ids ?? []).includes(t))) return false;
     if (filters.custom_fields) {
       for (const [name, selected] of Object.entries(filters.custom_fields)) {
         if (!selected?.length) continue;

@@ -116,3 +116,24 @@ def set_core(
     agent_id: str, collection_ids: list[str], stamp: str, core: dict
 ) -> None:
     _default.set(agent_id, collection_ids, stamp, core)
+
+
+# Separate cache for the data-tab feed KPI bundle (POST /feed?include_kpis).
+# Same passive-invalidation contract as the dashboard cache, but the data tab
+# adds server-side filters (platform / sentiment / date / topic), so the filter
+# signature is folded into the freshness stamp - the default unfiltered view
+# (the common case) shares one entry; each distinct filter combo gets its own.
+# A separate instance so feed KPIs and dashboard cores don't evict each other.
+_feed_kpis = DashboardCache(maxsize=256)
+
+
+def get_feed_kpis(
+    agent_id: str, collection_ids: list[str], stamp: str, filter_sig: str
+) -> dict | None:
+    return _feed_kpis.get(agent_id, collection_ids, f"{stamp}|{filter_sig}")
+
+
+def set_feed_kpis(
+    agent_id: str, collection_ids: list[str], stamp: str, filter_sig: str, core: dict
+) -> None:
+    _feed_kpis.set(agent_id, collection_ids, f"{stamp}|{filter_sig}", core)

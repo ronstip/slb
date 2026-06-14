@@ -31,6 +31,8 @@ from api.routers.dashboard_schema import (
     GRID_COLS,
     ReportScope,
     SocialDashboardWidget,
+    SocialWidgetFilters,
+    VALID_CHART_TYPES,
     is_chart_type_valid_for,
 )
 
@@ -166,9 +168,16 @@ def _validate_layout(
         agg = w.get("aggregation")
         ct = w.get("chartType")
         if agg and ct and not is_chart_type_valid_for(agg, ct):
+            allowed = VALID_CHART_TYPES.get(agg, ())
+            allowed_hint = (
+                f" Valid chartType(s) for aggregation '{agg}': "
+                f"{', '.join(repr(c) for c in allowed)}."
+                if allowed
+                else f" Aggregation '{agg}' has no valid chartType - check the aggregation."
+            )
             cross_errors.append(
                 f"layout[{idx}] (i={w.get('i')!r}): chartType '{ct}' is not valid "
-                f"for aggregation '{agg}'."
+                f"for aggregation '{agg}'.{allowed_hint}"
             )
         x, w_ = w.get("x"), w.get("w")
         if isinstance(x, int) and isinstance(w_, int) and x + w_ > GRID_COLS:
@@ -223,6 +232,20 @@ def unrecognized_patch_fields(fields: dict) -> list[str]:
     """
     recognized = set(SocialDashboardWidget.model_fields)
     return [k for k in fields if k not in recognized]
+
+
+def unrecognized_filter_keys(filters: dict) -> list[str]:
+    """Return the keys inside a widget `filters` dict that SocialWidgetFilters
+    doesn't recognize. `SocialWidgetFilters` is `extra="ignore"`, so an invented
+    sub-dimension (e.g. `keywords`, `topic`, `hashtags`) is silently dropped -
+    the chart is NOT re-scoped but the tool returns success, so the agent thinks
+    it filtered when it didn't. Surfacing the dropped keys (with the valid ones)
+    lets the agent self-correct toward real dimensions. Generic - reports ANY
+    unknown key, not a hardcoded list."""
+    if not isinstance(filters, dict):
+        return []
+    recognized = set(SocialWidgetFilters.model_fields)
+    return [k for k in filters if k not in recognized]
 
 
 # ─── Tool 1 - read_dashboard ────────────────────────────────────────────────
@@ -440,7 +463,9 @@ def update_dashboard(
     WHEN NOT TO USE:
       - To edit chart widgets' ``customConfig`` / ``tableConfig`` / ``kpiIndex``
         / ``aggregation`` / ``chartType``. Those are deliberate and frozen.
-      - To reorder widgets. Positions (`x`, `y`, `w`, `h`) should not change.
+      - To reorder widgets. Positions (`x`, `y`, `w`, `h`) should not change -
+        unless a story/narrative restructure (Story Mode) explicitly calls
+        for repositioning sections.
 
     PATCHES - most common operation.
         Each patch: ``{"widget_i": "<i>", "fields": {<field>: <value>, ...}}``.
@@ -530,6 +555,10 @@ def update_dashboard(
     # Collected so the success message can warn the agent instead of letting it
     # falsely believe an invented field (e.g. `palette`) took effect.
     ignored_fields: set[str] = set()
+    # Unknown keys inside a widget's `filters` (e.g. `keywords`) - dropped by the
+    # SocialWidgetFilters model, so the chart is NOT re-scoped. Surfaced so the
+    # agent switches to a real dimension (topics / entities / themes / ...).
+    ignored_filter_keys: set[str] = set()
 
     # 1. patches - shallow merge into existing widget by `i`.
     for idx, patch in enumerate(patches):
@@ -548,6 +577,8 @@ def update_dashboard(
                 "message": f"patches[{idx}]: widget '{widget_i}' not found in dashboard.",
             }
         ignored_fields.update(unrecognized_patch_fields(fields))
+        if isinstance(fields.get("filters"), dict):
+            ignored_filter_keys.update(unrecognized_filter_keys(fields["filters"]))
         widgets[pos] = {**widgets[pos], **fields}
         touched.append(widget_i)
 
@@ -556,6 +587,8 @@ def update_dashboard(
         if not isinstance(w, dict):
             return {"status": "error", "message": f"additions[{idx}] is not a dict."}
         new_widget = dict(w)
+        if isinstance(new_widget.get("filters"), dict):
+            ignored_filter_keys.update(unrecognized_filter_keys(new_widget["filters"]))
         if not new_widget.get("i"):
             new_widget["i"] = uuid.uuid4().hex[:10]
         if new_widget["i"] in by_id:
@@ -631,6 +664,10 @@ def update_dashboard(
         layout_id, len(patches), len(additions), len(removals),
         bool(validated_scope), user_id,
     )
+    # Advisory layout-quality hints (non-fatal) so the agent can pack the grid
+    # better on its next turn. Never blocks the write.
+    layout_hints = _layout_quality_hints(widgets)
+
     return {
         "status": "success",
         "layout_id": layout_id,
@@ -640,6 +677,8 @@ def update_dashboard(
         "touched_widget_ids": touched,
         "report_scope_updated": validated_scope is not None,
         "ignored_fields": sorted(ignored_fields),
+        "ignored_filter_keys": sorted(ignored_filter_keys),
+        "layout_hints": layout_hints,
         "message": (
             f"Applied {len(patches)} patch(es), {len(additions)} addition(s), "
             f"{len(removals)} removal(s)"
@@ -651,6 +690,20 @@ def update_dashboard(
                 f"To recolor a chart use `accent` (single hue) or "
                 f"`styleOverrides` (accent / seriesColors)."
                 if ignored_fields
+                else ""
+            )
+            + (
+                f" WARNING: these filter key(s) are not real dimensions and were "
+                f"DROPPED, so the chart was NOT re-scoped: {', '.join(sorted(ignored_filter_keys))}. "
+                f"Valid filter dimensions: topics, entities, themes, sentiment, emotion, "
+                f"platform, language, content_type, channel_type, brands, channels, date_range. "
+                f"To scope a chart to a topic, set filters.topics=[topic_id] from list_topics."
+                if ignored_filter_keys
+                else ""
+            )
+            + (
+                f" LAYOUT HINTS (advisory, not blocking): {' '.join(layout_hints)}"
+                if layout_hints
                 else ""
             )
         ),
@@ -791,6 +844,24 @@ _FACT_DIM_SCALAR = {
 _FACT_DIM_ARRAY = {
     "theme": "themes",
     "entity": "entities",
+    # Topic cluster membership is materialised into the verifier's `scope` CTE
+    # as a `topic_ids` array (see `_verify_fact_tags`). `pct:topic:<cluster_id>`.
+    "topic": "topic_ids",
+}
+
+# Numeric engagement columns on scope_posts that a `sum:<metric>` fact can total.
+# Stories lead with view/engagement magnitudes ("33.1 million views") that the
+# count-only grammar could never express - this is the metric vocabulary that
+# makes those numbers verifiable. Column names mirror scope.sql's TVF output
+# (likes / views / comments_count / shares / saves); `engagement` is the
+# likes+comments+shares sum that matches the FE's `engagement_total`.
+_FACT_SUM_METRICS = {
+    "views": "views",
+    "likes": "likes",
+    "comments": "comments_count",
+    "shares": "shares",
+    "saves": "saves",
+    "engagement": "(IFNULL(likes, 0) + IFNULL(comments_count, 0) + IFNULL(shares, 0))",
 }
 
 
@@ -836,7 +907,9 @@ def _build_scope_where(report_scope: dict | None) -> tuple[str, dict[str, Any]]:
             parts.append(f"AND {dim} IN UNNEST(@scope_{dim})")
             params[f"scope_{dim}"] = list(vals)
 
-    for dim_key, col in (("themes", "themes"), ("entities", "entities")):
+    # `topics` filters on the `topic_ids` array materialised into the verifier's
+    # `scope` CTE (a post belongs to a topic cluster in the latest run).
+    for dim_key, col in (("themes", "themes"), ("entities", "entities"), ("topics", "topic_ids")):
         vals = report_scope.get(dim_key)
         if not vals:
             continue
@@ -866,6 +939,12 @@ def _fact_metric_sql(metric_key: str) -> tuple[str, dict[str, Any]] | None:
 
     parts = key.split(":")
     head = parts[0]
+
+    if head == "sum" and len(parts) == 2:
+        col = _FACT_SUM_METRICS.get(parts[1])
+        if col is None:
+            return None
+        return (f"SELECT CAST(SUM(IFNULL({col}, 0)) AS FLOAT64) AS v FROM scope", {})
 
     if head == "unique" and len(parts) == 2:
         dim = parts[1]
@@ -913,24 +992,91 @@ def _fact_metric_sql(metric_key: str) -> tuple[str, dict[str, Any]] | None:
     return None
 
 
+def _split_fact_src(src: str) -> tuple[str, list[str]]:
+    """Split a fact `src` into its metric_key and optional `@dim:value` scope
+    clauses. Stories need compound, scoped numbers ("64% negative *within* this
+    topic", "33.1M views *in* this topic") that a single dim:value key can't
+    express. The `@` suffix layers extra WHERE predicates onto the fact's scope.
+
+    Example: ``pct:sentiment:negative@topic:clust-1`` →
+        ("pct:sentiment:negative", ["topic:clust-1"]).
+    A bare key returns ("...", []).
+    """
+    parts = src.split("@")
+    metric_key = parts[0].strip()
+    clauses = [c.strip() for c in parts[1:] if c.strip()]
+    return metric_key, clauses
+
+
+def _fact_scope_predicates(
+    clauses: list[str],
+) -> tuple[str, dict[str, Any], list[str]]:
+    """Translate a fact's `@dim:value` scope clauses into extra WHERE predicates
+    for the verifier's `scope` CTE.
+
+    Returns ``(fragment, params, unknown_dims)``. ``fragment`` is a sequence of
+    ``AND <predicate>`` lines (empty when no clauses); ``unknown_dims`` lists any
+    clause dim that isn't a real filter dimension so the verifier can flag it
+    (mirrors the `ignored_filter_keys` self-correction loop on update_dashboard).
+    Scalar dims compare by equality; array dims (theme / entity / topic) test
+    membership against the materialised array column.
+    """
+    frag_parts: list[str] = []
+    params: dict[str, Any] = {}
+    unknown: list[str] = []
+    for idx, clause in enumerate(clauses):
+        if ":" not in clause:
+            unknown.append(clause)
+            continue
+        dim, value = clause.split(":", 1)
+        dim, value = dim.strip(), value.strip()
+        pname = f"factscope_{idx}"
+        if dim in _FACT_DIM_SCALAR:
+            frag_parts.append(f"AND {_FACT_DIM_SCALAR[dim]} = @{pname}")
+            params[pname] = value
+        elif dim in _FACT_DIM_ARRAY:
+            frag_parts.append(f"AND @{pname} IN UNNEST({_FACT_DIM_ARRAY[dim]})")
+            params[pname] = value
+        else:
+            unknown.append(dim)
+    fragment = ("\n  " + "\n  ".join(frag_parts)) if frag_parts else ""
+    return fragment, params, unknown
+
+
+# Leading approximate markers + magnitude-word multipliers. Stories write numbers
+# the way a reader expects them ("33.1 million views"); the inner text is what's
+# shown, so the parser must accept the human form and still recover the value.
+_FACT_MAGNITUDE = {
+    "k": 1e3, "thousand": 1e3,
+    "m": 1e6, "mn": 1e6, "million": 1e6,
+    "b": 1e9, "bn": 1e9, "billion": 1e9,
+}
+_FACT_VALUE_PATTERN = re.compile(
+    r"^[~≈≥≤><\s]*([-+]?\d*\.?\d+)\s*(k|m|b|mn|bn|thousand|million|billion)?\b",
+    re.IGNORECASE,
+)
+
+
 def _parse_fact_value(raw: str) -> float | None:
     """Extract a numeric value from a fact-tag inner text.
 
-    Tolerates thousands separators, percent signs, surrounding whitespace,
-    and trailing notes ("12,345 posts", "37%", "~12.5"). Returns None when
-    the inner text doesn't parse as a number - the verifier reports those
-    as malformed fact tags rather than mismatches.
+    Tolerates thousands separators, percent signs, leading approximate markers,
+    trailing notes, and human magnitude words ("12,345 posts", "37%", "~12.5",
+    "33.1 million views", "7.6M"). Returns None when the inner text doesn't
+    parse as a number - the verifier reports those as malformed fact tags.
     """
     if not raw:
         return None
-    s = raw.strip().replace(",", "").rstrip("%").strip()
-    # Strip leading approximate markers ("~", "≈", "≥", "≤", ">", "<").
-    while s and s[0] in "~≈≥≤><":
-        s = s[1:].strip()
+    s = raw.strip().replace(",", "")
+    m = _FACT_VALUE_PATTERN.match(s)
+    if not m:
+        return None
     try:
-        return float(s)
+        value = float(m.group(1))
     except ValueError:
         return None
+    mult = _FACT_MAGNITUDE.get((m.group(2) or "").lower(), 1.0)
+    return value * mult
 
 
 def _values_match(metric_key: str, expected: float, actual: float) -> bool:
@@ -983,16 +1129,33 @@ def _verify_fact_tags(
         return errors  # no anchored numbers → nothing to verify
 
     scope_where, scope_params = _build_scope_where(report_scope)
-    base_cte = (
-        f"WITH scope AS (\n"
-        f"  SELECT * FROM social_listening.scope_posts(@agent_id)\n"
-        f"  WHERE 1=1{scope_where}\n"
-        f")\n"
-    )
+
+    def _base_cte(fact_where: str) -> str:
+        # Materialise topic-cluster membership (latest run) as a `topic_ids` array
+        # on each post so `topics` scope filters and `pct:topic:<id>` facts (and a
+        # fact's own `@topic:<id>` scope clause) verify against the same data the
+        # dashboard renders. `fact_where` carries the per-fact `@dim:value` scope.
+        return (
+            f"WITH topic_membership AS (\n"
+            f"  SELECT post_id, ARRAY_AGG(cluster_id) AS topic_ids\n"
+            f"  FROM social_listening.topic_clusters tc, UNNEST(tc.member_post_ids) AS post_id\n"
+            f"  WHERE tc.agent_id = @agent_id\n"
+            f"    AND tc.clustered_at = (\n"
+            f"      SELECT MAX(clustered_at) FROM social_listening.topic_clusters WHERE agent_id = @agent_id)\n"
+            f"  GROUP BY post_id\n"
+            f"),\n"
+            f"scope AS (\n"
+            f"  SELECT sp.*, tm.topic_ids AS topic_ids\n"
+            f"  FROM social_listening.scope_posts(@agent_id) sp\n"
+            f"  LEFT JOIN topic_membership tm USING (post_id)\n"
+            f"  WHERE 1=1{scope_where}{fact_where}\n"
+            f")\n"
+        )
 
     bq = get_bq()
-    # Cache per-metric-key results - multiple widgets often cite the same
-    # canonical fact (e.g. total_posts cited in §0, §1, §14).
+    # Cache per-src results - multiple widgets often cite the same canonical fact
+    # (e.g. total_posts in §0, §1, §14). The src includes any `@scope` suffix, so
+    # facts with different scopes get distinct cache keys.
     metric_cache: dict[str, float | None] = {}
 
     for widget_i, src, raw_inner, _ in tags:
@@ -1003,12 +1166,24 @@ def _verify_fact_tags(
                 f"is not a number. Wrap only numeric load-bearing values."
             )
             continue
-        sql_pair = _fact_metric_sql(src)
+        metric_key, scope_clauses = _split_fact_src(src)
+        sql_pair = _fact_metric_sql(metric_key)
         if sql_pair is None:
             errors.append(
                 f"widget '{widget_i}': fact tag src='{src}' is not a recognized "
                 f"metric_key. Supported forms: total_posts, posts:<dim>:<value>, "
-                f"pct:<dim>:<value>, unique:<dim>."
+                f"pct:<dim>:<value>, unique:<dim>, sum:<metric> (views/likes/comments/"
+                f"shares/saves/engagement). Add `@dim:value` to scope a fact "
+                f"(e.g. pct:sentiment:negative@topic:<id>)."
+            )
+            continue
+        fact_where, fact_params, unknown_dims = _fact_scope_predicates(scope_clauses)
+        if unknown_dims:
+            errors.append(
+                f"widget '{widget_i}': fact src='{src}' has unrecognized scope "
+                f"dimension(s) {', '.join(unknown_dims)}. Valid scope dims: "
+                f"sentiment, emotion, platform, language, content_type, channel_type, "
+                f"channel_handle, theme, entity, topic (e.g. @topic:<cluster_id>)."
             )
             continue
         cache_key = f"{src}"  # extra params are deterministic from src
@@ -1016,9 +1191,10 @@ def _verify_fact_tags(
             actual = metric_cache[cache_key]
         else:
             value_sql, extra_params = sql_pair
-            full_sql = base_cte + value_sql
+            full_sql = _base_cte(fact_where) + value_sql
             params: dict[str, Any] = {"agent_id": agent_id}
             params.update(scope_params)
+            params.update(fact_params)
             params.update(extra_params)
             try:
                 rows = bq.query(full_sql, params=params)
@@ -1048,6 +1224,241 @@ def _verify_fact_tags(
             )
 
     return errors
+
+
+# Load-bearing numbers in narrative prose: percentages, human magnitudes
+# ("33.1 million", "7.6M"), comma-grouped thousands ("12,345"), and decimals
+# ("3.5"). Deliberately does NOT match bare small integers or years ("Section 2",
+# "2026") to avoid nagging on structural numbering. Used to detect story numbers
+# the agent stated WITHOUT a `<fact>` wrapper - those are invisible to the
+# coherence check, which is the whole point of verify_story.
+_LOAD_BEARING_NUMBER_PATTERN = re.compile(
+    r"\d[\d,]*\.?\d*\s*%"                                  # 64%, 12.5 %
+    r"|\d[\d,]*\.?\d*\s*(?:million|billion|thousand|mn|bn|[kmb])\b"  # 33.1 million, 7.6M
+    r"|\d{1,3}(?:,\d{3})+"                                 # 12,345
+    r"|\d+\.\d+",                                          # 3.5
+    re.IGNORECASE,
+)
+
+
+def _count_untagged_load_bearing_numbers(widgets: list[dict]) -> int:
+    """Count load-bearing numbers in text widgets that are NOT wrapped in a
+    `<fact>` tag. The agent's narrative leads with numbers; any that aren't
+    fact-tagged can't be re-derived, so verify_story has nothing to stand
+    behind. This drives a non-fatal nudge, not a hard failure."""
+    total = 0
+    for w in widgets:
+        if not isinstance(w, dict) or w.get("aggregation") != "text":
+            continue
+        mc = w.get("markdownContent") or ""
+        if not isinstance(mc, str):
+            continue
+        # Drop the inner value of every fact tag so tagged numbers don't count.
+        stripped = _FACT_TAG_PATTERN.sub("", mc)
+        total += len(_LOAD_BEARING_NUMBER_PATTERN.findall(stripped))
+    return total
+
+
+def _enclosed_gap_cells(visible: list[dict]) -> int:
+    """Count empty grid cells that are 'sandwiched' - i.e. an empty cell with a
+    filled cell BOTH above and below it in the same column.
+
+    This is the vertical-dead-space the row-by-row packing checks miss: short KPI
+    cards (h=2) sharing a row with a tall chart (h=8) leave a block of empty
+    columns under the KPIs, boxed in by the next section below. (Pure top/bottom
+    margins are NOT counted - empty space is fine at the very bottom, and a
+    not-yet-full top row is handled by the per-row checks.)
+    """
+    filled: set[tuple[int, int]] = set()
+    for w in visible:
+        x, y, ww, hh = w.get("x"), w.get("y"), w.get("w"), w.get("h")
+        if not all(isinstance(v, int) for v in (x, y, ww, hh)):
+            continue
+        for cx in range(x, x + ww):
+            for cy in range(y, y + hh):
+                filled.add((cx, cy))
+    if not filled:
+        return 0
+    cols: dict[int, list[int]] = {}
+    for cx, cy in filled:
+        cols.setdefault(cx, []).append(cy)
+    holes = 0
+    for cx, rows in cols.items():
+        lo, hi = min(rows), max(rows)
+        # Any missing row strictly between the column's top-most and bottom-most
+        # filled cell is enclosed on both sides → a real gap.
+        for r in range(lo + 1, hi):
+            if (cx, r) not in filled:
+                holes += 1
+    return holes
+
+
+def _layout_quality_hints(widgets: list[dict]) -> list[str]:
+    """Advisory (non-fatal) geometry/state checks for a packed dashboard layout.
+
+    Story Mode should pack the 12-col grid: charts paired side-by-side under each
+    section, KPIs compact in one row with distinct metrics, no lonely half-width
+    rows. These hints are returned (never block a write) so the agent can read
+    them and self-correct on its next turn. Hard violations (overlap, x+w>GRID_COLS)
+    are caught by schema validation in `update_dashboard`, not here.
+
+    Returns a list of short hint strings (empty = well packed).
+    """
+    hints: list[str] = []
+    visible = [
+        w for w in widgets
+        if isinstance(w, dict) and not w.get("hidden")
+    ]
+    if not visible:
+        return hints
+
+    def _is_text(w: dict) -> bool:
+        return w.get("aggregation") == "text"
+
+    def _is_kpi(w: dict) -> bool:
+        return w.get("aggregation") == "kpi" or w.get("chartType") == "number-card"
+
+    # Group visible widgets into rows by their y coordinate (widgets that share a
+    # top edge sit on the same row). Coarse but matches how the grid reads.
+    rows: dict[int, list[dict]] = {}
+    for w in visible:
+        y = w.get("y")
+        if not isinstance(y, int):
+            continue
+        rows.setdefault(y, []).append(w)
+
+    for y, row in sorted(rows.items()):
+        occupied = sum(int(w.get("w") or 0) for w in row)
+        non_text = [w for w in row if not _is_text(w)]
+        lone = (
+            non_text[0]
+            if len(non_text) == 1 and not _is_kpi(non_text[0])
+            else None
+        )
+        if lone is not None:
+            lx = int(lone.get("x") or 0)
+            lw = int(lone.get("w") or 0)
+            left_gap = lx
+            right_gap = GRID_COLS - (lx + lw)
+            # Worst case: a chart centered with dead space on BOTH sides. The old
+            # lint missed this when the chart was wider than half the grid (e.g.
+            # x=2 w=8). Left-aligning removes the symmetric waste.
+            if left_gap > 0 and right_gap > 0:
+                hints.append(
+                    f"row y={y}: chart '{lone.get('i')}' is centered (x={lx}, w={lw}) "
+                    f"with empty columns on both sides - left-align it (x=0) and widen, "
+                    f"or pair a second chart beside it (w=6+6)."
+                )
+            # Lone chart left-aligned but narrow (<=half) still wastes the row.
+            elif occupied <= GRID_COLS // 2:
+                hints.append(
+                    f"row y={y}: a single {lw}-wide chart leaves "
+                    f"~{GRID_COLS - occupied} empty columns - pair two charts side-by-side "
+                    f"(w=6+6) or widen it."
+                )
+        # A gap in the middle of a multi-widget row (widths don't sum near 12).
+        elif len(row) >= 2 and 0 < occupied < GRID_COLS - 1 and not all(_is_kpi(w) for w in row):
+            hints.append(
+                f"row y={y}: widgets occupy only {occupied}/{GRID_COLS} columns - "
+                f"close the gap so the row reads full-width."
+            )
+
+    # KPI/number-cards must stay compact - a wide card reads wrong.
+    for w in visible:
+        if _is_kpi(w) and int(w.get("w") or 0) > 6:
+            hints.append(
+                f"number-card '{w.get('i')}' is {int(w.get('w'))}-wide - keep KPI cards "
+                f"compact (w 3-4); fill a KPI row with 2-4 cards instead of stretching one."
+            )
+    # A chart that is almost-but-not-full (w 9-11) leaves a thin dead sliver beside
+    # it. A full-width chart (w=12) is fine - it fills its row and kills the gap;
+    # otherwise drop to w<=8 and pair a second chart.
+    for w in visible:
+        if _is_text(w) or _is_kpi(w):
+            continue
+        ww = int(w.get("w") or 0)
+        if GRID_COLS - 3 <= ww < GRID_COLS:  # 9, 10, 11
+            hints.append(
+                f"chart '{w.get('i')}' at w={ww} leaves a {GRID_COLS - ww}-col sliver - "
+                f"use w=12 to fill the row, or w<=8 and pair a second chart beside it."
+            )
+
+    # Number-cards must each render a DISTINCT number. There are two render paths
+    # (see SocialWidgetRenderer dispatch) and the metric is determined differently
+    # in each - so distinctness is judged on the *effective* metric, not on title:
+    #   - aggregation:"custom" → CustomWidget: metric = customConfig.metric over the
+    #     card's filtered posts; label = title. Distinct iff metric OR scope differ.
+    #   - aggregation:"kpi" (or any other) → KpiWidget: metric = one of 4 canonical
+    #     dashboard-wide metrics chosen ONLY by kpiIndex (title/customConfig/filters
+    #     are ignored). null/duplicate kpiIndex → every card shows kpis[0]
+    #     (Total Posts). This is the "3x Total Posts" story bug.
+    kpis = [w for w in visible if _is_kpi(w)]
+
+    def _filter_sig(w: dict) -> tuple:
+        f = w.get("filters")
+        if not isinstance(f, dict):
+            return ()
+        sig = []
+        for k in sorted(f):
+            v = f[k]
+            vv = tuple(sorted(map(str, v))) if isinstance(v, list) else (str(v),)
+            sig.append((k, vv))
+        return tuple(sig)
+
+    def _effective_metric(w: dict) -> tuple:
+        if w.get("aggregation") == "custom":
+            metric = (w.get("customConfig") or {}).get("metric") or "post_count"
+            return ("custom", metric, _filter_sig(w))
+        ki = w.get("kpiIndex")
+        return ("kpi", ki if isinstance(ki, int) else 0)
+
+    identities: dict[tuple, list[str]] = {}
+    for w in kpis:
+        identities.setdefault(_effective_metric(w), []).append(w.get("i") or "<unknown>")
+    dup_groups = [ids for ids in identities.values() if len(ids) > 1]
+    if dup_groups:
+        worst = max(dup_groups, key=len)
+        hints.append(
+            f"number-cards {', '.join(worst)} will render the SAME number (same "
+            f"effective metric) despite distinct titles. For a canonical kpi card "
+            f"(aggregation:'kpi') give each a distinct kpiIndex (0=Total Posts, "
+            f"1=Total Views, 2=Total Engagement, 3=Engagement Rate). For a scoped or "
+            f"custom-labeled story KPI use aggregation:'custom' + a distinct "
+            f"customConfig.metric and/or filters."
+        )
+
+    # agg:"kpi" cards routed to KpiWidget IGNORE customConfig entirely - a card
+    # carrying customConfig.metric is the agent's mental-model mismatch (it thinks
+    # the metric is custom, but the canonical path drops it). Surface it so the
+    # agent switches the aggregation to 'custom' to actually apply the metric.
+    ignored_cc = [
+        w.get("i") or "<unknown>"
+        for w in kpis
+        if w.get("aggregation") != "custom" and (w.get("customConfig") or {}).get("metric")
+    ]
+    if ignored_cc:
+        hints.append(
+            f"number-card(s) {', '.join(ignored_cc)} have aggregation:'kpi' so their "
+            f"customConfig.metric is IGNORED (the canonical path renders a fixed "
+            f"dashboard-wide metric by kpiIndex). For a scoped/custom metric, set "
+            f"aggregation:'custom' (chartType stays 'number-card')."
+        )
+
+    # Vertical dead-space: empty cells boxed in above AND below (e.g. the blank
+    # block under short KPI cards that share a row with a much taller chart).
+    # Empty space is only acceptable below the last row, so this flags the rest.
+    gap_cells = _enclosed_gap_cells(visible)
+    if gap_cells >= 4:
+        hints.append(
+            f"~{gap_cells} empty grid cell(s) are boxed in above the bottom of the "
+            f"dashboard (typically under short KPI cards sitting next to a taller "
+            f"chart). Give widgets that share a row the SAME height: put a section's "
+            f"KPI cards in their own compact row, or stack them in a narrow column "
+            f"whose total height matches the chart beside it. Leave empty space only "
+            f"below the last row."
+        )
+
+    return hints
 
 
 def _looks_like_serp(url: str) -> bool:
@@ -1559,6 +1970,135 @@ def verify_dashboard(
             f"clean"
             + (" (incl. numerical scope check)" if (report_scope and agent_id) else "")
             + ". Safe to call publish_dashboard."
+        ),
+    }
+
+
+# ─── Tool 4b - verify_story ─────────────────────────────────────────────────
+
+
+def verify_story(
+    layout_id: str,
+    tool_context: ToolContext = None,
+) -> dict:
+    """Coherence check for Story Mode - confirms the narrative's numbers match
+    the data, and flags wasted layout space.
+
+    A lean sibling of `verify_dashboard` for the in-place co-author / chat flow.
+    It runs ONLY the two checks that matter for a story rewrite:
+
+      1. NUMERIC COHERENCE. Every `<fact src="metric_key">VALUE</fact>` tag in a
+         text widget is re-derived from `scope_posts(@agent_id)` (narrowed by the
+         dashboard's reportScope if one is committed) and compared to the value
+         you wrote. A mismatch means the headline contradicts the data - fix the
+         number (or the chart's scope) and re-run. Supported metric_keys:
+         ``total_posts``, ``posts:<dim>:<value>``, ``pct:<dim>:<value>``,
+         ``unique:<dim>`` where dim ∈ sentiment / emotion / platform / language /
+         content_type / channel_type / channel_handle / theme / entity / topic.
+         Wrap EVERY load-bearing number in the narrative in a `<fact>` tag so it
+         can be verified - untagged numbers are invisible to this check.
+
+      2. LAYOUT QUALITY (advisory). Lonely half-width rows, mid-row gaps,
+         over-wide charts, and duplicate/missing KPI metrics are returned as
+         `layout_hints`. These never make the check fail - they're nudges to pack
+         the 12-col grid.
+
+    Unlike `verify_dashboard`, this does NOT run the autonomous-report template
+    checks (brief leakage, appendix links, §7b coverage, heading levels) - those
+    are irrelevant to an interactively co-authored story and would false-positive.
+
+    Args:
+        layout_id: The dashboard the story was written into (active_dashboard_id).
+        tool_context: ADK tool context (injected automatically).
+
+    Returns:
+        On clean numbers: ``{status: "ok", layout_id, checked_fact_count,
+        scope_verified, layout_hints, message}``.
+        On mismatches: ``{status: "error", layout_id, errors: [...],
+        checked_fact_count, layout_hints, message}``.
+        On access error: ``{status: "error", message}``.
+    """
+    user_id = _user_id(tool_context)
+    if not user_id:
+        return {"status": "error", "message": "No user_id in session - cannot verify story."}
+    if not layout_id:
+        return {"status": "error", "message": "layout_id is required."}
+
+    fs = get_fs()
+    data, err = _verify_dashboard_ownership(fs, layout_id, user_id)
+    if err:
+        return err
+
+    widgets = data.get("layout") or []
+    fact_count = sum(
+        len(_FACT_TAG_PATTERN.findall(w.get("markdownContent") or ""))
+        for w in widgets
+        if isinstance(w, dict) and w.get("aggregation") == "text"
+    )
+    layout_hints = _layout_quality_hints(widgets)
+    untagged = _count_untagged_load_bearing_numbers(widgets)
+    untagged_note = (
+        f"{untagged} load-bearing number(s) in the narrative are NOT wrapped in "
+        f"<fact> tags, so they were not verified. Wrap them (e.g. "
+        f"<fact src=\"sum:views@topic:<id>\">33.1 million</fact>, "
+        f"<fact src=\"pct:sentiment:negative@topic:<id>\">64%</fact>) so this check "
+        f"can stand behind them."
+        if untagged
+        else ""
+    )
+
+    report_scope = data.get("reportScope")
+    agent_id = _agent_id(tool_context)
+    errors: list[str] = []
+    if agent_id:
+        # Fact tags self-encode their dimension/value, so verification works even
+        # without a committed reportScope (re-derives against the full agent scope).
+        errors = _verify_fact_tags(widgets, agent_id, report_scope)
+    elif fact_count:
+        errors = [
+            "No active agent in session - cannot re-derive the narrative's numbers. "
+            "Open the story from the agent's dashboard so facts can be verified."
+        ]
+
+    if errors:
+        logger.info(
+            "verify_story: layout=%s user=%s fact_errors=%d hints=%d",
+            layout_id, user_id, len(errors), len(layout_hints),
+        )
+        return {
+            "status": "error",
+            "layout_id": layout_id,
+            "errors": errors,
+            "checked_fact_count": fact_count,
+            "untagged_numbers": untagged,
+            "layout_hints": layout_hints,
+            "message": (
+                f"verify_story found {len(errors)} number(s) that don't match the data - "
+                f"re-derive via execute_sql and patch the text widget, then re-run verify_story."
+                + (f" {untagged_note}" if untagged_note else "")
+                + (f" LAYOUT HINTS: {' '.join(layout_hints)}" if layout_hints else "")
+            ),
+        }
+
+    logger.info(
+        "verify_story: layout=%s user=%s OK facts=%d hints=%d",
+        layout_id, user_id, fact_count, len(layout_hints),
+    )
+    return {
+        "status": "ok",
+        "layout_id": layout_id,
+        "checked_fact_count": fact_count,
+        "untagged_numbers": untagged,
+        "scope_verified": bool(agent_id),
+        "layout_hints": layout_hints,
+        "message": (
+            f"verify_story passed - {fact_count} fact tag(s) match the data."
+            + (f" NOTE: {untagged_note}" if untagged_note else "")
+            + (
+                f" LAYOUT HINTS (advisory): {' '.join(layout_hints)}"
+                if layout_hints
+                else " Layout looks well packed."
+            )
         ),
     }
 

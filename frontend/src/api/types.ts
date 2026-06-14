@@ -265,6 +265,26 @@ export interface FeedPost {
   is_quote?: boolean | null;
 }
 
+export interface FeedKpiBreakdownEntry {
+  value: string;
+  count: number;
+}
+
+/** KPI-strip aggregates computed server-side over the whole filtered window
+ *  (independent of the row `limit`). Present only when `include_kpis` was set. */
+export interface FeedKpis {
+  total_posts: number;
+  total_views: number;
+  total_likes: number;
+  total_comments: number;
+  total_shares: number;
+  unique_handles: number;
+  platforms: FeedKpiBreakdownEntry[];
+  sentiments: FeedKpiBreakdownEntry[];
+  top_themes: FeedKpiBreakdownEntry[];
+  top_entities: FeedKpiBreakdownEntry[];
+}
+
 export interface FeedResponse {
   posts: FeedPost[];
   total: number;
@@ -272,6 +292,7 @@ export interface FeedResponse {
   total_sources: number;
   offset: number;
   limit: number;
+  kpis?: FeedKpis | null;
 }
 
 export interface MultiFeedParams {
@@ -289,6 +310,9 @@ export interface MultiFeedParams {
   /** When set, the feed scopes posts via the agent's scope_posts TVF - picks
    *  enrichment rows for this agent (not the latest cross-agent row). */
   agent_id?: string;
+  /** Request full-window KPI aggregates alongside the (possibly truncated)
+   *  posts. Agent-scoped path only. */
+  include_kpis?: boolean;
 }
 
 export interface BreakdownItem {
@@ -517,6 +541,9 @@ export interface DashboardPost {
   detected_brands?: string[];
   channel_type?: string;
   media_refs?: string;
+  /** Topic cluster ids this post belongs to (latest clustering run). Powers the
+   *  `topics` filter dimension. Empty/absent when unclustered. */
+  topic_ids?: string[];
   like_count: number;
   view_count: number;
   comment_count: number;

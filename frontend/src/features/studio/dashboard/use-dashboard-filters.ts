@@ -12,6 +12,8 @@ export interface DashboardFilters {
   platform: string[];
   themes: string[];
   channels: string[];
+  /** Topic cluster ids (any-of match on each post's `topic_ids`). */
+  topics: string[];
   date_range: { from: string | null; to: string | null };
 }
 
@@ -27,6 +29,9 @@ export interface FilterOptions {
   themes: string[];
   channels: string[];
   brands: string[];
+  /** Topic cluster ids present in the data. Pill labels are resolved from the
+   *  dashboard's topics list (id -> name) by the filter bar. */
+  topics: string[];
   /** Distinct values per agent-defined custom enrichment field. Only used by
    *  widget-level filter UI; the global filter bar ignores these. */
   custom_fields: Record<string, string[]>;
@@ -44,6 +49,7 @@ const INITIAL_FILTERS: DashboardFilters = {
   platform: [],
   themes: [],
   channels: [],
+  topics: [],
   date_range: { from: null, to: null },
 };
 
@@ -62,6 +68,7 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
     themes: new Set(),
     channels: new Set(),
     brands: new Set(),
+    topics: new Set(),
   };
   const customSets: Record<string, Set<string>> = {};
   let dateMin: string | null = null;
@@ -79,6 +86,7 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
     for (const t of p.themes ?? []) sets.themes.add(t);
     for (const e of p.entities ?? []) sets.entities.add(e);
     for (const b of p.detected_brands ?? []) sets.brands.add(b);
+    for (const tid of p.topic_ids ?? []) sets.topics.add(tid);
     if (p.custom_fields) {
       for (const [name, raw] of Object.entries(p.custom_fields)) {
         if (raw == null) continue;
@@ -128,6 +136,7 @@ function extractOptions(posts: DashboardPost[]): FilterOptions {
     themes: [...sets.themes].sort(),
     channels: [...sets.channels].sort(),
     brands: [...sets.brands].sort(),
+    topics: [...sets.topics].sort(),
     custom_fields,
     dateMin,
     dateMax,
@@ -186,6 +195,7 @@ function intersectWithScope(
     platform: intersectArrayDimension(scope.platform, viewer.platform),
     themes: intersectArrayDimension(scope.themes, viewer.themes),
     channels: intersectArrayDimension(scope.channels, viewer.channels),
+    topics: intersectArrayDimension(scope.topics, viewer.topics),
     date_range: intersectDateRange(scope.date_range, viewer.date_range),
   };
 }
@@ -208,6 +218,11 @@ function applyFilters(posts: DashboardPost[], filters: DashboardFilters): Dashbo
     if (filters.entities.length > 0) {
       const postEntities = p.entities ?? [];
       if (!filters.entities.some((e) => postEntities.includes(e))) return false;
+    }
+
+    if (filters.topics.length > 0) {
+      const postTopics = p.topic_ids ?? [];
+      if (!filters.topics.some((t) => postTopics.includes(t))) return false;
     }
 
     if (filters.date_range.from || filters.date_range.to) {

@@ -737,6 +737,25 @@ def _build_operational_context(state: dict) -> Optional[str]:
     return "\n".join(lines) if len(lines) > 1 else None
 
 
+def _build_active_dashboard_block(state: dict) -> Optional[str]:
+    """The active dashboard ID + cached widget summary, when a dashboard is
+    bound to the session (always in report_editor mode; in chat mode when the
+    FE has a dashboard open in the studio panel - enables Story Mode from the
+    main chat). Written by setup_chat_session at session init.
+    """
+    dashboard_id = state.get("active_dashboard_id")
+    if not dashboard_id:
+        return None
+    lines = [
+        "## Active Dashboard",
+        f"**layout_id (pass to read_dashboard / update_dashboard):** `{dashboard_id}`",
+    ]
+    summary = state.get("active_dashboard_summary")
+    if summary:
+        lines.append(f"**Current widgets:** {summary}")
+    return "\n".join(lines)
+
+
 def _build_chat_context(state: dict) -> Optional[str]:
     """Build context for chat mode - lightweight agent summary."""
     blocks: list[str] = []
@@ -775,6 +794,12 @@ def _build_chat_context(state: dict) -> Optional[str]:
     operational_block = _build_operational_context(state)
     if operational_block:
         blocks.append(operational_block)
+
+    # Open dashboard (when the FE sent one) - lets the chat agent run Story
+    # Mode / direct edits on the report the user is looking at.
+    dashboard_block = _build_active_dashboard_block(state)
+    if dashboard_block:
+        blocks.append(dashboard_block)
 
     # Continuation mode (chat-side - user is online after collection completes)
     if state.get("continuation_mode"):
@@ -841,19 +866,9 @@ def _build_report_editor_context(state: dict) -> Optional[str]:
         blocks.append(operational_block)
 
     # Active dashboard - the only thing the editor is allowed to touch.
-    # `active_dashboard_id` is written into session state by setup_chat_session
-    # when the chat request carries mode="report_editor". The summary is
-    # cached at session init too so we don't re-read Firestore per LLM turn.
-    dashboard_id = state.get("active_dashboard_id")
-    if dashboard_id:
-        lines = [
-            "## Active Dashboard",
-            f"**layout_id (pass to read_dashboard / update_dashboard):** `{dashboard_id}`",
-        ]
-        summary = state.get("active_dashboard_summary")
-        if summary:
-            lines.append(f"**Current widgets:** {summary}")
-        blocks.append("\n".join(lines))
+    dashboard_block = _build_active_dashboard_block(state)
+    if dashboard_block:
+        blocks.append(dashboard_block)
 
     return "\n\n".join(blocks) if blocks else None
 
