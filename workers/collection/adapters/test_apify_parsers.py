@@ -11,9 +11,11 @@ import pytest
 
 from workers.collection.adapters.apify_parsers import (
     _PARSER_REGISTRY,
+    flatten_apify_facebook_comments,
     get_parsers,
     parse_apidojo_ig_hashtag_channel,
     parse_apidojo_ig_hashtag_post,
+    parse_apify_facebook_comment_author,
     parse_apify_instagram_channel,
     parse_apify_instagram_post,
     parse_clockworks_tiktok_channel,
@@ -22,8 +24,8 @@ from workers.collection.adapters.apify_parsers import (
     parse_apify_facebook_group_post,
     parse_apify_facebook_page_channel,
     parse_apify_facebook_page_post,
-    parse_scrapeforge_facebook_channel,
     parse_scrapeforge_facebook_post,
+    parse_scrapeforge_facebook_channel,
 )
 
 
@@ -422,9 +424,15 @@ def test_facebook_group_post_basic_fields():
     assert post.post_id == "456456456"
     assert post.content == "Spotted a very good dog."
     assert post.post_url == "https://www.facebook.com/groups/1526461191971818/posts/456456456/"
-    # Channel == the GROUP, not the individual member who posted.
-    assert post.channel_id == "1526461191971818"
-    assert post.channel_handle == "Dog Spotting"
+    # Channel == the member who WROTE the post, not the group it was posted in.
+    assert post.channel_id == "200055"
+    assert post.channel_handle == "Jane Member"
+    # The group lives in platform_metadata, not the channel field.
+    assert post.platform_metadata["group_id"] == "1526461191971818"
+    assert post.platform_metadata["group_title"] == "Dog Spotting"
+    assert post.platform_metadata["author_id"] == "200055"
+    assert post.platform_metadata["author_name"] == "Jane Member"
+    assert post.platform_metadata["is_anonymous"] is False
     assert post.likes == 120
     assert post.shares == 3
     assert post.comments_count == 14
@@ -433,6 +441,31 @@ def test_facebook_group_post_basic_fields():
     assert post.post_type == "image"
     assert post.crawl_provider == "apify"
     assert any("dog.jpg" in u for u in post.media_urls)
+
+
+def test_facebook_group_anonymous_author_missing_block():
+    # FB groups allow anonymous posts; the author block is absent.
+    item = {k: v for k, v in _FB_GROUP_FIXTURE.items() if k != "user"}
+    post = parse_apify_facebook_group_post(item)
+    # Anon handle is scoped per-group so anon posts across groups don't collapse.
+    assert post.channel_handle == "Anonymous · Dog Spotting"
+    assert post.channel_id is None
+    assert post.platform_metadata["is_anonymous"] is True
+    assert post.platform_metadata["author_name"] is None
+    assert post.platform_metadata["group_title"] == "Dog Spotting"
+
+
+def test_facebook_group_anonymous_literal_marker():
+    # Real-world: the actor emits user={"name":"Anonymous participant","id":<id>}
+    # with a DISTINCT id per anon post - not a missing block. Detect the marker
+    # so anon posters don't collapse into one "Anonymous participant" channel.
+    item = {**_FB_GROUP_FIXTURE, "user": {"id": "1316489184014373", "name": "Anonymous participant"}}
+    post = parse_apify_facebook_group_post(item)
+    assert post.channel_handle == "Anonymous · Dog Spotting"
+    # distinct per-post id is preserved so anon posters stay distinct rows.
+    assert post.channel_id == "1316489184014373"
+    assert post.platform_metadata["is_anonymous"] is True
+    assert post.platform_metadata["author_name"] is None
 
 
 def test_facebook_group_post_id_hashed_from_url_when_missing():
@@ -444,15 +477,19 @@ def test_facebook_group_post_id_hashed_from_url_when_missing():
 def test_facebook_group_id_falls_back_to_url():
     item = {k: v for k, v in _FB_GROUP_FIXTURE.items() if k != "groupId"}
     post = parse_apify_facebook_group_post(item)
-    assert post.channel_id == "1526461191971818"
+    # group id still resolves from the URL - now carried in metadata.
+    assert post.platform_metadata["group_id"] == "1526461191971818"
 
 
-def test_facebook_group_channel_parsing():
+def test_facebook_group_channel_is_the_author():
     ch = parse_apify_facebook_group_channel(_FB_GROUP_FIXTURE)
     assert ch.platform == "facebook"
-    assert ch.channel_id == "1526461191971818"
-    assert ch.channel_handle == "Dog Spotting"
-    assert ch.channel_url == "https://www.facebook.com/groups/1526461191971818"
+    # Channel snapshot tracks the author, matching post.channel_id.
+    assert ch.channel_id == "200055"
+    assert ch.channel_handle == "Jane Member"
+    assert ch.channel_url == "https://www.facebook.com/jane"
+    assert ch.channel_metadata["group_id"] == "1526461191971818"
+    assert ch.channel_metadata["group_title"] == "Dog Spotting"
 
 
 def test_facebook_group_actor_registered():
@@ -460,6 +497,46 @@ def test_facebook_group_actor_registered():
     post_fn, ch_fn = get_parsers("facebook", "apify/facebook-groups-scraper")
     assert post_fn is parse_apify_facebook_group_post
     assert ch_fn is parse_apify_facebook_group_channel
+
+
+# ---------------------------------------------------------------------------
+# Facebook comments - apify/facebook-comments-scraper
+# ---------------------------------------------------------------------------
+
+_FB_COMMENT_FIXTURE = [
+    {
+        "id": "cm1",
+        "text": "Great dog!",
+        "profileName": "Bob Owner",
+        "profileId": "u100",
+        "profileUrl": "https://www.facebook.com/bob",
+        "date": "2026-05-02T15:00:00.000Z",
+        "likesCount": 5,
+        "replies": [
+            {"id": "cm1r1", "text": "agreed", "profileName": "Sue", "profileId": "u200"},
+        ],
+    },
+]
+
+
+def test_facebook_comments_flatten_threads_replies():
+    comments = flatten_apify_facebook_comments(_FB_COMMENT_FIXTURE, post_id="P1")
+    by_id = {c.comment_id: c for c in comments}
+    assert set(by_id) == {"cm1", "cm1r1"}
+    # top-level anchors to the post; reply links to its parent comment.
+    assert by_id["cm1"].replied_to_id == "P1"
+    assert by_id["cm1r1"].replied_to_id == "cm1"
+    assert by_id["cm1"].platform == "facebook"
+    assert by_id["cm1"].channel_handle == "Bob Owner"
+    assert by_id["cm1"].likes == 5
+
+
+def test_facebook_comment_author_snapshot():
+    ch = parse_apify_facebook_comment_author(_FB_COMMENT_FIXTURE[0])
+    assert ch.platform == "facebook"
+    assert ch.channel_id == "u100"
+    assert ch.channel_handle == "Bob Owner"
+    assert ch.channel_url == "https://www.facebook.com/bob"
 
 
 # ---------------------------------------------------------------------------

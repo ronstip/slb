@@ -69,7 +69,7 @@ class FetchCommentsRequest(BaseModel):
     agent_id: str | None = None
 
 
-_COMMENTS_SUPPORTED_PLATFORMS = {"twitter", "instagram", "tiktok", "youtube"}
+_COMMENTS_SUPPORTED_PLATFORMS = {"twitter", "instagram", "tiktok", "youtube", "facebook"}
 
 
 class CommentItem(BaseModel):

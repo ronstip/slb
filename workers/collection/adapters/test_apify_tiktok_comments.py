@@ -181,12 +181,46 @@ def test_fetch_comments_passes_results_limit_to_actor():
     assert captured["run_input"]["commentsPerPost"] == 25
 
 
-def test_fetch_comments_facebook_still_unsupported():
-    """Facebook isn't wired yet - should raise NotImplementedError, not silently
-    succeed via the new platform-table dispatcher."""
-    adapter, settings_patch = _build_adapter()
+def test_fetch_comments_facebook_dispatches_to_actor():
+    """Facebook is now wired - fetch_comments routes to the FB comments actor
+    and parses the result into threaded Comments."""
+    adapter, settings_patch = _build_adapter(
+        apify_actor_facebook_comments="apify/facebook-comments-scraper",
+        apify_facebook_comments_max=50,
+    )
+    captured: dict = {}
+
+    def fake_raw(platform, run_input, *, feature, actor_id):
+        captured.update(platform=platform, run_input=run_input, feature=feature, actor_id=actor_id)
+        return [
+            {
+                "id": "c1",
+                "text": "first!",
+                "profileName": "Bob",
+                "profileId": "u1",
+                "date": "2026-05-02T14:00:00.000Z",
+                "replies": [
+                    {"id": "c1r1", "text": "reply", "profileName": "Sue", "profileId": "u2"},
+                ],
+            },
+        ]
+
     try:
-        with pytest.raises(NotImplementedError):
-            adapter.fetch_comments({"platform": "facebook", "post_url": "https://fb.com/x"})
+        with patch.object(adapter, "_run_actor_collect_raw", side_effect=fake_raw):
+            batch = adapter.fetch_comments(
+                {"platform": "facebook", "post_url": "https://fb.com/groups/1/posts/P1", "post_id": "P1"}
+            )
     finally:
         settings_patch.stop()
+
+    assert captured["platform"] == "facebook"
+    assert captured["feature"] == "comments"
+    assert captured["actor_id"] == "apify/facebook-comments-scraper"
+    assert captured["run_input"]["startUrls"] == [{"url": "https://fb.com/groups/1/posts/P1"}]
+    assert captured["run_input"]["resultsLimit"] == 50
+    # top-level + nested reply both parsed
+    ids = {c.comment_id for c in batch.comments}
+    assert ids == {"c1", "c1r1"}
+    reply = next(c for c in batch.comments if c.comment_id == "c1r1")
+    assert reply.replied_to_id == "c1"
+    assert {ch.channel_handle for ch in batch.channels} == {"Bob", "Sue"}
