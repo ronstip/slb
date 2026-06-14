@@ -6,7 +6,7 @@ function topic(cluster_id: string, header: string): TopicMetric {
   return {
     cluster_id, header, keywords: [], post_count: 0,
     total_views: 0, total_likes: 0, total_comments: 0,
-  } as TopicMetric;
+  } as unknown as TopicMetric;
 }
 function post(topic_ids: string[]): DashboardPost {
   return { topic_ids } as unknown as DashboardPost;
