@@ -45,10 +45,12 @@ from datetime import datetime, timezone
 from config.settings import get_settings
 from workers.collection.adapters.apify_client import ApifyAdapterClient, ApifyAPIError
 from workers.collection.adapters.apify_parsers import (
+    flatten_apify_facebook_comments,
     flatten_apify_instagram_comments,
     flatten_apify_tiktok_comments,
     flatten_apify_youtube_comments,
     get_parsers,
+    parse_apify_facebook_comment_author,
     parse_apify_instagram_comment_author,
     parse_apify_tiktok_comment_author,
     parse_apify_youtube_comment_author,
@@ -1199,6 +1201,15 @@ class ApifyAdapter(DataProviderAdapter):
             "maxComments",
             flatten_apify_youtube_comments,
             parse_apify_youtube_comment_author,
+            lambda url: [{"url": url}],
+        ),
+        "facebook": (
+            "apify_actor_facebook_comments",
+            "apify_facebook_comments_max",
+            "startUrls",
+            "resultsLimit",
+            flatten_apify_facebook_comments,
+            parse_apify_facebook_comment_author,
             lambda url: [{"url": url}],
         ),
     }

@@ -93,6 +93,35 @@ function ContainerToggle({
   );
 }
 
+// ── Widget visibility toggle ─────────────────────────────────────────────────
+// Hidden widgets stay in the layout and the editor (rendered dimmed with a
+// badge) but are excluded from view mode, shared dashboards and PDF export.
+// Turning visibility back on writes `undefined` rather than `false` so legacy
+// widget docs stay byte-stable (the API serializes with exclude_none).
+
+function VisibilityToggle({
+  draft,
+  onChange,
+}: {
+  draft: SocialDashboardWidget;
+  onChange: (visible: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <Label className="text-xs">Visible</Label>
+        <p className="text-[11px] text-muted-foreground">
+          Hidden widgets stay in edit mode but are excluded from view mode and shared links.
+        </p>
+      </div>
+      <Switch
+        checked={draft.hidden !== true}
+        onCheckedChange={onChange}
+      />
+    </div>
+  );
+}
+
 // ── Public wrapper ─────────────────────────────────────────────────────────────
 
 interface SocialWidgetConfigDialogProps {
@@ -438,6 +467,11 @@ function SocialWidgetConfigDialogInner({
                   onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
                 />
 
+                <VisibilityToggle
+                  draft={draft}
+                  onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
+                />
+
                 <Separator />
 
                 <div className="space-y-2">
@@ -670,6 +704,7 @@ function SocialWidgetConfigDialogInner({
                     posts={filteredPosts}
                     customFieldDefs={customFieldDefs}
                     portalContainer={popoverHost}
+                    topics={topics}
                     onChange={(filters) => setDraft((prev) => ({ ...prev, filters }))}
                   />
                 </TabsContent>
@@ -678,6 +713,10 @@ function SocialWidgetConfigDialogInner({
                   <ContainerToggle
                     draft={draft}
                     onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
+                  />
+                  <VisibilityToggle
+                    draft={draft}
+                    onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
                   />
                   <Separator />
                   <StyleTab
@@ -1346,6 +1385,11 @@ function MediaConfigPanel({
         onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
       />
 
+      <VisibilityToggle
+        draft={draft}
+        onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
+      />
+
       <Separator />
 
       {/* Source: Upload | URL */}
@@ -1540,6 +1584,11 @@ function EmbedConfigPanel({
       <ContainerToggle
         draft={draft}
         onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
+      />
+
+      <VisibilityToggle
+        draft={draft}
+        onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
       />
 
       <Separator />

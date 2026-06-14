@@ -926,6 +926,19 @@ const LEGACY_PRESET_AGGREGATIONS: ReadonlySet<SocialAggregation> = new Set([
 /** Convert legacy preset widgets to their equivalent `aggregation: 'custom'`
  *  form. Idempotent for already-custom or non-legacy widgets. */
 export function normalizeWidgetAggregation<T extends { aggregation: SocialAggregation; chartType: SocialChartType; customConfig?: CustomChartConfig; kpiIndex?: number }>(widget: T): T {
+  // A number-card that carries a custom metric was meant to be a custom KPI:
+  // the CustomWidget path reads the metric from customConfig, labels it with the
+  // widget's title, and honors per-widget filters. Left as aggregation:'kpi' it
+  // routes to the canonical KpiWidget, which IGNORES customConfig and renders a
+  // fixed dashboard-wide metric chosen by kpiIndex - that's the "every story KPI
+  // shows Total Posts" bug. Coerce to custom so the intended metric renders.
+  if (
+    widget.aggregation === 'kpi'
+    && widget.chartType === 'number-card'
+    && widget.customConfig?.metric
+  ) {
+    return { ...widget, aggregation: 'custom' as const, kpiIndex: undefined };
+  }
   if (!LEGACY_PRESET_AGGREGATIONS.has(widget.aggregation)) return widget;
   const { customConfig, chartType } = presetToCustomConfig(widget.aggregation, widget.kpiIndex);
   return {
@@ -1073,6 +1086,9 @@ export interface SocialWidgetFilters {
   themes?: string[];
   entities?: string[];
   brands?: string[];
+  /** Topic cluster ids (any-of match on the post's topic membership). The
+   *  agent's per-section Story Mode baseline. */
+  topics?: string[];
   /** Per-agent custom enrichment fields. Keyed by field name; selected values
    *  match scalar fields exactly or, for array fields, "any value in selected
    *  intersects post value". */
@@ -1097,6 +1113,7 @@ export interface ReportScope {
   channels?: string[] | null;
   themes?: string[] | null;
   entities?: string[] | null;
+  topics?: string[] | null;
   date_range?: { from: string | null; to: string | null } | null;
 }
 
@@ -1193,6 +1210,11 @@ export interface SocialDashboardWidget {
    *  overrides that default so the user can frame a header or unframe any
    *  widget. */
   showContainer?: boolean;
+  /** Widget stays in the layout but is excluded from view mode, shared
+   *  dashboards, and PDF export. Edit mode renders it dimmed with a "Hidden"
+   *  badge. Undefined → visible (legacy widgets have no key). Mirrors the
+   *  Pydantic field in api/routers/dashboard_schema.py. */
+  hidden?: boolean;
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────

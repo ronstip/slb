@@ -3,11 +3,12 @@ import { ResponsiveGridLayout, useContainerWidth } from 'react-grid-layout';
 import type { Layout, LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { Sparkles, Check } from 'lucide-react';
+import { Sparkles, Check, EyeOff } from 'lucide-react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
 import { SocialWidgetRenderer } from './SocialWidgetRenderer.tsx';
 import { buildCompactLayout } from './buildCompactLayout.ts';
+import { canPersistDesktopLayout, layoutHasGeometryChange, LG_MIN_WIDTH } from './layout-persist-guard.ts';
 import type { AttachedWidget } from './coauthor-context.ts';
 import { getWidgetCategoryLabels, getWidgetRenamableLabels } from './widget-labels.ts';
 
@@ -21,7 +22,7 @@ function mergeRefs<T>(...refs: Array<React.Ref<T | null> | undefined | null>) {
   };
 }
 
-const BREAKPOINTS = { lg: 600, md: 480, sm: 360, xs: 0 };
+const BREAKPOINTS = { lg: LG_MIN_WIDTH, md: 480, sm: 360, xs: 0 };
 const COLS = { lg: 12, md: 8, sm: 4, xs: 2 };
 const ROW_HEIGHT = 48;
 // Inter-widget gap. Matches the Claude design's 14px grid gap (db-app.jsx
@@ -83,6 +84,13 @@ export function SocialDashboardGrid({
   const [currentBreakpoint, setCurrentBreakpoint] = useState<string>('lg');
   const isDragging = useRef(false);
   const { width, containerRef } = useContainerWidth({ initialWidth: 1280 });
+  // Latest measured width, read by the persist guard. Kept in a ref so
+  // handleLayoutChange has a STABLE identity across the ResizeObserver's
+  // per-pixel width ticks - otherwise its identity churns every tick, which
+  // re-subscribes RGL's onLayoutChange effect and adds to the relayout thrash
+  // when the container is resizing (e.g. toggling device emulation).
+  const widthRef = useRef(width);
+  widthRef.current = width;
 
   // Intrinsic aspect ratios of media widgets, reported by MediaWidget once the
   // image/video loads. Used to size media cells to their natural proportions on
@@ -164,9 +172,23 @@ export function SocialDashboardGrid({
 
   const handleLayoutChange = useCallback(
     (layout: Layout) => {
-      // Only persist lg-breakpoint positions - compact layouts are auto-derived
-      if (!isEditMode || isDragging.current || currentBreakpoint !== 'lg') return;
+      // Only persist the desktop (lg) layout - compact md/sm/xs layouts are
+      // auto-derived and disposable. Gate on the LIVE measured `width` (the same
+      // value RGL breakpoints on), NOT `currentBreakpoint`: when the container
+      // narrows, RGL fires onBreakpointChange + onLayoutChange in one commit, so
+      // currentBreakpoint is still a stale 'lg' here while RGL has already handed
+      // us the 2-col xs layout. Trusting it persisted x=0/w=2 for every widget -
+      // the single-column corruption. See layout-persist-guard.ts.
+      if (!canPersistDesktopLayout(isEditMode, isDragging.current, widthRef.current)) return;
       const resizedId = pendingResizeId.current;
+      // Skip no-op re-fires. RGL calls onLayoutChange even when it merely
+      // re-applied its own compacted layout (nothing moved); committing anyway
+      // churns widgets → layouts → RGL → onLayoutChange in an infinite
+      // "Maximum update depth exceeded" loop (most easily triggered right after
+      // a story rewrite, when our row-packed layout and RGL's vertical
+      // compaction disagree by a row). A pending manual resize still commits so
+      // `manualHeight` gets recorded even on a same-size resize.
+      if (resizedId == null && !layoutHasGeometryChange(widgets, layout)) return;
       pendingResizeId.current = null;
       const updated = widgets.map((w) => {
         const item = layout.find((l) => l.i === w.i);
@@ -178,7 +200,7 @@ export function SocialDashboardGrid({
       });
       onLayoutChange(updated);
     },
-    [widgets, isEditMode, onLayoutChange, currentBreakpoint],
+    [widgets, isEditMode, onLayoutChange],
   );
 
   const canInteract = isEditMode && currentBreakpoint === 'lg';
@@ -226,15 +248,30 @@ export function SocialDashboardGrid({
       >
         {widgets.map((widget, widgetIndex) => {
           const attached = attachedWidgetIds?.has(widget.i) ?? false;
+          const dimmedHidden = isEditMode && widget.hidden === true;
           return (
             <div
               key={widget.i}
               className={
-                coAuthorActive && attached
-                  ? 'rounded-xl ring-2 ring-primary ring-offset-1 ring-offset-background'
-                  : undefined
+                [
+                  coAuthorActive && attached
+                    ? 'rounded-xl ring-2 ring-primary ring-offset-1 ring-offset-background'
+                    : '',
+                  dimmedHidden ? 'opacity-50' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined
               }
             >
+              {dimmedHidden && (
+                <span
+                  className="absolute left-1.5 top-1.5 z-20 inline-flex items-center gap-1 rounded-md border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground shadow-sm"
+                  title="Hidden in view mode and on shared dashboards"
+                >
+                  <EyeOff className="h-3 w-3" />
+                  Hidden
+                </span>
+              )}
               {coAuthorActive && onToggleAttachWidget && (
                 <button
                   type="button"

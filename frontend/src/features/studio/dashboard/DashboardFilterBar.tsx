@@ -17,6 +17,7 @@ export type FilterBarFilterId =
   | 'date_range'
   | 'themes'
   | 'entities'
+  | 'topics'
   | 'language'
   | 'content_type'
   | 'channels'
@@ -24,12 +25,12 @@ export type FilterBarFilterId =
 
 export const ALL_FILTER_BAR_IDS: FilterBarFilterId[] = [
   'sentiment', 'emotion', 'platform', 'date_range', 'themes',
-  'entities', 'language', 'content_type', 'channels', 'collection',
+  'entities', 'topics', 'language', 'content_type', 'channels', 'collection',
 ];
 
 export const DEFAULT_FILTER_BAR_FILTERS: FilterBarFilterId[] = [
   'sentiment', 'emotion', 'platform', 'date_range', 'themes',
-  'entities', 'language', 'content_type', 'channels',
+  'entities', 'topics', 'language', 'content_type', 'channels',
 ];
 
 const FILTER_LABELS: Record<FilterBarFilterId, string> = {
@@ -39,6 +40,7 @@ const FILTER_LABELS: Record<FilterBarFilterId, string> = {
   date_range: 'Date Range',
   themes: 'Themes',
   entities: 'Entities',
+  topics: 'Topics',
   language: 'Language',
   content_type: 'Content Type',
   channels: 'Channels',
@@ -55,6 +57,9 @@ interface DashboardFilterBarProps {
   onSetFilter: <K extends keyof DashboardFilters>(key: K, value: DashboardFilters[K]) => void;
   onClearAll: () => void;
   collectionNames?: Record<string, string>;
+  /** Topic cluster id -> display name, for the `topics` pill labels (the raw
+   *  filter values are opaque cluster ids). */
+  topicNames?: Record<string, string>;
   /** When true, shows controls to add/remove/reorder filter pills */
   isEditMode?: boolean;
   /** Ordered list of active filter IDs - undefined = show all defaults */
@@ -83,6 +88,7 @@ function computeOptionCounts(posts: DashboardPost[]): OptionCounts {
     themes: {},
     entities: {},
     collection: {},
+    topics: {},
   };
   for (const p of posts) {
     if (p.sentiment) counts.sentiment[p.sentiment] = (counts.sentiment[p.sentiment] ?? 0) + 1;
@@ -94,6 +100,7 @@ function computeOptionCounts(posts: DashboardPost[]): OptionCounts {
     counts.collection[p.collection_id] = (counts.collection[p.collection_id] ?? 0) + 1;
     for (const t of p.themes ?? []) counts.themes[t] = (counts.themes[t] ?? 0) + 1;
     for (const e of p.entities ?? []) counts.entities[e] = (counts.entities[e] ?? 0) + 1;
+    for (const tid of p.topic_ids ?? []) counts.topics[tid] = (counts.topics[tid] ?? 0) + 1;
   }
   return counts;
 }
@@ -318,6 +325,7 @@ export function DashboardFilterBar({
   onSetFilter,
   onClearAll,
   collectionNames,
+  topicNames,
   isEditMode = false,
   filterBarFilters,
   onFilterBarChange,
@@ -341,6 +349,7 @@ export function DashboardFilterBar({
       ['platform', reportScope.platform],
       ['themes', reportScope.themes],
       ['entities', reportScope.entities],
+      ['topics', reportScope.topics],
       ['language', reportScope.language],
       ['content_type', reportScope.content_type],
       ['channels', reportScope.channels],
@@ -433,6 +442,8 @@ export function DashboardFilterBar({
     if (activeFilters.includes(id)) return false;
     // Don't offer 'collection' if only one collection
     if (id === 'collection' && availableOptions.collection.length <= 1) return false;
+    // Don't offer 'topics' when the agent has no topic clusters yet
+    if (id === 'topics' && availableOptions.topics.length === 0) return false;
     return true;
   });
 
@@ -469,6 +480,12 @@ export function DashboardFilterBar({
       },
       themes: { opts: availableOptions.themes, sel: filters.themes, search: true },
       entities: { opts: availableOptions.entities, sel: filters.entities, search: true },
+      topics: {
+        opts: availableOptions.topics,
+        sel: filters.topics,
+        search: true,
+        format: (v) => topicNames?.[v] || v.slice(0, 8),
+      },
       language: { opts: availableOptions.language, sel: filters.language },
       content_type: {
         opts: availableOptions.content_type,

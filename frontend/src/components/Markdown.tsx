@@ -41,6 +41,17 @@ const ALLOWED_HTML_TAGS = new Set([
 
 const ANGLE_TAG_RE = /<\/?([a-zA-Z][a-zA-Z0-9-]*)\b/g;
 
+/** `<fact src="metric_key">value</fact>` provenance tags wrap load-bearing
+ *  numbers so the agent's `verify_story` / `verify_dashboard` tools can re-derive
+ *  them against the data. The render layer keeps the inner value visible and
+ *  drops the tag wrapper (otherwise `escapeUnknownAngleTags` would surface the
+ *  raw `<fact …>` markup to the reader). Lenient on attributes/casing. */
+const FACT_TAG_RE = /<fact\b[^>]*>([^<]*)<\/fact>/gi;
+
+export function stripFactTags(markdown: string): string {
+  return markdown.replace(FACT_TAG_RE, (_match, inner: string) => inner);
+}
+
 function escapeUnknownAngleTags(markdown: string): string {
   return markdown.replace(ANGLE_TAG_RE, (match, name: string) => {
     if (ALLOWED_HTML_TAGS.has(name.toLowerCase())) return match;
@@ -141,7 +152,10 @@ export function Markdown({
     ...(renderCharts ? { code: chartCodeRenderer } : {}),
     ...(headingIds ? HEADING_COMPONENTS : {}),
   };
-  const safeChildren = useMemo(() => escapeUnknownAngleTags(children), [children]);
+  const safeChildren = useMemo(
+    () => escapeUnknownAngleTags(stripFactTags(children)),
+    [children],
+  );
   const content = (
     <ReactMarkdown
       remarkPlugins={plugins}

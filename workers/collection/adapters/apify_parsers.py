@@ -521,6 +521,41 @@ def _fb_group_identity(item: dict) -> tuple[str, str, str]:
     return group_id, group_title, group_url
 
 
+# Literal display names the Apify groups actor emits for anonymous posters.
+# Real anon posts arrive as user={"name": "Anonymous participant", "id": <id>}
+# (a distinct id per post), NOT a missing author block - so we must catch the
+# name marker, not just absence, or every anon poster collapses into one
+# "Anonymous participant" channel across all groups.
+_FB_ANON_NAME_MARKERS = {"anonymous participant", "anonymous member", "anonymous"}
+
+
+def _fb_group_author(item: dict, group_title: str) -> tuple[str, str | None, str | None, bool]:
+    """Return (channel_handle, channel_id, channel_url, is_anonymous) for a
+    group-post item.
+
+    Channel == the member who wrote the post, NOT the group it lives in (the
+    group is carried in platform_metadata instead). FB groups allow anonymous
+    posting; for anon posts (absent author block, or the actor's literal
+    "Anonymous participant" marker) we use a per-group "Anonymous · <group>"
+    handle so anon posters from different groups don't collapse into one
+    synthetic channel. The actor's per-post author id (when present) is kept so
+    distinct anon posters stay distinct rows.
+    """
+    author = item.get("user")
+    if not isinstance(author, dict):
+        author = item.get("author") if isinstance(item.get("author"), dict) else {}
+
+    name = _first(author, "name", "title", default=None)
+    author_id = str(_first(author, "id", "userId", default="")) or None
+    author_url = _first(author, "profileUrl", "url", "profile_url", default=None)
+
+    is_anonymous = name is None or str(name).strip().lower() in _FB_ANON_NAME_MARKERS
+    if not is_anonymous:
+        return str(name), author_id, author_url, False
+    anon_handle = f"Anonymous · {group_title}" if group_title else "Anonymous"
+    return anon_handle, author_id, None, True
+
+
 def parse_apify_facebook_group_post(item: dict) -> Post:
     post_url = _first(item, "url", "topLevelUrl", "postUrl", "facebookUrl", default="")
     post_id = str(_first(item, "postId", "post_id", "id", default="")) or (
@@ -532,11 +567,8 @@ def parse_apify_facebook_group_post(item: dict) -> Post:
         or datetime.fromtimestamp(0, tz=timezone.utc)
     )
 
-    group_id, group_title, _group_url = _fb_group_identity(item)
-
-    author = item.get("user")
-    if not isinstance(author, dict):
-        author = item.get("author") if isinstance(item.get("author"), dict) else {}
+    group_id, group_title, group_url = _fb_group_identity(item)
+    author_handle, author_id, _author_url, is_anonymous = _fb_group_author(item, group_title)
 
     media_urls: list[str] = []
     media = item.get("media")
@@ -563,9 +595,9 @@ def parse_apify_facebook_group_post(item: dict) -> Post:
     return Post(
         post_id=post_id,
         platform="facebook",
-        # Channel == the group, not the individual member who posted.
-        channel_handle=group_title,
-        channel_id=group_id or None,
+        # Channel == the member who wrote the post; the group lives in metadata.
+        channel_handle=author_handle,
+        channel_id=author_id,
         title=None,
         content=_first(item, "text", "message", default=""),
         post_url=post_url,
@@ -585,8 +617,10 @@ def parse_apify_facebook_group_post(item: dict) -> Post:
             "type": item.get("type"),
             "group_id": group_id or None,
             "group_title": group_title or None,
-            "author_id": str(_first(author, "id", default="")) or None,
-            "author_name": _first(author, "name", default=None),
+            "group_url": group_url or None,
+            "author_id": author_id,
+            "author_name": None if is_anonymous else author_handle,
+            "is_anonymous": is_anonymous,
             "facebook_url": item.get("facebookUrl"),
             "input_url": _first(item, "inputUrl", "facebookUrl", default=None),
         },
@@ -595,18 +629,23 @@ def parse_apify_facebook_group_post(item: dict) -> Post:
 
 
 def parse_apify_facebook_group_channel(item: dict) -> Channel:
+    """Channel snapshot for a group post == the author, matching post.channel_id.
+    The group it was posted in is preserved in channel_metadata."""
     group_id, group_title, group_url = _fb_group_identity(item)
+    author_handle, author_id, author_url, _is_anonymous = _fb_group_author(item, group_title)
     return Channel(
-        channel_id=group_id,
+        channel_id=author_id or "",
         platform="facebook",
-        channel_handle=group_title,
-        subscribers=_safe_int(_first(item, "groupMembers", "memberCount", default=None)),
+        channel_handle=author_handle,
+        subscribers=None,
         total_posts=None,
-        channel_url=group_url or None,
+        channel_url=author_url or None,
         description=None,
         created_date=None,
         channel_metadata={
+            "group_id": group_id or None,
             "group_title": group_title or None,
+            "group_url": group_url or None,
         },
     )
 
@@ -1209,6 +1248,100 @@ def flatten_apify_youtube_comments(items: list[dict], post_id: str) -> list[Comm
                     f"{child.channel_handle}|{child.content}|"
                     f"{reply.get('publishedTimeText', '')}"
                 )
+            if child.comment_id:
+                out.append(child)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Facebook comments - apify/facebook-comments-scraper
+# Dataset item shape (top-level comment on a post):
+#   id (or commentId/feedbackId), text (or commentText/message),
+#   date (or time/createdTime/timestamp), likesCount, commentsCount,
+#   profileName (or name/authorName), profileId (or userId/authorId),
+#   profileUrl, commentUrl, replyToCommentId (set on replies),
+#   replies[] (nested list of same shape on some builds).
+# Anonymous group comments may carry no profileId; we still emit the comment.
+# ---------------------------------------------------------------------------
+
+def parse_apify_facebook_comment(item: dict, parent_comment_id: str | None = None) -> Comment:
+    """Parse one Facebook comment item into a Comment.
+
+    `parent_comment_id`, when set, overrides any value on the item - used by
+    the flattener to stamp the correct parent on nested replies.
+    """
+    comment_id = str(_first(item, "id", "commentId", "feedbackId", default=""))
+    handle = _first(item, "profileName", "name", "authorName", "username", default="")
+    owner_id = _first(item, "profileId", "userId", "authorId", default=None)
+
+    commented_at = _parse_dt(
+        _first(item, "date", "time", "createdTime", "timestamp", "createdAt")
+    )
+
+    replied_to = parent_comment_id or _first(
+        item, "replyToCommentId", "parentCommentId", "parentId", default=None,
+    )
+
+    return Comment(
+        comment_id=comment_id,
+        platform="facebook",
+        channel_handle=str(handle),
+        channel_id=str(owner_id) if owner_id else None,
+        content=_first(item, "text", "commentText", "message", "content", default=""),
+        commented_at=commented_at or datetime.fromtimestamp(0, tz=timezone.utc),
+        likes=_safe_int(_first(item, "likesCount", "likes", "reactionsCount")),
+        replies_count=_safe_int(_first(item, "commentsCount", "repliesCount")),
+        media_urls=[],
+        media_refs=[],
+        platform_metadata={
+            "platform": "facebook",
+            "profile_url": _first(item, "profileUrl", "profilePicUrl", default=None),
+            "comment_url": item.get("commentUrl"),
+        },
+        replied_to_id=str(replied_to) if replied_to else None,
+    )
+
+
+def parse_apify_facebook_comment_author(item: dict) -> Channel:
+    """Channel snapshot for a Facebook comment author."""
+    handle = _first(item, "profileName", "name", "authorName", "username", default="")
+    owner_id = _first(item, "profileId", "userId", "authorId", default="")
+    profile_url = _first(item, "profileUrl", default=None)
+    return Channel(
+        channel_id=str(owner_id),
+        platform="facebook",
+        channel_handle=str(handle),
+        subscribers=None,
+        total_posts=None,
+        channel_url=profile_url,
+        description=None,
+        created_date=None,
+        channel_metadata={
+            "profile_pic_url": item.get("profilePicUrl"),
+        },
+    )
+
+
+def flatten_apify_facebook_comments(items: list[dict], post_id: str) -> list[Comment]:
+    """Walk top-level items + their nested `replies` and emit a flat Comment
+    list with `replied_to_id` populated. Top-level comments anchor to the
+    post (root = self); nested replies link to their top-level comment id.
+    """
+    out: list[Comment] = []
+    for top in items:
+        top_comment = parse_apify_facebook_comment(top, parent_comment_id=post_id)
+        if not top_comment.comment_id:
+            continue
+        out.append(top_comment)
+        replies = top.get("replies") or []
+        if not isinstance(replies, list):
+            continue
+        for reply in replies:
+            if not isinstance(reply, dict):
+                continue
+            child = parse_apify_facebook_comment(
+                reply, parent_comment_id=top_comment.comment_id,
+            )
             if child.comment_id:
                 out.append(child)
     return out

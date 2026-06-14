@@ -197,6 +197,10 @@ class Settings(BaseSettings):
     # comments path is Apify-only). Input shape: startUrls=[{url}], maxComments.
     apify_actor_youtube_comments: str = "streamers/youtube-comments-scraper"
     apify_youtube_comments_max: int = 100  # per-post fetch cap (cost guard)
+    # Facebook comments - dedicated actor (FB posts collect via the page/group
+    # actors; comments path is Apify-only). Input shape: startUrls=[{url}], resultsLimit.
+    apify_actor_facebook_comments: str = "apify/facebook-comments-scraper"
+    apify_facebook_comments_max: int = 100  # per-post fetch cap (cost guard)
 
     # HikerAPI - Instagram private-API provider; reaches the logged-in
     # `fbsearch_reels_v2` keyword->reels SERP (viral content) that Apify can't.

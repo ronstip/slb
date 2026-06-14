@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Sparkles, Send, Loader2, RotateCcw, Square, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Sparkles, Send, Loader2, RotateCcw, Square, X, BookOpenText, Check } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import { Popover, PopoverTrigger, PopoverContent } from '../../../components/ui/popover.tsx';
+import { getAgentTopics } from '../../../api/endpoints/topics.ts';
 import { useReportAIChat } from './hooks/useReportAIChat.ts';
+import { buildStoryMessage, type StoryTopic } from './story-mode.ts';
 import type { AttachedWidget } from './coauthor-context.ts';
 
 interface ReportAIAssistantProps {
@@ -84,6 +87,7 @@ export function ReportAIAssistant({
           attachedWidgets={attachedWidgets}
           onRemoveAttached={onRemoveAttached}
           onClearAttached={onClearAttached}
+          agentId={agentId}
         />
       </PopoverContent>
     </Popover>
@@ -93,12 +97,18 @@ export function ReportAIAssistant({
 interface ChatPanelProps {
   messages: ReturnType<typeof useReportAIChat>['messages'];
   isStreaming: boolean;
-  sendMessage: (text: string, attached?: AttachedWidget[]) => Promise<void>;
+  sendMessage: (
+    text: string,
+    attached?: AttachedWidget[],
+    displayText?: string,
+  ) => Promise<void>;
   cancel: () => void;
   reset: () => void;
   attachedWidgets: AttachedWidget[];
   onRemoveAttached: (i: string) => void;
   onClearAttached: () => void;
+  /** Enables the "Tell a story" topic suggestions in the empty state. */
+  agentId?: string;
 }
 
 function ChatPanel({
@@ -110,6 +120,7 @@ function ChatPanel({
   attachedWidgets,
   onRemoveAttached,
   onClearAttached,
+  agentId,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -168,7 +179,14 @@ function ChatPanel({
         className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-3 text-sm"
       >
         {messages.length === 0 && (
-          <EmptyState />
+          <EmptyState
+            agentId={agentId}
+            isStreaming={isStreaming}
+            onGenerateStory={(request) => {
+              const { outgoing, display } = buildStoryMessage(request);
+              void sendMessage(outgoing, [], display);
+            }}
+          />
         )}
         {messages.map((m) => (
           <MessageRow key={m.id} message={m} />
@@ -255,16 +273,121 @@ function ChatPanel({
   );
 }
 
-function EmptyState() {
+/** How many topic suggestion chips to show in the story section. */
+const MAX_STORY_TOPIC_CHIPS = 6;
+
+function EmptyState({
+  agentId,
+  isStreaming,
+  onGenerateStory,
+}: {
+  agentId?: string;
+  isStreaming: boolean;
+  /** Topic chips (selection order = section order) and/or a freeform brief.
+   *  Both empty = let the AI pick the angle. Each topic carries its cluster id
+   *  so the agent can scope charts with filters.topics directly. */
+  onGenerateStory: (request: { topics: StoryTopic[]; brief: string }) => void;
+}) {
+  // Selection order matters - it becomes the story's section order. We track the
+  // cluster id alongside the name so the agent gets the topic_id to filter on.
+  const [selected, setSelected] = useState<StoryTopic[]>([]);
+  // Freeform brief - the user describes the angle in their own words. Works
+  // with or without topic chips selected.
+  const [brief, setBrief] = useState('');
+
+  // Same query key as the agent Topics tab, so an already-visited tab is a
+  // cache hit and the chips render instantly.
+  const { data: topics, isLoading } = useQuery({
+    queryKey: ['topics', agentId],
+    queryFn: () => getAgentTopics(agentId!),
+    enabled: !!agentId,
+    staleTime: 5 * 60_000,
+  });
+
+  const chips = (topics ?? [])
+    .slice()
+    .sort((a, b) => (b.post_count ?? 0) - (a.post_count ?? 0))
+    .slice(0, MAX_STORY_TOPIC_CHIPS);
+
+  const toggle = (topic: StoryTopic) =>
+    setSelected((prev) =>
+      prev.some((t) => t.id === topic.id)
+        ? prev.filter((t) => t.id !== topic.id)
+        : [...prev, topic],
+    );
+
   return (
-    <div className="flex flex-col items-center text-center text-muted-foreground py-6 px-2">
-      <Sparkles className="h-5 w-5 text-primary mb-2" />
-      <p className="text-xs font-medium text-foreground">Co-author this report</p>
-      <p className="text-[11px] mt-1 leading-relaxed">
-        Try: <span className="italic">"add a sentiment breakdown by platform"</span>,
-        <span className="italic"> "remove the word cloud"</span>, or
-        <span className="italic"> "make the summary punchier"</span>.
-      </p>
+    <div className="flex flex-col text-muted-foreground py-4 px-2 gap-4">
+      <div className="flex flex-col items-center text-center">
+        <Sparkles className="h-5 w-5 text-primary mb-2" />
+        <p className="text-xs font-medium text-foreground">Co-author this report</p>
+        <p className="text-[11px] mt-1 leading-relaxed">
+          Try: <span className="italic">"add a sentiment breakdown by platform"</span>,
+          <span className="italic"> "remove the word cloud"</span>, or
+          <span className="italic"> "make the summary punchier"</span>.
+        </p>
+      </div>
+
+      <div className="border-t border-border pt-3 flex flex-col items-center text-center gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+          <BookOpenText className="h-3.5 w-3.5 text-primary" />
+          Tell a story
+        </div>
+        <p className="text-[11px] leading-relaxed">
+          Turn this report into a scrolling narrative. Pick the angles - or let the
+          AI find the strongest story in the data.
+        </p>
+        {isLoading && (
+          <div className="flex flex-wrap justify-center gap-1">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <span
+                key={i}
+                className="h-6 w-24 animate-pulse rounded-full bg-muted"
+              />
+            ))}
+          </div>
+        )}
+        {chips.length > 0 && (
+          <div className="flex flex-wrap justify-center gap-1">
+            {chips.map((t) => {
+              const active = selected.some((s) => s.id === t.cluster_id);
+              return (
+                <button
+                  key={t.cluster_id}
+                  type="button"
+                  onClick={() => toggle({ id: t.cluster_id, name: t.topic_name })}
+                  aria-pressed={active}
+                  title={t.topic_summary}
+                  className={`inline-flex max-w-[12rem] items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+                    active
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                  }`}
+                >
+                  {active && <Check className="h-2.5 w-2.5 shrink-0" />}
+                  <span className="truncate">{t.topic_name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          rows={2}
+          placeholder="…or describe the story you want (e.g. how sentiment shifted after the launch)"
+          className="mt-1 w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-[11px] leading-relaxed text-foreground placeholder:text-muted-foreground/70 focus:border-primary/50 focus:outline-none"
+        />
+        <Button
+          size="sm"
+          className="h-7 mt-1 gap-1.5 text-xs"
+          disabled={isStreaming}
+          onClick={() => onGenerateStory({ topics: selected, brief })}
+        >
+          <BookOpenText className="h-3.5 w-3.5" />
+          {selected.length > 0 || brief.trim() ? 'Generate story' : 'Find the story'}
+        </Button>
+      </div>
     </div>
   );
 }

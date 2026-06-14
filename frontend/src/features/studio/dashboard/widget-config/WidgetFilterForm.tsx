@@ -17,7 +17,7 @@ import {
 } from '../../../../components/ui/select.tsx';
 import { X, Plus, ChevronDown } from 'lucide-react';
 import { MultiSelectFilterBody, type FilterOption } from '../../../collections/ColumnFilterHeader.tsx';
-import type { CustomFieldDef, DashboardPost } from '../../../../api/types.ts';
+import type { CustomFieldDef, DashboardPost, TopicMetric } from '../../../../api/types.ts';
 import type {
   SocialWidgetFilters, FilterCondition, FilterConditionField, FilterConditionOperator,
   StandardCustomDimension,
@@ -98,6 +98,35 @@ const FILTER_SECTIONS: Array<{ label: string; key: ArrayFilterKey; placeholder: 
   { label: 'Collection', key: 'collection', placeholder: 'All collections' },
 ];
 
+/** Build the option list, display-name map, and per-value counts for the Topics
+ *  filter row. Values are topic cluster ids; labels are the human topic headers.
+ *  Counts come from each post's `topic_ids`. Any id that's actively selected but
+ *  no longer in the topics list is still included so a stale/agent-set scope can
+ *  be seen and cleared. Pure - unit-tested. */
+export function buildTopicFilterOptions(
+  topics: TopicMetric[] | undefined,
+  posts: DashboardPost[],
+  activeSelected: string[],
+): { options: string[]; labels: Map<string, string>; counts: Map<string, number> } {
+  const labels = new Map<string, string>();
+  for (const t of topics ?? []) {
+    if (t.cluster_id) labels.set(t.cluster_id, (t.header && t.header.trim()) || t.cluster_id);
+  }
+  const counts = new Map<string, number>();
+  for (const p of posts) {
+    for (const id of new Set(p.topic_ids ?? [])) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  const ids = new Set<string>();
+  for (const t of topics ?? []) if (t.cluster_id) ids.add(t.cluster_id);
+  for (const s of activeSelected) ids.add(s);
+  const options = [...ids].sort(
+    (a, b) =>
+      (counts.get(b) ?? 0) - (counts.get(a) ?? 0) ||
+      (labels.get(a) ?? a).localeCompare(labels.get(b) ?? b),
+  );
+  return { options, labels, counts };
+}
+
 function humanizeFieldName(name: string): string {
   // Render list[object] leaf keys (men.name) as "Men › Name".
   return name
@@ -147,6 +176,7 @@ function FilterRow({
   selected,
   placeholder,
   portalContainer,
+  labels,
   onChange,
 }: {
   label: string;
@@ -156,12 +186,16 @@ function FilterRow({
   selected: string[];
   placeholder: string;
   portalContainer?: HTMLElement | null;
+  /** Optional value→display-name map. Used for topics, whose stored values are
+   *  cluster UUIDs but should read as topic names in the trigger and the list. */
+  labels?: Map<string, string>;
   onChange: (next: string[]) => void;
 }) {
   const optionList: FilterOption[] = options.map((o) => ({ value: o, count: counts?.get(o) ?? 0 }));
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const display = (v: string) => labels?.get(v) ?? v;
   const summary =
-    selected.length === 0 ? placeholder : selected.length === 1 ? selected[0] : `${selected.length} selected`;
+    selected.length === 0 ? placeholder : selected.length === 1 ? display(selected[0]) : `${selected.length} selected`;
 
   return (
     <div className="flex items-center gap-3">
@@ -189,6 +223,7 @@ function FilterRow({
             options={optionList}
             selected={selectedSet}
             onChange={(next) => onChange([...next])}
+            renderOption={labels ? (val) => <span className="truncate">{display(val)}</span> : undefined}
           />
         </PopoverContent>
       </Popover>
@@ -207,10 +242,12 @@ interface WidgetFilterFormProps {
   /** Portal target for filter popovers - a node inside the modal Dialog so the
    *  option lists stay scrollable (react-remove-scroll blocks body portals). */
   portalContainer?: HTMLElement | null;
+  /** Agent topic clusters - source of the Topics filter row's id→name labels. */
+  topics?: TopicMetric[];
   onChange: (filters: SocialWidgetFilters) => void;
 }
 
-export function WidgetFilterForm({ filters, availableOptions, posts, customFieldDefs, portalContainer, onChange }: WidgetFilterFormProps) {
+export function WidgetFilterForm({ filters, availableOptions, posts, customFieldDefs, portalContainer, topics, onChange }: WidgetFilterFormProps) {
   // Per-value post counts for every section + custom field, computed once over
   // the widget's input posts. Each value is counted at most once per post.
   const { sectionCounts, customCounts } = useMemo(() => {
@@ -283,6 +320,12 @@ export function WidgetFilterForm({ filters, availableOptions, posts, customField
     const counts = sectionCounts[sk];
     return vals.map((v) => ({ value: v, count: counts?.get(v) ?? 0 }));
   };
+
+  const selectedTopics = (filters.topics ?? []) as string[];
+  const topicFilter = useMemo(
+    () => buildTopicFilterOptions(topics, posts, selectedTopics),
+    [topics, posts, selectedTopics],
+  );
 
   const conditions = filters.conditions ?? [];
 
@@ -367,6 +410,22 @@ export function WidgetFilterForm({ filters, availableOptions, posts, customField
       </div>
 
       <Separator />
+
+      {/* Topics - story scope. Values are cluster ids; shown by topic name.
+          Rendered when topics exist or a topic scope is already set (so an
+          agent-applied scope is visible and clearable here). */}
+      {topicFilter.options.length > 0 && (
+        <FilterRow
+          label="Topics"
+          options={topicFilter.options}
+          counts={topicFilter.counts}
+          labels={topicFilter.labels}
+          selected={selectedTopics}
+          placeholder="All topics"
+          portalContainer={portalContainer}
+          onChange={(selected) => onChange({ ...filters, topics: selected.length ? selected : undefined })}
+        />
+      )}
 
       {/* Filter sections - shared filter body (counts + Only + Select All) */}
       {FILTER_SECTIONS.map(({ label, key, placeholder }) => {

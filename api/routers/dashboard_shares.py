@@ -287,6 +287,19 @@ async def revoke_share(
     return
 
 
+def strip_hidden_widgets(layout: list | None) -> list | None:
+    """Drop `hidden: true` widgets from a layout served to public viewers.
+
+    Hidden widgets stay in the owner's doc (the editor needs them) but must
+    not leak through the unauthenticated share endpoint.
+    """
+    if not layout:
+        return layout
+    if not any(isinstance(w, dict) and w.get("hidden") for w in layout):
+        return layout
+    return [w for w in layout if not (isinstance(w, dict) and w.get("hidden"))]
+
+
 # --- Public endpoint (no auth, rate-limited) ---
 
 
@@ -338,6 +351,7 @@ async def get_shared_dashboard(
             filter_bar_hidden = layout_data.get("filterBarHidden")
     except Exception:  # noqa: BLE001 - layout is non-critical, fall back to defaults
         logger.exception("Failed to load layout for shared dashboard %s", token)
+    layout = strip_hidden_widgets(layout)
 
     bq = get_bq()
     collection_ids = share["collection_ids"]

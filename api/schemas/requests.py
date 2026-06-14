@@ -93,6 +93,10 @@ class MultiFeedRequest(BaseModel):
     start_date: str | None = None  # ISO datetime or YYYY-MM-DD; lower-bound on p.posted_at
     end_date: str | None = None  # ISO datetime or YYYY-MM-DD; upper-bound on p.posted_at
     agent_id: str | None = None  # When set, posts are scoped via the scope_posts TVF
+    # When set (agent-scoped path only), the response also carries `kpis`:
+    # totals + breakdowns aggregated over the WHOLE filtered window, so callers
+    # that download only the top-N posts still render an accurate KPI strip.
+    include_kpis: bool = False
 
 
 class DashboardDataRequest(BaseModel):

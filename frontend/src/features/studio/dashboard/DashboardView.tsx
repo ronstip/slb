@@ -119,6 +119,13 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
 
   const allPosts = response?.posts ?? [];
 
+  // Topic cluster id -> display name, for the `topics` filter pill labels (the
+  // filter values themselves are opaque cluster ids).
+  const topicNames: Record<string, string> = {};
+  for (const t of response?.topics ?? []) {
+    topicNames[t.cluster_id] = t.header || t.subheader || t.cluster_id.slice(0, 8);
+  }
+
   const {
     filters,
     toggleFilterValue,
@@ -307,6 +314,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
           onSetFilter={setFilter}
           onClearAll={clearAll}
           collectionNames={artifact.collectionNames}
+          topicNames={topicNames}
           isEditMode={toolbarHandlers?.isEditMode ?? false}
           filterBarFilters={filterBarFilters}
           onFilterBarChange={(f) => setFilterBarFilters(f as FilterBarFilterId[])}

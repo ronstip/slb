@@ -16,6 +16,7 @@ import { getDefaultLayout } from './defaults-social-dashboard.ts';
 import { DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import { useDashboardLayout, useSaveDashboardLayout } from './hooks/useDashboardLayout.ts';
 import { SocialDashboardGrid } from './SocialDashboardGrid.tsx';
+import { visibleWidgets } from './visible-widgets.ts';
 import { SocialWidgetConfigDialog } from './widget-config/SocialWidgetConfigDialog.tsx';
 import type { AttachedWidget } from './coauthor-context.ts';
 
@@ -570,7 +571,7 @@ export function SocialDashboardView({
           measured width; a stale measure leaves panels at the old width). */}
       <SocialDashboardGrid
         key={orientation}
-        widgets={widgets}
+        widgets={visibleWidgets(widgets, isEditMode && !readOnly)}
         filteredPosts={filteredPosts}
         topics={topics}
         isEditMode={isEditMode && !readOnly}

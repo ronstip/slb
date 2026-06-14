@@ -19,6 +19,7 @@ from api.agent.prompts.shared import (
     SHARED_HARD_RULES,
     TOPICS_AND_NARRATIVES,
 )
+from api.agent.prompts.story_mode import STORY_MODE_PROMPT
 
 # ─── Chat-specific sections ──────────────────────────────────────────────
 
@@ -152,6 +153,10 @@ Do NOT answer external-world questions from BigQuery - `scope_posts` is a feed o
 
 When in doubt between SQL and web search: SQL answers "what are people posting?", web search answers "what is actually true?"."""
 
+_STORY_MODE_CHAT_NOTE = """### Story Mode from the main chat
+
+Story Mode operates on the dashboard the user has open: its `layout_id` appears as **Active Dashboard** in your operational context. If a story request arrives and no Active Dashboard is present, ask the user to open the dashboard they want the story told on - do NOT create a new dashboard for a story request."""
+
 _CHAT_HARD_RULES = """- Greetings, thanks, chit-chat → plain text, no tools.
 - After `start_agent`, confirm briefly. Do NOT poll.
 - After `ask_user`, STOP and wait for the user's response.
@@ -185,6 +190,10 @@ CHAT_STATIC_PROMPT = f"""{_IDENTITY}
 {POST_FIELDS}
 
 {TOPICS_AND_NARRATIVES}
+
+{STORY_MODE_PROMPT}
+
+{_STORY_MODE_CHAT_NOTE}
 
 {QUALITY}
 
