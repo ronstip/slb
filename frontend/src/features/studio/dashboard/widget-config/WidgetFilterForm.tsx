@@ -34,7 +34,7 @@ import {
 } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 
-type ArrayFilterKey = Exclude<keyof SocialWidgetFilters, 'date_range' | 'conditions' | 'custom_fields'>;
+type ArrayFilterKey = Exclude<keyof SocialWidgetFilters, 'date_range' | 'conditions' | 'custom_fields' | 'topics'>;
 
 /** Per-post value extractor for each multi-select section - mirrors the match
  *  logic in applyWidgetFilters so the popover counts line up with what the
