@@ -84,33 +84,50 @@ def build_dashboard_sql(
         return None, None
 
     sql = f"""
+    WITH topic_membership AS (
+        -- Tag each post with the topic cluster(s) it belongs to in the latest
+        -- clustering run, so the dashboard can filter posts/widgets by topic.
+        -- Clustering assigns a post to at most one cluster, but we aggregate to
+        -- an array for a clean any-of filter (matches `themes`/`entities`) and a
+        -- clean empty default for unclustered posts.
+        SELECT post_id, ARRAY_AGG(cluster_id) AS topic_ids
+        FROM social_listening.topic_clusters tc, UNNEST(tc.member_post_ids) AS post_id
+        WHERE tc.agent_id = @agent_id
+          AND tc.clustered_at = (
+            SELECT MAX(clustered_at)
+            FROM social_listening.topic_clusters
+            WHERE agent_id = @agent_id)
+        GROUP BY post_id
+    )
     SELECT
-        post_id,
-        collection_id,
-        platform,
-        channel_handle,
-        posted_at,
-        title,
-        content,
-        post_url,
-        sentiment,
-        emotion,
-        themes,
-        entities,
-        language,
-        content_type,
-        custom_fields,
-        ai_summary,
-        context,
-        detected_brands,
-        channel_type,
-        media_refs,
-        COALESCE(likes, 0) AS like_count,
-        COALESCE(views, 0) AS view_count,
-        COALESCE(comments_count, 0) AS comment_count,
-        COALESCE(shares, 0) AS share_count
-    FROM social_listening.scope_posts(@agent_id)
-    WHERE collection_id IN UNNEST(@collection_ids)
+        sp.post_id,
+        sp.collection_id,
+        sp.platform,
+        sp.channel_handle,
+        sp.posted_at,
+        sp.title,
+        sp.content,
+        sp.post_url,
+        sp.sentiment,
+        sp.emotion,
+        sp.themes,
+        sp.entities,
+        sp.language,
+        sp.content_type,
+        sp.custom_fields,
+        sp.ai_summary,
+        sp.context,
+        sp.detected_brands,
+        sp.channel_type,
+        sp.media_refs,
+        tm.topic_ids AS topic_ids,
+        COALESCE(sp.likes, 0) AS like_count,
+        COALESCE(sp.views, 0) AS view_count,
+        COALESCE(sp.comments_count, 0) AS comment_count,
+        COALESCE(sp.shares, 0) AS share_count
+    FROM social_listening.scope_posts(@agent_id) sp
+    LEFT JOIN topic_membership tm USING (post_id)
+    WHERE sp.collection_id IN UNNEST(@collection_ids)
     LIMIT {max_rows}
     """
     return sql, {"agent_id": agent_id, "collection_ids": collection_ids}
@@ -408,4 +425,5 @@ def build_post_response(row: dict) -> DashboardPostResponse:
         detected_brands=parse_json_field(row.get("detected_brands")),
         channel_type=row.get("channel_type"),
         media_refs=_serialize_media_refs(row.get("media_refs")),
+        topic_ids=[str(t) for t in (row.get("topic_ids") or [])],
     )

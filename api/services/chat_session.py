@@ -145,10 +145,12 @@ def _maybe_load_dashboard_context(session, chat_request: ChatRequest, user: Curr
     state so the `report_editor` context injector (callbacks.py) can surface
     them in the system prompt without re-reading Firestore on every LLM turn.
 
-    Only fires when mode="report_editor". For mode="chat" we deliberately
-    leave these keys absent - the broad chat agent doesn't need them.
+    Fires for mode="report_editor" (always sends the id) and for mode="chat"
+    when the FE has a dashboard open in the studio panel and sends its id -
+    that's what lets the main chat run Story Mode on the open report. Plain
+    chat requests carry no id and stay unbound.
     """
-    if chat_request.mode != "report_editor" or not chat_request.active_dashboard_id:
+    if not chat_request.active_dashboard_id or chat_request.mode not in ("report_editor", "chat"):
         return
 
     layout_id = chat_request.active_dashboard_id
@@ -216,6 +218,9 @@ def _summarize_widgets(widgets: list) -> str:
     summary = ", ".join(parts[:1]) + " - " + ", ".join(parts[1:])
     if chart_types:
         summary += f" (chart types: {', '.join(chart_types[:6])})"
+    hidden_count = sum(1 for w in widgets if isinstance(w, dict) and w.get("hidden"))
+    if hidden_count:
+        summary += f", {hidden_count} hidden"
     return summary
 
 

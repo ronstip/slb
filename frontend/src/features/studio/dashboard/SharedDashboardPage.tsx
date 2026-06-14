@@ -176,6 +176,9 @@ export function SharedDashboardPage() {
                 onSetFilter={setFilter}
                 onClearAll={clearAll}
                 collectionNames={response.collection_names}
+                topicNames={Object.fromEntries(
+                  (response.topics ?? []).map((t) => [t.cluster_id, t.header || t.subheader || t.cluster_id.slice(0, 8)]),
+                )}
                 filterBarFilters={filterBarFilters}
                 allPosts={allPosts}
                 reportScope={reportScope}

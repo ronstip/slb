@@ -11,7 +11,7 @@ import {
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
 import { PLATFORM_COLORS, SENTIMENT_COLORS } from '../../lib/constants.ts';
 import { formatNumber, timeAgo } from '../../lib/format.ts';
-import type { FeedPost, CollectionStats } from '../../api/types.ts';
+import type { FeedPost, CollectionStats, FeedKpis } from '../../api/types.ts';
 import { cn } from '../../lib/utils.ts';
 
 /* ------------------------------------------------------------------ */
@@ -100,6 +100,44 @@ export function computeAnalyticsStats(posts: FeedPost[]): AnalyticsStats | null 
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([name, count]) => ({ name, count })),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Map server-side feed KPIs (full filtered window) → AnalyticsStats    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The data table only downloads the top-N posts (for fast first paint), so
+ * computing the KPI strip from that array undercounts/​skews everything once an
+ * agent has more posts than the page size. `/feed` therefore returns `kpis`
+ * aggregated over the WHOLE filtered window; this maps them into the strip's
+ * shape. Status fields (dailyVolume / enrichedCount / latestDate) aren't part
+ * of the feed KPIs - the caller still merges those from CollectionStats.
+ */
+export function analyticsStatsFromFeedKpis(kpis: FeedKpis): AnalyticsStats {
+  const n = kpis.total_posts || 1;
+  return {
+    totalPosts: kpis.total_posts,
+    totalViews: kpis.total_views,
+    totalLikes: kpis.total_likes,
+    totalComments: kpis.total_comments,
+    avgViews: Math.round(kpis.total_views / n),
+    avgLikes: Math.round(kpis.total_likes / n),
+    avgComments: Math.round(kpis.total_comments / n),
+    uniqueHandles: kpis.unique_handles,
+    platforms: kpis.platforms.map((p) => ({
+      name: p.value,
+      count: p.count,
+      color: PLATFORM_COLORS[p.value] ?? '#6B7294',
+    })),
+    sentiments: kpis.sentiments.map((s) => ({
+      name: s.value,
+      count: s.count,
+      color: SENTIMENT_COLORS[s.value] ?? '#94A3B8',
+    })),
+    topThemes: kpis.top_themes.map((t) => ({ name: t.value, count: t.count })),
+    topEntities: kpis.top_entities.map((e) => ({ name: e.value, count: e.count })),
   };
 }
 

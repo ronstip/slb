@@ -9,8 +9,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs
 from api.schemas.requests import MultiFeedRequest
-from api.schemas.responses import FeedPostResponse, FeedResponse
+from api.schemas.responses import (
+    FeedKpis,
+    FeedPostResponse,
+    FeedResponse,
+    TopicBreakdownEntry,
+)
 from api.services.collection_service import can_access_collection
+from api.services.dashboard_cache import (
+    get_feed_kpis,
+    make_freshness_stamp,
+    set_feed_kpis,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +56,33 @@ async def get_multi_collection_feed(
     else:
         multi_sql, params = _build_legacy_sql(request)
 
-    rows = await asyncio.to_thread(bq.query, multi_sql, params)
+    # KPI strip aggregates are computed over the full filtered window (no row
+    # cap) so they stay correct when the caller only downloads the top-N posts
+    # for display. Agent-scoped path only. The aggregate scans scope_posts a
+    # second time, so we cache it with the same passive-invalidation contract as
+    # the dashboard (freshness stamp from the already-fetched statuses + filter
+    # signature). On a cache miss it's gathered in parallel with the posts query
+    # so it adds no wall-clock; on a hit we skip the extra BigQuery scan entirely.
+    want_kpis = request.include_kpis and bool(request.agent_id)
+    cached_kpis: dict | None = None
+    stamp = ""
+    filter_sig = ""
+    if want_kpis:
+        stamp = make_freshness_stamp(statuses)
+        filter_sig = _kpis_filter_signature(request)
+        cached_kpis = get_feed_kpis(
+            request.agent_id, request.collection_ids, stamp, filter_sig
+        )
+
+    kpi_rows = None
+    if want_kpis and cached_kpis is None:
+        kpis_sql, kpis_params = _build_tvf_kpis_sql(request)
+        rows, kpi_rows = await asyncio.gather(
+            asyncio.to_thread(bq.query, multi_sql, params),
+            asyncio.to_thread(bq.query, kpis_sql, kpis_params),
+        )
+    else:
+        rows = await asyncio.to_thread(bq.query, multi_sql, params)
     total = rows[0]["_total"] if rows else 0
     total_views = rows[0]["_total_views"] if rows else 0
     total_sources = rows[0]["_total_sources"] if rows else 0
@@ -115,6 +151,17 @@ async def get_multi_collection_feed(
             )
         )
 
+    if not want_kpis:
+        kpis = None
+    elif cached_kpis is not None:
+        kpis = FeedKpis(**cached_kpis)
+    else:
+        kpis = _build_feed_kpis(kpi_rows)
+        set_feed_kpis(
+            request.agent_id, request.collection_ids, stamp, filter_sig,
+            kpis.model_dump(),
+        )
+
     return FeedResponse(
         posts=posts,
         total=int(total),
@@ -122,6 +169,7 @@ async def get_multi_collection_feed(
         total_sources=int(total_sources or 0),
         offset=request.offset,
         limit=request.limit,
+        kpis=kpis,
     )
 
 
@@ -140,13 +188,17 @@ _SORT_MAP_LEGACY = {
 }
 
 
-def _build_tvf_sql(request: MultiFeedRequest) -> tuple[str, dict]:
-    """Build the agent-aware feed query that delegates scoping to scope_posts TVF."""
+def _build_tvf_filters(request: MultiFeedRequest) -> tuple[str, str, dict]:
+    """Shared filter construction for the agent-scoped feed.
+
+    Returns ``(topic_join_sql, where_sql, params)``. Clauses reference the
+    ``base.`` alias (the ``scope_posts`` CTE). Both the posts query and the KPI
+    aggregate query draw from this so the KPI strip describes exactly the rows
+    the posts query would return - just without the row LIMIT.
+    """
     params: dict = {
         "agent_id": request.agent_id,
         "collection_ids": request.collection_ids,
-        "limit": request.limit,
-        "offset": request.offset,
     }
 
     where_clauses: list[str] = ["base.collection_id IN UNNEST(@collection_ids)"]
@@ -193,6 +245,14 @@ def _build_tvf_sql(request: MultiFeedRequest) -> tuple[str, dict]:
         params["topic_cluster_id"] = request.topic_cluster_id
 
     where_sql = "WHERE " + " AND ".join(where_clauses)
+    return topic_join_sql, where_sql, params
+
+
+def _build_tvf_sql(request: MultiFeedRequest) -> tuple[str, dict]:
+    """Build the agent-aware feed query that delegates scoping to scope_posts TVF."""
+    topic_join_sql, where_sql, params = _build_tvf_filters(request)
+    params["limit"] = request.limit
+    params["offset"] = request.offset
     order_sql = _SORT_MAP_TVF.get(request.sort, _SORT_MAP_TVF["views"])
 
     sql = f"""
@@ -223,6 +283,115 @@ def _build_tvf_sql(request: MultiFeedRequest) -> tuple[str, dict]:
     LIMIT @limit OFFSET @offset
     """
     return sql, params
+
+
+_KPI_BREAKDOWN_LIMIT = 15
+
+
+def _kpis_filter_signature(request: MultiFeedRequest) -> str:
+    """Stable string of the server-side filters that change the KPI aggregate.
+
+    Folded into the cache key so each distinct filter combo caches separately
+    while the default unfiltered view (the common data-tab load) shares one
+    entry. `limit`/`offset`/`sort`/`dedup` are excluded - they don't affect the
+    full-window aggregate (the TVF already dedups; paging/sorting don't change
+    the set being aggregated).
+    """
+    return "|".join(
+        [
+            request.platform,
+            request.sentiment,
+            request.start_date or "",
+            request.end_date or "",
+            request.topic_cluster_id or "",
+            "media" if request.has_media else "",
+        ]
+    )
+
+
+def _build_tvf_kpis_sql(request: MultiFeedRequest) -> tuple[str, dict]:
+    """Build the KPI-strip aggregate query for the agent-scoped feed.
+
+    Computes totals + breakdowns over the WHOLE filtered window (no row LIMIT),
+    so the data tab's KPI strip is accurate even when only the top-N posts are
+    downloaded for the table. Filters mirror the posts query exactly via
+    `_build_tvf_filters`. Agent-scoped path only - the legacy path returns no
+    KPIs (it predates agent scoping and isn't used by the data tab).
+    """
+    topic_join_sql, where_sql, params = _build_tvf_filters(request)
+
+    sql = f"""
+    WITH base AS (
+      SELECT * FROM social_listening.scope_posts(@agent_id)
+    ),
+    filtered AS (
+      SELECT base.* FROM base
+      {topic_join_sql}
+      {where_sql}
+    )
+    SELECT
+        COUNT(*) AS total_posts,
+        COALESCE(SUM(COALESCE(views, 0)), 0) AS total_views,
+        COALESCE(SUM(COALESCE(likes, 0)), 0) AS total_likes,
+        COALESCE(SUM(COALESCE(comments_count, 0)), 0) AS total_comments,
+        COALESCE(SUM(COALESCE(shares, 0)), 0) AS total_shares,
+        COUNT(DISTINCT channel_handle) AS unique_handles,
+        ARRAY(
+            SELECT AS STRUCT platform AS value, COUNT(*) AS count
+            FROM filtered WHERE platform IS NOT NULL
+            GROUP BY platform ORDER BY count DESC
+        ) AS platforms,
+        ARRAY(
+            SELECT AS STRUCT sentiment AS value, COUNT(*) AS count
+            FROM filtered WHERE sentiment IS NOT NULL
+            GROUP BY sentiment ORDER BY count DESC
+        ) AS sentiments,
+        ARRAY(
+            SELECT AS STRUCT theme AS value, COUNT(*) AS count
+            FROM filtered, UNNEST(themes) AS theme
+            GROUP BY theme ORDER BY count DESC LIMIT {_KPI_BREAKDOWN_LIMIT}
+        ) AS top_themes,
+        ARRAY(
+            SELECT AS STRUCT entity AS value, COUNT(*) AS count
+            FROM filtered, UNNEST(entities) AS entity
+            GROUP BY entity ORDER BY count DESC LIMIT {_KPI_BREAKDOWN_LIMIT}
+        ) AS top_entities
+    FROM filtered
+    """
+    return sql, params
+
+
+def _build_feed_kpis(rows: list[dict]) -> FeedKpis:
+    """Map the single aggregate row into the typed KPI bundle."""
+    if not rows:
+        return FeedKpis()
+    r = rows[0]
+
+    def _entries(key: str) -> list[TopicBreakdownEntry]:
+        out: list[TopicBreakdownEntry] = []
+        for item in r.get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            value = item.get("value")
+            if value is None or value == "":
+                continue
+            out.append(
+                TopicBreakdownEntry(value=str(value), count=int(item.get("count") or 0))
+            )
+        return out
+
+    return FeedKpis(
+        total_posts=int(r.get("total_posts") or 0),
+        total_views=int(r.get("total_views") or 0),
+        total_likes=int(r.get("total_likes") or 0),
+        total_comments=int(r.get("total_comments") or 0),
+        total_shares=int(r.get("total_shares") or 0),
+        unique_handles=int(r.get("unique_handles") or 0),
+        platforms=_entries("platforms"),
+        sentiments=_entries("sentiments"),
+        top_themes=_entries("top_themes"),
+        top_entities=_entries("top_entities"),
+    )
 
 
 def _build_legacy_sql(request: MultiFeedRequest) -> tuple[str, dict]:

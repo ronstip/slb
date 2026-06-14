@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '../../components/ui/select.tsx';
 import { PlatformIcon } from '../../components/PlatformIcon.tsx';
-import { AnalyticsStrip, computeAnalyticsStats } from './AnalyticsStrip.tsx';
+import { AnalyticsStrip, computeAnalyticsStats, analyticsStatsFromFeedKpis } from './AnalyticsStrip.tsx';
 import {
   collectionsPostColumns,
   createEmptyFilters,
@@ -167,6 +167,9 @@ export function PostsDataPanel({
         sort: 'views',
         limit: fetchLimit,
         offset: 0,
+        // Get full-window KPI aggregates so the strip is accurate even when the
+        // table only downloads the top `fetchLimit` posts (agent-scoped only).
+        include_kpis: !!agentId,
         dedup,
         platform: platformFilter !== 'all' ? platformFilter : undefined,
         sentiment: sentimentFilter !== 'all' ? sentimentFilter : undefined,
@@ -243,14 +246,33 @@ export function PostsDataPanel({
     staleTime: 5 * 60_000,
   });
 
-  // Analytics stats - computed from posts, then enriched with collection stats for status fields
+  // The KPI strip must describe whatever the table currently shows. Two filter
+  // tiers feed it:
+  //  - Server-side (source / platform / sentiment / date): sent with the /feed
+  //    request, so they're already baked into `data.kpis` (the full filtered
+  //    window - independent of the row cap).
+  //  - Client-side (per-column filters + global search): applied locally over
+  //    the downloaded rows only.
+  // So we use the server KPIs only when no client-side filter is active (the
+  // default + server-filtered views) - that keeps the headline numbers correct
+  // over the FULL window even when the table is truncated. The moment a column
+  // filter or search is active we switch to the client compute so the strip
+  // tracks the filter (over the loaded subset, as the truncation banner states).
+  const serverKpis = data?.kpis ?? null;
+  const hasClientSideFilter = hasActiveFilters(columnFilters) || globalSearch.trim().length > 0;
+  const useServerKpis = isTruncated && !!serverKpis && !hasClientSideFilter;
   const analyticsStats = useMemo(() => {
-    const base = computeAnalyticsStats(filteredPosts);
+    const base =
+      useServerKpis && serverKpis
+        ? analyticsStatsFromFeedKpis(serverKpis)
+        : computeAnalyticsStats(filteredPosts);
     if (!base) return base;
 
-    // Deduped unique post_ids across collections.
-    const uniquePostIds = new Set(allPosts.map((p) => p.post_id));
-    base.dedupedCount = uniquePostIds.size;
+    // Deduped unique post_ids. The scope_posts TVF already dedups, so the server
+    // count is authoritative when we use it; otherwise count the loaded subset.
+    base.dedupedCount = useServerKpis && serverKpis
+      ? serverKpis.total_posts
+      : new Set(allPosts.map((p) => p.post_id)).size;
 
     if (!allStats) return base;
 
@@ -275,7 +297,7 @@ export function PostsDataPanel({
     base.latestDate = dates.length > 0 ? dates.sort().pop()! : null;
 
     return base;
-  }, [filteredPosts, allPosts, allStats]);
+  }, [filteredPosts, allPosts, allStats, useServerKpis, serverKpis]);
 
   // Build source options from collections prop
   const sourceOptions = useMemo(() => {

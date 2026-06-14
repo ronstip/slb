@@ -279,6 +279,9 @@ class SocialWidgetFilters(BaseModel):
     themes: list[str] | None = None
     entities: list[str] | None = None
     brands: list[str] | None = None
+    # Topic cluster ids (from list_topics / topic_metrics). Any-of match against
+    # the post's topic membership - the agent's per-section story baseline.
+    topics: list[str] | None = None
     # Agent-defined enrichment fields, keyed by field name. Selected values are
     # ORed within a field and ANDed across fields, matching widget UI semantics.
     custom_fields: dict[str, list[str]] | None = None
@@ -308,6 +311,7 @@ class ReportScope(BaseModel):
     channels: list[str] | None = None
     themes: list[str] | None = None
     entities: list[str] | None = None
+    topics: list[str] | None = None
     date_range: DateRange | None = None
 
 
@@ -404,6 +408,11 @@ class SocialDashboardWidget(BaseModel):
     # into Firestore + shared dashboards instead of being dropped by extra='ignore'.
     media: SocialMediaConfig | None = None
     figureText: str | None = None
+    # Widget stays in the layout but is excluded from view mode, shared
+    # dashboards, and PDF export (edit mode renders it dimmed with a badge).
+    # Declared explicitly so it survives extra='ignore' and so update_dashboard
+    # patches setting it are not reported as ignored_fields. Absent → visible.
+    hidden: bool | None = None
     numberSize: Literal["small", "medium", "big"] | None = None
     # Set once the user manually resizes a text/embed card. Must be an explicit
     # field (not extra='ignore' drop) so the chosen height survives the save and
