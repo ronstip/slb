@@ -953,12 +953,21 @@ function StyleTab({
   const styleOverrides: ChartStyleOverrides = draft.styleOverrides
     ?? (draft.accent ? { accent: draft.accent } : {});
 
+  // Default donut center label (shown as placeholder) - mirrors the renderer's
+  // metricLabel(activeMetric) fallback for the widget's primary metric.
+  const centerLabelDefault = draft.customConfig
+    ? (isTopicsSource
+        ? TOPIC_METRIC_META[draft.customConfig.metric as keyof typeof TOPIC_METRIC_META]?.label
+        : METRIC_META[draft.customConfig.metric as CustomMetric]?.label) ?? String(draft.customConfig.metric)
+    : undefined;
+
   return (
     <ChartStyleEditor
       seriesLabels={seriesLabels}
       chartType={draft.chartType}
       value={styleOverrides}
       onChange={onStyleChange}
+      centerLabelDefault={centerLabelDefault}
     />
   );
 }

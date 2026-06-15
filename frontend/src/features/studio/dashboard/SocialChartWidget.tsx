@@ -209,6 +209,7 @@ const barDatalabelsPlugin = {
     const display: TableColumnDisplay =
       (chart.options.plugins as { barDatalabels?: { display?: TableColumnDisplay } } | undefined)
         ?.barDatalabels?.display ?? 'abs';
+    if (display === 'none') return; // value labels off
 
     // Percent base = "share of total shown". For grouped/stacked bars that is
     // the category's total across all visible datasets (the bars sharing an x);
@@ -301,6 +302,7 @@ const lineDatalabelsPlugin = {
     const display: TableColumnDisplay =
       (chart.options.plugins as { lineDatalabels?: { display?: TableColumnDisplay } } | undefined)
         ?.lineDatalabels?.display ?? 'abs';
+    if (display === 'none') return; // value labels off
     const fg = resolveThemeColor('--foreground');
 
     let total = 0;
@@ -744,7 +746,9 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
                     : valueDisplay === 'pct'
                       ? formatPct(val, total)
                       : `${formatNumber(val)}, ${formatPct(val, total)}`;
-                  return { text: `${label} (${inner})`, fillStyle: chartColors[i % chartColors.length], strokeStyle: 'transparent', hidden: false, index: i };
+                  // 'none' → legend shows the slice name only, no value.
+                  const text = valueDisplay === 'none' ? label : `${label} (${inner})`;
+                  return { text, fillStyle: chartColors[i % chartColors.length], strokeStyle: 'transparent', hidden: false, index: i };
                 });
               },
             },

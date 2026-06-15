@@ -1301,7 +1301,7 @@ function CustomWidget({
         barOrientation={widget.customConfig?.barOrientation}
         stacked={widget.customConfig?.stacked ?? true}
         timeBucket={widget.customConfig?.timeBucket}
-        centerLabel={metricLabel(activeMetric)}
+        centerLabel={widget.styleOverrides?.centerLabel?.trim() || metricLabel(activeMetric)}
         labelDisplay={widget.styleOverrides?.labelDisplay}
       />
     </SocialWidgetFrame>
@@ -1375,7 +1375,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
         seriesColorOverrides={widget.styleOverrides?.seriesColors}
         seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
         barOrientation={widget.customConfig?.barOrientation}
-        centerLabel="Posts"
+        centerLabel={widget.styleOverrides?.centerLabel?.trim() || 'Posts'}
         labelDisplay={widget.styleOverrides?.labelDisplay}
       />
     </SocialWidgetFrame>

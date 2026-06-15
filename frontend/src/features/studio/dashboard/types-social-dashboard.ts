@@ -577,8 +577,9 @@ export type TableColumnViz = 'none' | 'bar' | 'heatmap';
 
 /** Numeric format for a column. 'abs' (default) = raw number; 'pct' = the
  *  cell's share of the column's total across visible rows; 'abs_pct' = both,
- *  e.g. "1,234 (12.3%)". Ignored for string dimension cells. */
-export type TableColumnDisplay = 'abs' | 'pct' | 'abs_pct';
+ *  e.g. "1,234 (12.3%)". 'none' = no value label (chart value-labels only -
+ *  table columns always render a value). Ignored for string dimension cells. */
+export type TableColumnDisplay = 'abs' | 'pct' | 'abs_pct' | 'none';
 
 /** Body/header text size for a table widget. 'xs' (default) matches the
  *  historical compact look; 'sm'/'base' make the table read larger in a brief. */
@@ -918,6 +919,9 @@ export interface ChartStyleOverrides {
    *  both. Unset preserves each chart's historical default (pie/doughnut =
    *  percent, others = absolute) - see `resolveLabelDisplay`. */
   labelDisplay?: TableColumnDisplay;
+  /** Doughnut only: custom text shown inside the donut, above the KPI number.
+   *  Unset → falls back to the active metric's label. */
+  centerLabel?: string;
 }
 
 /** Aggregations that were superseded by `aggregation: 'custom'` with the right
