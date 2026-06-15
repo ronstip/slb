@@ -16,7 +16,8 @@ import {
 import type { ChartOptions } from 'chart.js';
 import { Bar, Doughnut, Pie, Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
-import type { SocialChartType, WidgetData } from './types-social-dashboard.ts';
+import type { SocialChartType, TableColumnDisplay, WidgetData } from './types-social-dashboard.ts';
+import { resolveLabelDisplay, formatPct, composeLabel } from './chart-label-format.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { getCategoricalPalette } from '../../../lib/accent-colors.ts';
 import { SENTIMENT_COLORS, PLATFORM_COLORS } from '../../../lib/constants.ts';
@@ -200,8 +201,33 @@ const barDatalabelsPlugin = {
       | { x?: { stacked?: boolean }; y?: { stacked?: boolean } }
       | undefined;
     const isStacked = !!(scales?.x?.stacked || scales?.y?.stacked);
-    const multiDataset = chart.data.datasets.length > 1;
+    const datasets = chart.data.datasets;
+    const multiDataset = datasets.length > 1;
     const fg = resolveThemeColor('--foreground');
+    // Chosen value-label format (abs / pct / abs_pct), stashed on the chart
+    // options by the React layer so this static plugin can read it each draw.
+    const display: TableColumnDisplay =
+      (chart.options.plugins as { barDatalabels?: { display?: TableColumnDisplay } } | undefined)
+        ?.barDatalabels?.display ?? 'abs';
+
+    // Percent base = "share of total shown". For grouped/stacked bars that is
+    // the category's total across all visible datasets (the bars sharing an x);
+    // for a single series it is the sum of every bar. Precomputed once.
+    const visibleSets = datasets
+      .map((ds, di) => ({ ds, di }))
+      .filter(({ di }) => chart.isDatasetVisible(di));
+    const categoryTotals: number[] = [];
+    let singleTotal = 0;
+    if (multiDataset) {
+      for (const { ds } of visibleSets) {
+        (ds.data as number[]).forEach((v, i) => {
+          categoryTotals[i] = (categoryTotals[i] ?? 0) + (Number(v) || 0);
+        });
+      }
+    } else if (visibleSets.length === 1) {
+      singleTotal = (visibleSets[0].ds.data as number[]).reduce((a, b) => a + (Number(b) || 0), 0);
+    }
+    const totalFor = (i: number) => (multiDataset ? categoryTotals[i] ?? 0 : singleTotal);
 
     chart.data.datasets.forEach((dataset, datasetIndex) => {
       if (!chart.isDatasetVisible(datasetIndex)) return;
@@ -234,13 +260,13 @@ const barDatalabelsPlugin = {
           ctx.textBaseline = 'middle';
           const cx = isHorizontalBar ? (props.x + props.base) / 2 : props.x;
           const cy = isHorizontalBar ? props.y : (props.y + props.base) / 2;
-          ctx.fillText(formatNumber(val), cx, cy);
+          ctx.fillText(composeLabel(formatNumber(val), val, totalFor(i), display), cx, cy);
         } else {
           // Declutter: skip the value label when the bar is too thin to hold it
           // without colliding with neighbours (common with grouped/side-by-side
           // bars). The tooltip still surfaces the exact value on hover.
           const barEl = bar as unknown as { width?: number; height?: number };
-          const txt = formatNumber(val);
+          const txt = composeLabel(formatNumber(val), val, totalFor(i), display);
           const txtW = ctx.measureText(txt).width;
           ctx.fillStyle = fg;
           if (isHorizontalBar) {
@@ -259,6 +285,53 @@ const barDatalabelsPlugin = {
         }
         ctx.restore();
       });
+    });
+  },
+};
+
+// Line point labels - opt-in (only attached when the user picks a value-label
+// format). Reads `display` from chart.options.plugins.lineDatalabels. Declutters
+// by skipping points that would crowd the previously drawn label on the same
+// series. Percent base = sum of every plotted value across visible series
+// ("share of total shown").
+const lineDatalabelsPlugin = {
+  id: 'lineDatalabels',
+  afterDatasetsDraw(chart: ChartJS) {
+    const { ctx } = chart;
+    const display: TableColumnDisplay =
+      (chart.options.plugins as { lineDatalabels?: { display?: TableColumnDisplay } } | undefined)
+        ?.lineDatalabels?.display ?? 'abs';
+    const fg = resolveThemeColor('--foreground');
+
+    let total = 0;
+    chart.data.datasets.forEach((ds, di) => {
+      if (!chart.isDatasetVisible(di)) return;
+      for (const p of ds.data as Array<{ y?: number } | number>) {
+        const y = typeof p === 'number' ? p : p?.y ?? 0;
+        total += Number(y) || 0;
+      }
+    });
+
+    chart.data.datasets.forEach((dataset, datasetIndex) => {
+      if (!chart.isDatasetVisible(datasetIndex)) return;
+      const meta = chart.getDatasetMeta(datasetIndex);
+      const points = dataset.data as Array<{ y?: number } | number>;
+      let lastX = -Infinity;
+      ctx.save();
+      ctx.font = '600 10px system-ui, sans-serif';
+      ctx.fillStyle = fg;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      meta.data.forEach((point, i) => {
+        const raw = points[i];
+        const val = typeof raw === 'number' ? raw : raw?.y ?? 0;
+        if (val == null || val === 0) return;
+        const el = point as unknown as { x: number; y: number };
+        if (el.x - lastX < 32) return; // crowding guard
+        lastX = el.x;
+        ctx.fillText(composeLabel(formatNumber(val), val, total, display), el.x, el.y - 6);
+      });
+      ctx.restore();
     });
   },
 };
@@ -282,9 +355,17 @@ interface SocialChartWidgetProps {
   timeBucket?: 'hour' | 'day' | 'week' | 'month';
   /** Label shown under the centered total in doughnut charts. Defaults to 'total'. */
   centerLabel?: string;
+  /** How numeric value labels render (bar/line on-chart labels, pie/doughnut
+   *  legend): absolute, percent of total shown, or both. Unset → each chart's
+   *  historical default (pie/doughnut percent, others absolute). */
+  labelDisplay?: TableColumnDisplay;
 }
 
-export function SocialChartWidget({ chartType, data, accent, seriesColorOverrides, seriesLabelOverrides, barOrientation = 'horizontal', stacked = true, timeBucket = 'day', centerLabel }: SocialChartWidgetProps) {
+export function SocialChartWidget({ chartType, data, accent, seriesColorOverrides, seriesLabelOverrides, barOrientation = 'horizontal', stacked = true, timeBucket = 'day', centerLabel, labelDisplay }: SocialChartWidgetProps) {
+  // Effective format for on-chart/legend value labels. Line labels are opt-in:
+  // they only render when the user explicitly set a format (lineLabelsOn).
+  const valueDisplay = resolveLabelDisplay(chartType, labelDisplay);
+  const lineLabelsOn = !!labelDisplay;
   const { accentColor, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -434,6 +515,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       ...BASE_CHART_PERF,
       interaction: { mode: 'index' as const, intersect: false },
       plugins: {
+        lineDatalabels: { display: valueDisplay },
         legend: {
           display: true,
           position: 'bottom' as const,
@@ -466,7 +548,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       },
     };
 
-    return <div className="h-full w-full"><Line ref={lineRef as never} data={chartData} options={options} /></div>;
+    return <div className="h-full w-full"><Line ref={lineRef as never} data={chartData} options={options} plugins={lineLabelsOn ? [lineDatalabelsPlugin] : []} /></div>;
   }
 
   // ── Single time series (line) - only for line chart type ─────────────────
@@ -499,6 +581,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       ...BASE_CHART_PERF,
       interaction: { mode: 'index' as const, intersect: false },
       plugins: {
+        lineDatalabels: { display: valueDisplay },
         legend: { display: false },
         tooltip: {
           ...getTooltipStyle(),
@@ -519,7 +602,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       },
     };
 
-    return <div className="h-full w-full"><Line ref={lineRef as never} data={chartData} options={options} /></div>;
+    return <div className="h-full w-full"><Line ref={lineRef as never} data={chartData} options={options} plugins={lineLabelsOn ? [lineDatalabelsPlugin] : []} /></div>;
   }
 
   // ── Grouped categorical bar charts (breakdown / hue) ─────────────────────
@@ -575,6 +658,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       ...(isHorizontal ? { indexAxis: 'y' as const } : {}),
       layout: { padding: { top: 12, bottom: 4 } },
       plugins: {
+        barDatalabels: { display: valueDisplay },
         legend: {
           display: true,
           position: 'bottom' as const,
@@ -655,8 +739,12 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
                 const dataset = chart.data.datasets[0];
                 return (chart.data.labels as string[]).map((label, i) => {
                   const val = (dataset.data as number[])[i];
-                  const pct = total > 0 ? ((val / total) * 100).toFixed(0) : '0';
-                  return { text: `${label} (${pct}%)`, fillStyle: chartColors[i % chartColors.length], strokeStyle: 'transparent', hidden: false, index: i };
+                  const inner = valueDisplay === 'abs'
+                    ? formatNumber(val)
+                    : valueDisplay === 'pct'
+                      ? formatPct(val, total)
+                      : `${formatNumber(val)}, ${formatPct(val, total)}`;
+                  return { text: `${label} (${inner})`, fillStyle: chartColors[i % chartColors.length], strokeStyle: 'transparent', hidden: false, index: i };
                 });
               },
             },
@@ -719,6 +807,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
       ...BASE_CHART_PERF,
       ...(isHorizontal ? { indexAxis: 'y' as const } : {}),
       plugins: {
+        barDatalabels: { display: valueDisplay },
         legend: { display: false },
         tooltip: {
           ...getTooltipStyle(),

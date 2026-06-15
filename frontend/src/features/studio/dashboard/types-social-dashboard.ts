@@ -913,6 +913,11 @@ export interface ChartStyleOverrides {
    *  data, value is the user-facing name shown in legends, axes, table cells,
    *  tooltips, etc. Empty/missing → fall back to humanised raw label. */
   seriesLabels?: Record<string, string>;
+  /** How numeric value labels render on the chart (bar/line on-chart labels,
+   *  pie/doughnut legend entries): absolute number, percent of total shown, or
+   *  both. Unset preserves each chart's historical default (pie/doughnut =
+   *  percent, others = absolute) - see `resolveLabelDisplay`. */
+  labelDisplay?: TableColumnDisplay;
 }
 
 /** Aggregations that were superseded by `aggregation: 'custom'` with the right
