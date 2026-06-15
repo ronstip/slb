@@ -26,7 +26,7 @@ const MarkdownArtifactEditor = lazy(() =>
 );
 import { cn } from '../../../../lib/utils.ts';
 import type { CustomFieldDef, DashboardPost, TopicMetric } from '../../../../api/types.ts';
-import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension, TimeBucket } from '../types-social-dashboard.ts';
+import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension, TimeBucket, ComputedField } from '../types-social-dashboard.ts';
 import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig, objectFieldOf, objectFieldOfTable } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
@@ -139,6 +139,8 @@ interface SocialWidgetConfigDialogProps {
   objectFieldDefs?: CustomFieldDef[];
   /** All declared custom field defs - drives condition operator/input typing. */
   customFieldDefs?: CustomFieldDef[];
+  /** Report-level computed fields, surfaced as `computed:<id>` dims/metrics. */
+  computedFields?: ComputedField[];
   /** Agent context used to ground AI compose with task title + description. */
   agentId?: string;
   /** Agent-scoped topic_metrics rows. Empty when no agent context (in which
@@ -158,6 +160,7 @@ export function SocialWidgetConfigDialog({
   customFieldNames,
   objectFieldDefs,
   customFieldDefs,
+  computedFields,
   agentId,
   topics,
 }: SocialWidgetConfigDialogProps) {
@@ -177,6 +180,7 @@ export function SocialWidgetConfigDialog({
       customFieldNames={customFieldNames}
       objectFieldDefs={objectFieldDefs}
       customFieldDefs={customFieldDefs}
+      computedFields={computedFields}
       agentId={agentId}
       topics={topics}
     />
@@ -242,6 +246,7 @@ function SocialWidgetConfigDialogInner({
   customFieldNames,
   objectFieldDefs,
   customFieldDefs,
+  computedFields,
   agentId,
   topics = [],
 }: SocialWidgetConfigDialogProps & { widget: SocialDashboardWidget }) {
@@ -692,6 +697,7 @@ function SocialWidgetConfigDialogInner({
                       chartType={draft.chartType}
                       customFieldNames={customFieldNames}
                       objectFieldDefs={objectFieldDefs}
+                      computedFields={computedFields}
                       dataSource={dataSource}
                     />
                   )}

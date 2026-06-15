@@ -1,11 +1,17 @@
 import { apiDelete, apiGet, apiPost } from '../client.ts';
 import type { DashboardDataResponse, DashboardShareInfo, SharedDashboardDataResponse } from '../types.ts';
+import type { ReportConfig } from '../../features/studio/dashboard/types-social-dashboard.ts';
 
 export async function getDashboardData(
   collectionIds: string[],
   agentId?: string,
+  reportConfig?: ReportConfig | null,
 ): Promise<DashboardDataResponse> {
-  return apiPost('/dashboard/data', { collection_ids: collectionIds, agent_id: agentId });
+  return apiPost('/dashboard/data', {
+    collection_ids: collectionIds,
+    agent_id: agentId,
+    report_config: reportConfig ?? undefined,
+  });
 }
 
 // --- Dashboard sharing ---

@@ -12,6 +12,7 @@ from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
 from api.routers.dashboard_schema import (
     DashboardOrientation,
+    ReportConfig,
     ReportScope,
     SocialDashboardWidget,
     MAX_WIDGETS,
@@ -95,6 +96,7 @@ class LayoutSaveRequest(BaseModel):
     orientation: DashboardOrientation | None = None
     reportScope: ReportScope | None = None
     filterBarHidden: bool | None = None
+    reportConfig: ReportConfig | None = None
 
 
 class LayoutResponse(BaseModel):
@@ -103,6 +105,7 @@ class LayoutResponse(BaseModel):
     orientation: DashboardOrientation | None = None
     reportScope: ReportScope | None = None
     filterBarHidden: bool | None = None
+    reportConfig: ReportConfig | None = None
 
 
 @router.get("/{artifact_id}", response_model=LayoutResponse)
@@ -130,6 +133,7 @@ async def get_dashboard_layout(
         orientation=data.get("orientation"),
         reportScope=data.get("reportScope"),
         filterBarHidden=data.get("filterBarHidden"),
+        reportConfig=data.get("reportConfig"),
     )
 
 
@@ -181,6 +185,11 @@ async def save_dashboard_layout(
         if request.reportScope is not None
         else None
     )
+    serialized_config = (
+        request.reportConfig.model_dump(exclude_none=True, by_alias=True)
+        if request.reportConfig is not None
+        else None
+    )
     # MERGE the layout fields rather than replacing the whole doc. Without
     # `merge=True`, `.set()` drops every field not in the payload - including
     # `is_template`, `title`, and `source_template_id` - silently demoting docs.
@@ -194,6 +203,7 @@ async def save_dashboard_layout(
             "orientation": request.orientation,
             "reportScope": serialized_scope,
             "filterBarHidden": request.filterBarHidden,
+            "reportConfig": serialized_config,
             # Stamp editor saves too (the agent's update_dashboard already does).
             # Without this, a manual save left updated_at showing the last *agent*
             # write, which masked when the layout actually changed.
@@ -208,4 +218,5 @@ async def save_dashboard_layout(
         orientation=request.orientation,
         reportScope=request.reportScope,
         filterBarHidden=request.filterBarHidden,
+        reportConfig=request.reportConfig,
     )

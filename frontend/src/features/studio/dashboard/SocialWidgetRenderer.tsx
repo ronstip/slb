@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
-import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay, ComputedField } from './types-social-dashboard.ts';
 import { DATE_CONDITION_FIELDS, isPostCountCondition, isCustomFieldDimension, customFieldName, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, getDimensionMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from './topic-aggregations.ts';
 import { aggregateObjectList, aggregateObjectTable } from './object-list-aggregations.ts';
@@ -1107,12 +1107,14 @@ function CustomWidget({
   onDuplicate,
   onFilterToggle,
   onTopicNavigate,
+  computedFields,
 }: FrameProps & {
   widgetIndex?: number;
   posts: DashboardPost[];
   topics?: TopicMetric[];
   onFilterToggle?: (key: string, value: string) => void;
   onTopicNavigate?: (clusterId: string) => void;
+  computedFields?: ComputedField[];
 }) {
   const config = widget.customConfig;
   const dataSource: DataSource = widget.dataSource ?? 'posts';
@@ -1150,8 +1152,8 @@ function CustomWidget({
     if (objField) return aggregateObjectList(aggPosts, objField, effectiveConfig);
     return isTopicsSource
       ? aggregateTopicsCustom(topics ?? [], effectiveConfig)
-      : aggregateCustom(aggPosts, effectiveConfig);
-  }, [isTopicsSource, aggPosts, topics, effectiveConfig]);
+      : aggregateCustom(aggPosts, effectiveConfig, computedFields);
+  }, [isTopicsSource, aggPosts, topics, effectiveConfig, computedFields]);
 
   const cloudData = useMemo(() => {
     if (!data?.labels || !data.values) return [];
@@ -1170,10 +1172,10 @@ function CustomWidget({
       dimension: widget.trendDimension ?? 'posted_at',
       timeBucket: widget.trendTimeBucket ?? 'day',
       breakdownDimension: undefined,
-    });
+    }, computedFields);
     const values = series.values ?? [];
     return widget.trendCumulative ? toCumulativeSeries(values) : values;
-  }, [effectiveConfig, aggPosts, widget.numberSize, widget.showSparkline, widget.trendDimension, widget.trendTimeBucket, widget.trendCumulative]);
+  }, [effectiveConfig, aggPosts, widget.numberSize, widget.showSparkline, widget.trendDimension, widget.trendTimeBucket, widget.trendCumulative, computedFields]);
 
   const syntheticKpi = useMemo(
     () => ({ label: widget.title, value: data?.value ?? 0, icon: 'posts' as const, sparklineData }),
@@ -1757,6 +1759,12 @@ interface SocialWidgetRendererProps {
   serverKpis?: DashboardKpis;
   onAutoSize?: (i: string, h: number) => void;
   onMediaAspect?: (i: string, ratio: number) => void;
+  /** Report-level value colors (field → value → hex). Flattened and merged in
+   *  as the base series-color layer; per-widget `seriesColors` win. */
+  reportValueColors?: Record<string, Record<string, string>>;
+  /** Report-level computed fields. Needed to aggregate `expr` computed metrics
+   *  (aggregate-then-evaluate). */
+  reportComputedFields?: ComputedField[];
 }
 
 function SocialWidgetRendererImpl({
@@ -1773,6 +1781,8 @@ function SocialWidgetRendererImpl({
   serverKpis,
   onAutoSize,
   onMediaAspect,
+  reportValueColors,
+  reportComputedFields,
 }: SocialWidgetRendererProps) {
   // Legacy aggregations (`volume`, `sentiment-over-time`) are rewritten to
   // `aggregation: 'custom'` here so the dispatch below stays uniform.
@@ -1780,7 +1790,23 @@ function SocialWidgetRendererImpl({
   // (e.g. an agent-emitted layout that set `aggregation: 'kpi'`) routes
   // through the custom path which knows how to read topic data.
   const widget = useMemo(() => {
-    const normalized = normalizeWidgetAggregation(rawWidget);
+    let normalized = normalizeWidgetAggregation(rawWidget);
+    // Bake report-level value colors in as the BASE series-color layer so any
+    // downstream `widget.styleOverrides.seriesColors` read inherits them; a
+    // per-widget override on the same value wins (spread last).
+    if (reportValueColors) {
+      const flat: Record<string, string> = {};
+      for (const perField of Object.values(reportValueColors)) Object.assign(flat, perField);
+      if (Object.keys(flat).length > 0) {
+        normalized = {
+          ...normalized,
+          styleOverrides: {
+            ...normalized.styleOverrides,
+            seriesColors: { ...flat, ...(normalized.styleOverrides?.seriesColors ?? {}) },
+          },
+        };
+      }
+    }
     if (
       (normalized.dataSource ?? 'posts') === 'topics'
       && normalized.aggregation !== 'text'
@@ -1790,7 +1816,7 @@ function SocialWidgetRendererImpl({
       return { ...normalized, aggregation: 'custom' as const };
     }
     return normalized;
-  }, [rawWidget]);
+  }, [rawWidget, reportValueColors]);
 
   const widgetPosts = useMemo(
     () => applyWidgetFilters(filteredPosts, widget.filters),
@@ -1829,6 +1855,7 @@ function SocialWidgetRendererImpl({
         topics={topics}
         onFilterToggle={onFilterToggle}
         onTopicNavigate={onTopicNavigate}
+        computedFields={reportComputedFields}
       />
     );
   }

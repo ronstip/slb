@@ -38,6 +38,7 @@ from api.services.dashboard_service import (
     build_topics_sql,
     derive_agent_id_for_collections,
 )
+from api.services.report_transform import transform_posts, validate_report_config
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -338,6 +339,7 @@ async def get_shared_dashboard(
     orientation: str | None = None
     report_scope: dict | None = None
     filter_bar_hidden: bool | None = None
+    report_config: dict | None = None
     try:
         layout_doc = await asyncio.to_thread(
             fs._db.collection("dashboard_layouts").document(share["dashboard_id"]).get
@@ -349,6 +351,7 @@ async def get_shared_dashboard(
             orientation = layout_data.get("orientation")
             report_scope = layout_data.get("reportScope")
             filter_bar_hidden = layout_data.get("filterBarHidden")
+            report_config = layout_data.get("reportConfig")
     except Exception:  # noqa: BLE001 - layout is non-critical, fall back to defaults
         logger.exception("Failed to load layout for shared dashboard %s", token)
     layout = strip_hidden_widgets(layout)
@@ -451,12 +454,20 @@ async def get_shared_dashboard(
     # Fire-and-forget telemetry update
     asyncio.create_task(_record_access(fs, token))
 
+    # Apply the report-level transform (canonicalization + computed fields) so a
+    # shared link shows the same canonical numbers as the owner's interactive
+    # dashboard. Runs on the cached raw core; an invalid config is ignored here
+    # (public view must not 422) - the owner's editor enforces validity on save.
+    share_posts = core["posts"]
+    if report_config and not validate_report_config(report_config):
+        share_posts = transform_posts(core["posts"], report_config)
+
     # Wrap the cached core (posts/topics/collection_names/truncated) with this
     # share's per-request metadata; kpis in the core are unused here. Returned
     # raw via orjson - shape matches SharedDashboardDataResponse.
     return ORJSONResponse(
         {
-            "posts": core["posts"],
+            "posts": share_posts,
             "topics": core["topics"],
             "collection_names": core["collection_names"],
             "truncated": core["truncated"],
@@ -466,6 +477,10 @@ async def get_shared_dashboard(
             "orientation": orientation,
             "reportScope": report_scope,
             "filterBarHidden": filter_bar_hidden,
+            # Forwarded so the read-only client applies value colors + evaluates
+            # expr computed metrics (canonicalization + if/else are already baked
+            # into `share_posts` above).
+            "reportConfig": report_config,
         }
     )
 

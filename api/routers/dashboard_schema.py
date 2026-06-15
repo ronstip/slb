@@ -85,6 +85,12 @@ CustomMetric = Literal[
 # CustomFieldDimension) so the Literal parity test stays meaningful.
 CustomObjectMetric = Annotated[str, StringConstraints(pattern=r"^customobj:[^\s]+$")]
 
+# Report-defined computed fields (see ReportConfig) are referenced in the
+# dimension/metric vocabularies as `computed:<id>`. Kept as a pattern (like
+# CustomFieldDimension / CustomObjectMetric) so the Literal parity test stays
+# meaningful. Mirrors the TS template-literal arm `\`computed:${string}\``.
+ComputedFieldRef = Annotated[str, StringConstraints(pattern=r"^computed:[^\s]+$")]
+
 # ─── Topic widget vocabulary (when widget.dataSource === 'topics') ────────────
 # Mirrors TopicDimension / TopicMetric in types-social-dashboard.ts. Topic
 # widgets read from `social_listening.topic_metrics(@agent_id)` - see
@@ -125,8 +131,8 @@ TopicMetric = Literal[
 # Widened types used in CustomChartConfig / TableColumn. The runtime branches
 # on the widget's `dataSource` to decide which arm of the union is active;
 # Pydantic validates against the union so both vocabularies round-trip.
-AnyDimension = Union[CustomDimensionField, TopicDimension]
-AnyMetric = Union[CustomMetric, TopicMetric, CustomObjectMetric]
+AnyDimension = Union[CustomDimensionField, TopicDimension, ComputedFieldRef]
+AnyMetric = Union[CustomMetric, TopicMetric, CustomObjectMetric, ComputedFieldRef]
 
 DataSource = Literal["posts", "topics"]
 
@@ -313,6 +319,87 @@ class ReportScope(BaseModel):
     entities: list[str] | None = None
     topics: list[str] | None = None
     date_range: DateRange | None = None
+
+
+# ─── Report config (report-level defaults above per-widget config) ────────────
+# Persisted on the dashboard layout doc as `reportConfig`. The authoritative
+# transform applies it ONCE to the shared posts (consumed by the interactive
+# dashboard, the Brief, and shareable reports) so every consumer sees identical
+# canonical data. Mirrors `ReportConfig` in types-social-dashboard.ts. See
+# docs/report-config-architecture.md. These models store/round-trip the config;
+# the transform engine that enforces accuracy lands in a later phase.
+
+
+class CanonGroup(BaseModel):
+    """Groups raw values into one canonical value, per chosen fields. The
+    transform remaps THEN dedupes within each post's array on multi-valued
+    fields, so merging can only drop or move counts, never inflate them."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(min_length=1)
+    canonical: str = Field(min_length=1)
+    members: list[str] = Field(default_factory=list)
+    # FieldKey strings: scalar/multi-valued built-ins or `custom:<name>`.
+    fields: list[str] = Field(default_factory=list)
+
+
+class ExprNode(BaseModel):
+    """Closed arithmetic AST node for an `expr` computed field. Recursive via
+    `l`/`r`/`args`. The small node set keeps the TS and Python evaluators
+    identical. Mirrors ExprNode in types-social-dashboard.ts."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    t: Literal["num", "field", "bin", "fn"]
+    v: float | None = None  # t == "num"
+    ref: str | None = None  # t == "field" (an AnyMetric)
+    op: Literal["+", "-", "*", "/"] | None = None  # t == "bin"
+    l: "ExprNode | None" = None  # noqa: E741 - mirrors TS field name; t == "bin"
+    r: "ExprNode | None" = None  # t == "bin"
+    fn: Literal["min", "max", "abs"] | None = None  # t == "fn"
+    args: list["ExprNode"] | None = None  # t == "fn"
+
+
+class IfElseCase(BaseModel):
+    """One case of an if/elif/else computed field: when ALL `when` conditions
+    hold (AND), the field takes `value`. First matching case wins."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    when: list[FilterCondition] = Field(default_factory=list)
+    value: str | float
+
+
+class ComputedField(BaseModel):
+    """Report-defined field, referenced as `computed:<id>`. `expr` → numeric
+    metric (evaluated over per-bucket aggregated leaves); `ifelse` → categorical
+    dimension or per-post numeric metric. Loose-arm shape (optional `expr` /
+    `cases` / `elseValue`) so both kinds round-trip; structure validated
+    client-side. Mirrors ComputedField in types-social-dashboard.ts."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    kind: Literal["expr", "ifelse"]
+    output: Literal["metric", "dimension"]
+    expr: ExprNode | None = None  # kind == "expr"
+    cases: list[IfElseCase] | None = None  # kind == "ifelse"
+    elseValue: str | float | None = None  # kind == "ifelse"
+
+
+class ReportConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    canonicalization: list[CanonGroup] | None = None
+    # field (FieldKey) -> canonical value -> hex color.
+    valueColors: dict[str, dict[str, str]] | None = None
+    computedFields: list[ComputedField] | None = None
+
+
+# Resolve ExprNode's self-references (`l`/`r`/`args`) now that the class exists.
+ExprNode.model_rebuild()
 
 
 class TableColumn(BaseModel):

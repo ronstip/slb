@@ -230,6 +230,9 @@ class SharedDashboardDataResponse(BaseModel):
     # Editor toggle: when true, the public viewer should not render the filter
     # bar at all (this is a curated report, not an exploration surface).
     filterBarHidden: bool | None = None
+    # Report-level config (canonicalization is already applied to `posts`;
+    # value colors + computed-field defs are forwarded for client-side render).
+    reportConfig: dict[str, Any] | None = None
 
 
 class BriefingShareResponse(BaseModel):

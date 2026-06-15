@@ -548,6 +548,10 @@ export interface DashboardPost {
   view_count: number;
   comment_count: number;
   share_count: number;
+  /** Report-level computed fields, attached by the server transform. Keyed by
+   *  computed-field id; only if/else fields are attached per-post (expr metrics
+   *  are aggregate-then-evaluate). See report-config-architecture.md. */
+  computed?: Record<string, string | number>;
 }
 
 export interface DashboardKpis {
@@ -681,6 +685,10 @@ export interface SharedDashboardDataResponse {
   /** Editor toggle: when true, the public viewer should not render the
    *  filter bar at all. */
   filterBarHidden?: boolean | null;
+  /** Report-level config. Canonicalization is already applied to `posts`
+   *  server-side; value colors + computed-field defs are forwarded for
+   *  client-side render. Typed loosely here (cast to `ReportConfig`). */
+  reportConfig?: Record<string, unknown> | null;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────

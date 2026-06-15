@@ -30,6 +30,7 @@ from api.services.dashboard_service import (
     build_topics_sql,
     derive_agent_id_for_collections,
 )
+from api.services.report_transform import transform_posts, validate_report_config
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,18 @@ async def get_dashboard_data(
         agent_id, len(request.collection_ids), "HIT" if cache_hit else "MISS",
         len(core["posts"]), gather_ms, serialize_ms,
     )
+
+    # Apply the report-level transform (canonicalization + computed fields) on
+    # top of the cached core. The cache holds RAW posts keyed by data freshness,
+    # so a live-edit recompute with a new report_config reuses it without
+    # re-querying BigQuery. Canonicalization only moves value-level counts, so
+    # the post-level KPIs are unaffected and need no recompute.
+    if request.report_config is not None:
+        config = request.report_config.model_dump(exclude_none=True, by_alias=True)
+        errors = validate_report_config(config)
+        if errors:
+            raise HTTPException(status_code=422, detail="; ".join(errors))
+        core = {**core, "posts": transform_posts(core["posts"], config)}
 
     # Return the cached/assembled core directly (already matches
     # DashboardDataResponse) via orjson, skipping a second per-row validation.
