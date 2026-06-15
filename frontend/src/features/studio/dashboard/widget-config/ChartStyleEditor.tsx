@@ -3,6 +3,8 @@ import { Label } from '../../../../components/ui/label.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { cn } from '../../../../lib/utils.ts';
 import type { ChartStyleOverrides } from '../../../../stores/studio-store.ts';
+import type { SocialChartType, TableColumnDisplay } from '../types-social-dashboard.ts';
+import { resolveLabelDisplay } from '../chart-label-format.ts';
 import { SENTIMENT_COLORS } from '../../../../lib/constants.ts';
 import { generateChartPalette } from '../../../../lib/accent-colors.ts';
 import { useTheme } from '../../../../components/theme-provider.tsx';
@@ -12,9 +14,21 @@ const PRESET_COLORS = [
   '#9A7B3C', '#3E6B52', '#4A5568', '#8B6040', '#6B4A6E',
 ];
 
+/** Chart types that draw numeric value labels and so expose the format toggle. */
+const VALUE_LABEL_CHART_TYPES: SocialChartType[] = ['bar', 'line', 'pie', 'doughnut'];
+
+const VALUE_LABEL_OPTIONS: Array<{ value: TableColumnDisplay; label: string }> = [
+  { value: 'abs',     label: 'Number'  },
+  { value: 'pct',     label: 'Percent' },
+  { value: 'abs_pct', label: 'Both'    },
+];
+
 interface ChartStyleEditorProps {
   /** Series labels in render order - drives the per-series rows. */
   seriesLabels: string[];
+  /** The widget's chart type - gates the value-label format toggle and its
+   *  effective default (pie/doughnut = percent, others = number). */
+  chartType: SocialChartType;
   /** Current overrides (controlled). */
   value: ChartStyleOverrides;
   onChange: (next: ChartStyleOverrides) => void;
@@ -33,7 +47,7 @@ function computeDefaultColor(
   return palette[index % palette.length];
 }
 
-export function ChartStyleEditor({ seriesLabels, value, onChange }: ChartStyleEditorProps) {
+export function ChartStyleEditor({ seriesLabels, chartType, value, onChange }: ChartStyleEditorProps) {
   const { accentColor: appAccent, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -43,6 +57,17 @@ export function ChartStyleEditor({ seriesLabels, value, onChange }: ChartStyleEd
 
   const setAccent = (accent: string | undefined) =>
     onChange({ ...value, accent });
+
+  const setLabelDisplay = (labelDisplay: TableColumnDisplay) =>
+    onChange({ ...value, labelDisplay });
+
+  // Whether to offer the value-label format toggle, and which option reads as
+  // active. Line charts draw labels only once a format is chosen, so an unset
+  // line shows no option selected (i.e. labels off); bar/pie reflect their
+  // historical default.
+  const showValueLabels = VALUE_LABEL_CHART_TYPES.includes(chartType);
+  const activeDisplay: TableColumnDisplay | undefined = value.labelDisplay
+    ?? (chartType === 'line' ? undefined : resolveLabelDisplay(chartType, undefined));
 
   const setSeriesColor = (label: string, color: string | undefined) => {
     const next = { ...(value.seriesColors ?? {}) };
@@ -114,6 +139,39 @@ export function ChartStyleEditor({ seriesLabels, value, onChange }: ChartStyleEd
           <span className="text-xs text-muted-foreground">Custom hex</span>
         </div>
       </div>
+
+      {/* Value-label format (number / percent / both) */}
+      {showValueLabels && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Value Labels
+          </Label>
+          <p className="text-xs text-muted-foreground/80">
+            {chartType === 'pie' || chartType === 'doughnut'
+              ? 'Show each slice as its absolute number, percent of the total shown, or both (in the legend).'
+              : chartType === 'line'
+                ? 'Label data points with the absolute number, percent of the total shown, or both. Off until you pick one.'
+                : 'Label bars with the absolute number, percent of the total shown, or both.'}
+          </p>
+          <div className="grid grid-cols-3 gap-1.5 pt-1">
+            {VALUE_LABEL_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setLabelDisplay(opt.value)}
+                className={cn(
+                  'rounded-md border px-3 py-1.5 text-xs font-medium transition-all',
+                  activeDisplay === opt.value
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Per-series overrides */}
       {seriesLabels.length > 0 && (

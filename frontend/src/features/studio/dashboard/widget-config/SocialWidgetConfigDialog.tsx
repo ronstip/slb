@@ -956,6 +956,7 @@ function StyleTab({
   return (
     <ChartStyleEditor
       seriesLabels={seriesLabels}
+      chartType={draft.chartType}
       value={styleOverrides}
       onChange={onStyleChange}
     />
