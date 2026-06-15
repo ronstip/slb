@@ -1,6 +1,7 @@
 import type { DashboardPost } from '../../../api/types.ts';
 import type {
   CustomChartConfig,
+  CustomDimension,
   CustomMetric,
   CustomTableConfig,
   ParsedObjectMetric,
@@ -15,7 +16,7 @@ import {
   parseObjectMetric,
 } from './types-social-dashboard.ts';
 import type { TableRow } from './dashboard-aggregations.ts';
-import { getMetricValue } from './dashboard-aggregations.ts';
+import { getDimensionKeys, getMetricValue } from './dashboard-aggregations.ts';
 
 // ─── Element-as-unit aggregation for list[object] custom fields ───────────────
 // Each object in a post's `custom_fields[field]` array is one observation. A post
@@ -31,6 +32,8 @@ import { getMetricValue } from './dashboard-aggregations.ts';
 // object dim/metric tokens (see objectFieldOf).
 
 const DEFAULT_TOP_N = 50;
+// Breakdown groups beyond this make the legend unreadable (matches aggregateCustom).
+const DEFAULT_BREAKDOWN_LIMIT = 10;
 
 type MetricAgg = 'sum' | 'avg' | 'min' | 'max' | 'count';
 type Stats = { sum: number; count: number; min: number; max: number };
@@ -118,6 +121,22 @@ function elementValue(parsed: ParsedObjectMetric, ewp: ElementWithPost): number 
   }
 }
 
+/** Resolve the grouping key(s) one element contributes for a dimension. An
+ *  object-leaf dim (`custom:field.leaf`) reads the element itself → at most one
+ *  key. Any other (post-level) dim is inherited from the parent post via
+ *  getDimensionKeys → 0 keys (post lacks it → element drops out), 1 key (scalar /
+ *  date bucket), or N keys (multi-valued post field → element fans into each, a
+ *  co-occurrence count). Element-as-unit holds throughout: the metric still
+ *  counts/aggregates elements, we only attribute each to its post's value(s). */
+function dimKeysForElement(ewp: ElementWithPost, dim: string, timeBucket: string): string[] {
+  const obj = parseObjectDim(dim);
+  if (obj) {
+    const v = ewp.el[obj.leaf];
+    return v == null ? [] : [String(v)];
+  }
+  return getDimensionKeys(ewp.post, dim as CustomDimension, timeBucket);
+}
+
 // ─── Grouped accumulator ──────────────────────────────────────────────────────
 // Each group tracks Stats (count/own/inherited) and a post-id set (distinctPosts).
 
@@ -128,6 +147,23 @@ interface GroupAcc {
 
 function emptyGroup(): GroupAcc {
   return { stats: emptyStats(), posts: new Set() };
+}
+
+function mergeGroup(a: GroupAcc, b: GroupAcc): GroupAcc {
+  a.stats = mergeStats(a.stats, b.stats);
+  for (const id of b.posts) a.posts.add(id);
+  return a;
+}
+
+/** Add one (element, post) contribution to a group, honoring the metric kind. */
+function accumulateInto(g: GroupAcc, parsed: ParsedObjectMetric, ewp: ElementWithPost): void {
+  if (parsed.kind === 'distinctPosts') {
+    g.posts.add(ewp.post.post_id);
+    return;
+  }
+  const n = elementValue(parsed, ewp);
+  // No value (e.g. missing own leaf) - keep the group but don't fake a 0.
+  if (n !== null) addStat(g.stats, n);
 }
 
 function resolveGroup(g: GroupAcc, kind: ParsedObjectMetric['kind'], agg: MetricAgg): number {
@@ -178,10 +214,11 @@ export function aggregateObjectList(
   const parsed: ParsedObjectMetric = metricParsed ?? { field: fieldName, kind: 'count' };
   const agg = aggFor(kind, config.metricAgg);
 
-  const dimParsed = config.dimension ? parseObjectDim(config.dimension as string) : null;
+  const timeBucket = config.timeBucket ?? 'day';
+  const dim = config.dimension as string | undefined;
 
   // ── No dimension → single number card ──
-  if (!dimParsed) {
+  if (!dim) {
     if (kind === 'distinctPosts') {
       const ids = new Set<string>();
       for (const ewp of elements) ids.add(ewp.post.post_id);
@@ -200,25 +237,139 @@ export function aggregateObjectList(
     return { value, labels: [label], values: [value] };
   }
 
-  // ── Grouped by a categorical (or numeric, stringified) leaf ──
+  // ── Grouped + broken down by a second dimension ──
+  // Both axes accept an object leaf of this field OR an inherited post field.
+  const breakdownDim =
+    config.breakdownDimension && config.breakdownDimension !== config.dimension
+      ? (config.breakdownDimension as string)
+      : null;
+  if (breakdownDim) {
+    return aggregateObjectBreakdown(elements, parsed, kind, agg, dim, breakdownDim, timeBucket, config);
+  }
+
+  // ── Single-dimension grouping (object leaf or inherited post field) ──
   const acc = new Map<string, GroupAcc>();
   for (const ewp of elements) {
-    const key = ewp.el[dimParsed.leaf];
-    if (key == null) continue;
-    const label = String(key);
-    const g = acc.get(label) ?? emptyGroup();
-    acc.set(label, g);
-    if (kind === 'distinctPosts') {
-      g.posts.add(ewp.post.post_id);
-      continue;
+    for (const key of dimKeysForElement(ewp, dim, timeBucket)) {
+      const g = acc.get(key) ?? emptyGroup();
+      acc.set(key, g);
+      accumulateInto(g, parsed, ewp);
     }
-    const n = elementValue(parsed, ewp);
-    // No value for this element (e.g. missing own leaf) - keep the category
-    // visible but don't pollute the stats with a fake 0.
-    if (n !== null) addStat(g.stats, n);
+  }
+
+  // Temporal dim → chronological series (no value re-rank / topN).
+  if (dim === 'posted_at') {
+    const resolved = [...acc.entries()]
+      .map(([label, g]) => ({ label, value: resolveGroup(g, kind, agg) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    const total = resolved.reduce((s, r) => s + r.value, 0);
+    return {
+      value: total,
+      labels: resolved.map((r) => r.label),
+      values: resolved.map((r) => r.value),
+      timeSeries: resolved.map((r) => ({ date: r.label, value: r.value })),
+    };
   }
 
   return rankAndPick(acc, kind, agg, config.topN ?? DEFAULT_TOP_N, config.includeOthers);
+}
+
+/** Two-dimensional pivot, element-as-unit: primary × breakdown, where each axis
+ *  is an object leaf of this field OR an inherited post field. Mirrors the
+ *  post-side `aggregateCustom` breakdown branches — a temporal primary yields
+ *  `groupedTimeSeries` (multi-line), any other primary yields a stacked
+ *  `groupedCategorical`. Multi-valued post fields fan each element into every
+ *  value (co-occurrence), consistent with the post-side path. */
+function aggregateObjectBreakdown(
+  elements: ElementWithPost[],
+  parsed: ParsedObjectMetric,
+  kind: ParsedObjectMetric['kind'],
+  agg: MetricAgg,
+  primaryDim: string,
+  breakdownDim: string,
+  timeBucket: string,
+  config: CustomChartConfig,
+): WidgetData {
+  const acc2d = new Map<string, Map<string, GroupAcc>>(); // primary → breakdown → acc
+  for (const ewp of elements) {
+    const pKeys = dimKeysForElement(ewp, primaryDim, timeBucket);
+    if (!pKeys.length) continue;
+    const bKeys = dimKeysForElement(ewp, breakdownDim, timeBucket);
+    if (!bKeys.length) continue;
+    for (const pk of pKeys) {
+      let inner = acc2d.get(pk);
+      if (!inner) { inner = new Map(); acc2d.set(pk, inner); }
+      for (const bk of bKeys) {
+        const g = inner.get(bk) ?? emptyGroup();
+        inner.set(bk, g);
+        accumulateInto(g, parsed, ewp);
+      }
+    }
+  }
+
+  // Breakdown series ranked by merged total across primaries, capped.
+  const breakdownAcc = new Map<string, GroupAcc>();
+  for (const inner of acc2d.values()) {
+    for (const [bLabel, g] of inner) {
+      mergeGroup(breakdownAcc.get(bLabel) ?? breakdownAcc.set(bLabel, emptyGroup()).get(bLabel)!, g);
+    }
+  }
+  const topBreakdowns = [...breakdownAcc.entries()]
+    .map(([label, g]) => ({ label, value: resolveGroup(g, kind, agg) }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, DEFAULT_BREAKDOWN_LIMIT)
+    .map((r) => r.label);
+
+  // Temporal primary → multi-line series over chronological dates.
+  if (primaryDim === 'posted_at') {
+    const dates = [...acc2d.keys()].sort((a, b) => a.localeCompare(b));
+    const grouped: Record<string, Array<{ date: string; value: number }>> = {};
+    for (const bk of topBreakdowns) {
+      grouped[bk] = dates.map((date) => {
+        const g = acc2d.get(date)?.get(bk);
+        return { date, value: g ? resolveGroup(g, kind, agg) : 0 };
+      });
+    }
+    let grandTotal = 0;
+    for (const series of Object.values(grouped)) for (const p of series) grandTotal += p.value;
+    return { value: grandTotal, groupedTimeSeries: grouped };
+  }
+
+  // Categorical primary → stacked, with topN / Others on the primary axis.
+  const primaryRanked = [...acc2d.entries()]
+    .map(([label, inner]) => {
+      const merged = emptyGroup();
+      for (const g of inner.values()) mergeGroup(merged, g);
+      return { label, value: resolveGroup(merged, kind, agg) };
+    })
+    .sort((a, b) => b.value - a.value);
+  const primaryLimit = config.topN ?? DEFAULT_TOP_N;
+  const topPrimary = primaryRanked.slice(0, primaryLimit).map((r) => r.label);
+  const tailPrimary = primaryRanked.slice(primaryLimit).map((r) => r.label);
+
+  const primaryLabels = [...topPrimary];
+  if (config.includeOthers && tailPrimary.length > 0) primaryLabels.push('Others');
+
+  const cellValue = (pLabel: string, bLabel: string): number => {
+    if (pLabel === 'Others') {
+      const merged = emptyGroup();
+      for (const tail of tailPrimary) {
+        const g = acc2d.get(tail)?.get(bLabel);
+        if (g) mergeGroup(merged, g);
+      }
+      return resolveGroup(merged, kind, agg);
+    }
+    const g = acc2d.get(pLabel)?.get(bLabel);
+    return g ? resolveGroup(g, kind, agg) : 0;
+  };
+
+  const datasets = topBreakdowns.map((bLabel) => ({
+    label: bLabel,
+    values: primaryLabels.map((pLabel) => cellValue(pLabel, bLabel)),
+  }));
+
+  const grandTotal = datasets.reduce((s, ds) => s + ds.values.reduce((a, b) => a + b, 0), 0);
+  return { value: grandTotal, groupedCategorical: { labels: primaryLabels, datasets } };
 }
 
 const COMPOUND_SEP = '';

@@ -139,11 +139,14 @@ export function TableDataForm({ config: rawConfig, onChange, customFieldNames, o
   const allDimensions = useMemo<AnyDimension[]>(() => {
     if (isTopics) return TOPIC_DIMENSIONS;
     if (activeObjDef) return objectDimsForDef(activeObjDef);
-    const customDims = (customFieldNames ?? []).map(
-      (n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension,
-    );
+    // list[object] fields aggregate element-as-unit, never as a scalar post
+    // dimension - reading one as a scalar yields "[object Object]". Exclude them.
+    const objectFieldNames = new Set((objectFieldDefs ?? []).map((d) => d.name));
+    const customDims = (customFieldNames ?? [])
+      .filter((n) => !objectFieldNames.has(n))
+      .map((n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension);
     return [...STANDARD_DIMENSIONS, ...customDims];
-  }, [isTopics, activeObjDef, customFieldNames]);
+  }, [isTopics, activeObjDef, customFieldNames, objectFieldDefs]);
   const allMetrics: AnyMetric[] = isTopics
     ? ALL_TOPIC_METRICS
     : activeObjDef

@@ -545,9 +545,13 @@ export function getDimensionKeys(p: DashboardPost, dim: CustomDimension, timeBuc
   if (isCustomFieldDimension(dim)) {
     const raw = p.custom_fields?.[customFieldName(dim)];
     if (raw == null) return [];
+    // Skip object values: a `list[object]` field has no scalar key here (it
+    // aggregates element-as-unit via aggregateObjectList). Stringifying one
+    // would yield "[object Object]".
     if (Array.isArray(raw)) {
-      return raw.filter((v) => v != null).map((v) => String(v));
+      return raw.filter((v) => v != null && typeof v !== 'object').map((v) => String(v));
     }
+    if (typeof raw === 'object') return [];
     return [String(raw)];
   }
   const key = (p as unknown as Record<string, unknown>)[dim] as string ?? 'unknown';

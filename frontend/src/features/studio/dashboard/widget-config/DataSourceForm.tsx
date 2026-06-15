@@ -122,11 +122,14 @@ export function DataSourceForm({
   const isObjAggMetric = objKind === 'own' || objKind === 'inherited';
 
   const allPostDimensions = useMemo<CustomDimension[]>(() => {
-    const customDims = (customFieldNames ?? []).map(
-      (n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension,
-    );
+    // list[object] fields aggregate element-as-unit, never as a scalar post
+    // dimension - reading one as a scalar yields "[object Object]". Exclude them.
+    const objectFieldNames = new Set((objectFieldDefs ?? []).map((d) => d.name));
+    const customDims = (customFieldNames ?? [])
+      .filter((n) => !objectFieldNames.has(n))
+      .map((n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension);
     return [...STANDARD_DIMENSIONS, ...customDims];
-  }, [customFieldNames]);
+  }, [customFieldNames, objectFieldDefs]);
 
   const metricMeta = isTopics ? TOPIC_METRIC_META : METRIC_META;
   const labelForMetric = (m: AnyMetric): string =>
@@ -144,13 +147,42 @@ export function DataSourceForm({
           ? objMetricGroups.flatMap((g) => g.metrics)
           : [config.metric]) // object token active but defs unavailable (shared dashboard)
       : ALL_POST_METRICS;
-  const allDimensions: AnyDimension[] = isTopics
-    ? TOPIC_DIMENSIONS
-    : activeObjDef
-      ? objectDimsForDef(activeObjDef)
-      : allPostDimensions;
   const renderDimMeta = (dim: AnyDimension) =>
     isTopics ? getTopicDimensionMeta(dim as TopicDimension) : getDimensionMeta(dim as CustomDimension);
+
+  // Dimension vocabularies, as labeled groups for the Select. In object mode the
+  // element is the unit, but it can be grouped/broken-down by a leaf of this
+  // field ("This field") OR an inherited post field ("Post fields") - each
+  // element borrows its parent post's value. Post/topic modes use a single
+  // unlabeled group.
+  const objectLeafDims: AnyDimension[] = activeObjDef ? objectDimsForDef(activeObjDef) : [];
+  const groupByGroups: Array<{ label: string | null; dims: AnyDimension[] }> = (
+    isTopics
+      ? [{ label: null, dims: TOPIC_DIMENSIONS as AnyDimension[] }]
+      : activeObjField
+        ? [
+            { label: 'This field', dims: objectLeafDims },
+            { label: 'Post fields', dims: allPostDimensions as AnyDimension[] },
+          ]
+        : [{ label: null, dims: allPostDimensions as AnyDimension[] }]
+  ).filter((g) => g.dims.length > 0);
+
+  // Breakdown (hue) excludes the active group-by; post mode also excludes the
+  // time axis (it belongs on the primary axis there).
+  const breakdownGroups: Array<{ label: string | null; dims: AnyDimension[] }> = (
+    isTopics
+      ? []
+      : activeObjField
+        ? [
+            { label: 'This field', dims: objectLeafDims.filter((d) => d !== config.dimension) },
+            { label: 'Post fields', dims: (allPostDimensions as AnyDimension[]).filter((d) => d !== config.dimension) },
+          ]
+        : [{
+            label: null,
+            dims: (allPostDimensions as AnyDimension[]).filter((d) => d !== config.dimension && d !== 'posted_at'),
+          }]
+  ).filter((g) => g.dims.length > 0);
+  const breakdownOptionCount = breakdownGroups.reduce((n, g) => n + g.dims.length, 0);
 
   // Explicit "Aggregate" step: aggregate Posts (default) or the elements of one
   // list[object] field. Switching seeds a sensible default metric.
@@ -226,9 +258,11 @@ export function DataSourceForm({
       delete next.timeBucket;
       delete next.breakdownDimension;
     } else if (isObjectFieldDimension(dimension)) {
-      // Object leaf dim: no time bucket / breakdown (elements have no timeline).
+      // Object leaf dim: no time bucket (elements have no timeline). A breakdown
+      // by another leaf is allowed; drop it only if it now collides with the
+      // group-by.
       delete next.timeBucket;
-      delete next.breakdownDimension;
+      if (next.breakdownDimension === dimension) delete next.breakdownDimension;
     } else {
       if (dimension !== 'posted_at') {
         delete next.timeBucket;
@@ -359,34 +393,41 @@ export function DataSourceForm({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">None (single value)</SelectItem>
-            {allDimensions.map((dim) => {
-              const disabled =
-                isTopics &&
-                TOPIC_RATIO_METRICS.has(config.metric as TopicMetric) &&
-                TOPIC_JSON_UNNESTED_DIMENSIONS.has(dim as TopicDimension);
-              return (
-                <SelectItem
-                  key={dim as string}
-                  value={dim as string}
-                  disabled={disabled}
-                >
-                  {renderDimMeta(dim).label}
-                  {disabled ? ' (not supported with ratio metrics)' : ''}
-                </SelectItem>
+            {groupByGroups.map((group, gi) => {
+              const items = group.dims.map((dim) => {
+                const disabled =
+                  isTopics &&
+                  TOPIC_RATIO_METRICS.has(config.metric as TopicMetric) &&
+                  TOPIC_JSON_UNNESTED_DIMENSIONS.has(dim as TopicDimension);
+                return (
+                  <SelectItem key={dim as string} value={dim as string} disabled={disabled}>
+                    {renderDimMeta(dim).label}
+                    {disabled ? ' (not supported with ratio metrics)' : ''}
+                  </SelectItem>
+                );
+              });
+              return group.label ? (
+                <SelectGroup key={group.label}>
+                  <SelectLabel>{group.label}</SelectLabel>
+                  {items}
+                </SelectGroup>
+              ) : (
+                <SelectGroup key={`g${gi}`}>{items}</SelectGroup>
               );
             })}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Breakdown (hue) - posts-mode only; topics + object fields defer to phase 2 */}
-      {!isTopics && !activeObjField && config.dimension && (
+      {/* Breakdown (hue) - posts mode (any post dim) or object mode (a leaf of
+          this field OR an inherited post field). Topics defer to phase 2. */}
+      {!isTopics && config.dimension && breakdownOptionCount > 0 && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Breakdown</Label>
           <Select
             value={(config.breakdownDimension as string | undefined) ?? 'none'}
             onValueChange={(v) =>
-              onChange({ ...config, breakdownDimension: v === 'none' ? undefined : (v as CustomDimension) })
+              onChange({ ...config, breakdownDimension: v === 'none' ? undefined : (v as AnyDimension) })
             }
           >
             <SelectTrigger className="h-8 text-xs">
@@ -394,11 +435,21 @@ export function DataSourceForm({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">None</SelectItem>
-              {allPostDimensions.filter((d) => d !== config.dimension && d !== 'posted_at').map((dim) => (
-                <SelectItem key={dim} value={dim}>
-                  {getDimensionMeta(dim).label}
-                </SelectItem>
-              ))}
+              {breakdownGroups.map((group, gi) => {
+                const items = group.dims.map((dim) => (
+                  <SelectItem key={dim as string} value={dim as string}>
+                    {renderDimMeta(dim).label}
+                  </SelectItem>
+                ));
+                return group.label ? (
+                  <SelectGroup key={group.label}>
+                    <SelectLabel>{group.label}</SelectLabel>
+                    {items}
+                  </SelectGroup>
+                ) : (
+                  <SelectGroup key={`b${gi}`}>{items}</SelectGroup>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
