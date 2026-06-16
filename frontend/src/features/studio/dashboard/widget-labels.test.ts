@@ -107,6 +107,17 @@ describe('getWidgetCategoryLabels', () => {
     expect(getWidgetCategoryLabels(widget({ aggregation: 'kpi' }), [])).toEqual([]);
     expect(getWidgetCategoryLabels(widget({ aggregation: 'text' }), [])).toEqual([]);
   });
+
+  it('word cloud: exposes the theme words so the co-author can recolor them', () => {
+    const posts = [
+      post({ themes: ['fees', 'customer service'] }),
+      post({ themes: ['fees'] }),
+      post({ themes: ['points accrual'] }),
+    ];
+    const w = widget({ chartType: 'word-cloud', aggregation: 'theme-cloud' });
+    const labels = getWidgetCategoryLabels(w, posts);
+    expect(labels).toEqual(expect.arrayContaining(['fees', 'customer service', 'points accrual']));
+  });
 });
 
 describe('getWidgetRenamableLabels', () => {
@@ -136,6 +147,14 @@ describe('getWidgetRenamableLabels', () => {
     const w = widget({ aggregation: 'platform' });
     expect(getWidgetRenamableLabels(w, posts).sort()).toEqual(
       getWidgetCategoryLabels(w, posts).sort(),
+    );
+  });
+
+  it('word cloud: theme words are renamable too', () => {
+    const posts = [post({ themes: ['fees'] }), post({ themes: ['migration process'] })];
+    const w = widget({ chartType: 'word-cloud', aggregation: 'theme-cloud' });
+    expect(getWidgetRenamableLabels(w, posts)).toEqual(
+      expect.arrayContaining(['fees', 'migration process']),
     );
   });
 });

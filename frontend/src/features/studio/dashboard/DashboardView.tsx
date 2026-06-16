@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2, Maximize2, Pencil, X } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
 import type { DashboardArtifact } from '../../../stores/studio-store.ts';
@@ -94,10 +94,29 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     setEditingTitle(false);
   };
 
+  // Pull the layout doc first: `reportScope` locks the filter bar, and
+  // `reportConfig` (canonicalization + computed fields) is sent with the data
+  // request so the server returns already-canonical posts. Both must resolve
+  // before the data query so a config change refetches transformed data.
+  const { data: layoutResponse } = useDashboardLayout(artifact.id);
+  const reportScope = layoutResponse?.reportScope ?? null;
+  const reportConfig = layoutResponse?.reportConfig ?? null;
+
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['dashboard-data', artifact.agentId ?? '', ...artifact.collectionIds],
-    queryFn: () => getDashboardData(artifact.collectionIds, artifact.agentId),
+    queryKey: [
+      'dashboard-data',
+      artifact.agentId ?? '',
+      // Refetch transformed posts whenever the report config changes.
+      reportConfig ? JSON.stringify(reportConfig) : '',
+      ...artifact.collectionIds,
+    ],
+    queryFn: () => getDashboardData(artifact.collectionIds, artifact.agentId, reportConfig),
     staleTime: 5 * 60 * 1000,
+    // A report-config edit changes the query key (it encodes the config). Keep
+    // showing the current data while the new key refetches instead of dropping
+    // to the loading skeleton — otherwise the dashboard (and the open Report
+    // Config dialog it hosts) would unmount on every keystroke.
+    placeholderData: keepPreviousData,
   });
 
   // Declared custom-field definitions (with element_fields for list[object]) so
@@ -111,11 +130,6 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     staleTime: 5 * 60 * 1000,
   });
   const customFieldDefs = agent?.enrichment_config?.custom_fields ?? undefined;
-
-  // Pull `reportScope` from the layout doc so the filter hook can intersect it
-  // with viewer selections. Absence = standalone dashboard, no scope lock.
-  const { data: layoutResponse } = useDashboardLayout(artifact.id);
-  const reportScope = layoutResponse?.reportScope ?? null;
 
   const allPosts = response?.posts ?? [];
 
@@ -221,6 +235,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
                 onDone={toolbarHandlers.onDone}
                 onAddWidget={toolbarHandlers.onAddWidget}
                 onResetToDefaults={toolbarHandlers.onResetToDefaults}
+                onOpenReportConfig={toolbarHandlers.onOpenReportConfig}
                 onOrientationChange={toolbarHandlers.onOrientationChange}
                 onFilterBarHiddenChange={toolbarHandlers.onFilterBarHiddenChange}
                 onUndo={toolbarHandlers.onUndo}

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
-import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay, ComputedField } from './types-social-dashboard.ts';
 import { DATE_CONDITION_FIELDS, isPostCountCondition, isCustomFieldDimension, customFieldName, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, getDimensionMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from './topic-aggregations.ts';
 import { aggregateObjectList, aggregateObjectTable } from './object-list-aggregations.ts';
@@ -1024,6 +1024,9 @@ function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onD
       <SocialWordCloudWidget
         data={cloudData}
         onWordClick={onFilterToggle ? (v) => onFilterToggle('themes', v) : undefined}
+        scale={widget.styleOverrides?.wordCloudScale}
+        seriesColors={widget.styleOverrides?.seriesColors}
+        seriesLabels={widget.styleOverrides?.seriesLabels}
       />
     </SocialWidgetFrame>
   );
@@ -1100,6 +1103,7 @@ function CustomWidget({
   widget,
   widgetIndex = 0,
   posts,
+  basePosts,
   topics,
   isEditMode,
   onConfigure,
@@ -1107,12 +1111,17 @@ function CustomWidget({
   onDuplicate,
   onFilterToggle,
   onTopicNavigate,
+  computedFields,
 }: FrameProps & {
   widgetIndex?: number;
   posts: DashboardPost[];
+  /** Dashboard-scope (pre-widget-filter) posts. Baseline for the `percent`
+   *  number-card aggregation. */
+  basePosts?: DashboardPost[];
   topics?: TopicMetric[];
   onFilterToggle?: (key: string, value: string) => void;
   onTopicNavigate?: (clusterId: string) => void;
+  computedFields?: ComputedField[];
 }) {
   const config = widget.customConfig;
   const dataSource: DataSource = widget.dataSource ?? 'posts';
@@ -1150,8 +1159,8 @@ function CustomWidget({
     if (objField) return aggregateObjectList(aggPosts, objField, effectiveConfig);
     return isTopicsSource
       ? aggregateTopicsCustom(topics ?? [], effectiveConfig)
-      : aggregateCustom(aggPosts, effectiveConfig);
-  }, [isTopicsSource, aggPosts, topics, effectiveConfig]);
+      : aggregateCustom(aggPosts, effectiveConfig, computedFields, basePosts);
+  }, [isTopicsSource, aggPosts, topics, effectiveConfig, computedFields, basePosts]);
 
   const cloudData = useMemo(() => {
     if (!data?.labels || !data.values) return [];
@@ -1170,15 +1179,32 @@ function CustomWidget({
       dimension: widget.trendDimension ?? 'posted_at',
       timeBucket: widget.trendTimeBucket ?? 'day',
       breakdownDimension: undefined,
-    });
+    }, computedFields);
     const values = series.values ?? [];
     return widget.trendCumulative ? toCumulativeSeries(values) : values;
-  }, [effectiveConfig, aggPosts, widget.numberSize, widget.showSparkline, widget.trendDimension, widget.trendTimeBucket, widget.trendCumulative]);
+  }, [effectiveConfig, aggPosts, widget.numberSize, widget.showSparkline, widget.trendDimension, widget.trendTimeBucket, widget.trendCumulative, computedFields]);
 
-  const syntheticKpi = useMemo(
-    () => ({ label: widget.title, value: data?.value ?? 0, icon: 'posts' as const, sparklineData }),
-    [widget.title, data?.value, sparklineData],
-  );
+  const syntheticKpi = useMemo(() => {
+    const base = { label: widget.title, icon: 'posts' as const, sparklineData };
+    // `mode` ("Top value") returns a string label; compose the card text from
+    // the chosen pieces (label / count / percent-of-posts). Default: label only.
+    if (data?.stringValue != null) {
+      const parts = widget.topValueParts?.length ? widget.topValueParts : ['label'];
+      const count = data.value ?? 0;
+      // Percentage base = posts that have a value (missing excluded), not every
+      // post in the widget.
+      const total = data.valueTotal ?? 0;
+      const pieces = parts.map((part) =>
+        part === 'count'
+          ? formatNumber(count)
+          : part === 'percent'
+            ? `${total > 0 ? Math.round((count / total) * 1000) / 10 : 0}%`
+            : data.stringValue!,
+      );
+      return { ...base, value: count, displayText: pieces.join(' · ') };
+    }
+    return { ...base, value: data?.value ?? 0, format: data?.format };
+  }, [widget.title, widget.topValueParts, data?.value, data?.stringValue, data?.valueTotal, data?.format, sparklineData]);
 
   const metricLabel = (m: AnyMetric): string => {
     if (isTopicsSource) {
@@ -1236,7 +1262,12 @@ function CustomWidget({
   if (widget.chartType === 'word-cloud') {
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
-        <SocialWordCloudWidget data={cloudData} />
+        <SocialWordCloudWidget
+          data={cloudData}
+          scale={widget.styleOverrides?.wordCloudScale}
+          seriesColors={widget.styleOverrides?.seriesColors}
+          seriesLabels={widget.styleOverrides?.seriesLabels}
+        />
       </SocialWidgetFrame>
     );
   }
@@ -1301,7 +1332,7 @@ function CustomWidget({
         barOrientation={widget.customConfig?.barOrientation}
         stacked={widget.customConfig?.stacked ?? true}
         timeBucket={widget.customConfig?.timeBucket}
-        centerLabel={metricLabel(activeMetric)}
+        centerLabel={widget.styleOverrides?.centerLabel?.trim() || metricLabel(activeMetric)}
         labelDisplay={widget.styleOverrides?.labelDisplay}
       />
     </SocialWidgetFrame>
@@ -1375,7 +1406,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
         seriesColorOverrides={widget.styleOverrides?.seriesColors}
         seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
         barOrientation={widget.customConfig?.barOrientation}
-        centerLabel="Posts"
+        centerLabel={widget.styleOverrides?.centerLabel?.trim() || 'Posts'}
         labelDisplay={widget.styleOverrides?.labelDisplay}
       />
     </SocialWidgetFrame>
@@ -1757,6 +1788,12 @@ interface SocialWidgetRendererProps {
   serverKpis?: DashboardKpis;
   onAutoSize?: (i: string, h: number) => void;
   onMediaAspect?: (i: string, ratio: number) => void;
+  /** Report-level value colors (field → value → hex). Flattened and merged in
+   *  as the base series-color layer; per-widget `seriesColors` win. */
+  reportValueColors?: Record<string, Record<string, string>>;
+  /** Report-level computed fields. Needed to aggregate `expr` computed metrics
+   *  (aggregate-then-evaluate). */
+  reportComputedFields?: ComputedField[];
 }
 
 function SocialWidgetRendererImpl({
@@ -1773,6 +1810,8 @@ function SocialWidgetRendererImpl({
   serverKpis,
   onAutoSize,
   onMediaAspect,
+  reportValueColors,
+  reportComputedFields,
 }: SocialWidgetRendererProps) {
   // Legacy aggregations (`volume`, `sentiment-over-time`) are rewritten to
   // `aggregation: 'custom'` here so the dispatch below stays uniform.
@@ -1780,7 +1819,23 @@ function SocialWidgetRendererImpl({
   // (e.g. an agent-emitted layout that set `aggregation: 'kpi'`) routes
   // through the custom path which knows how to read topic data.
   const widget = useMemo(() => {
-    const normalized = normalizeWidgetAggregation(rawWidget);
+    let normalized = normalizeWidgetAggregation(rawWidget);
+    // Bake report-level value colors in as the BASE series-color layer so any
+    // downstream `widget.styleOverrides.seriesColors` read inherits them; a
+    // per-widget override on the same value wins (spread last).
+    if (reportValueColors) {
+      const flat: Record<string, string> = {};
+      for (const perField of Object.values(reportValueColors)) Object.assign(flat, perField);
+      if (Object.keys(flat).length > 0) {
+        normalized = {
+          ...normalized,
+          styleOverrides: {
+            ...normalized.styleOverrides,
+            seriesColors: { ...flat, ...(normalized.styleOverrides?.seriesColors ?? {}) },
+          },
+        };
+      }
+    }
     if (
       (normalized.dataSource ?? 'posts') === 'topics'
       && normalized.aggregation !== 'text'
@@ -1790,7 +1845,7 @@ function SocialWidgetRendererImpl({
       return { ...normalized, aggregation: 'custom' as const };
     }
     return normalized;
-  }, [rawWidget]);
+  }, [rawWidget, reportValueColors]);
 
   const widgetPosts = useMemo(
     () => applyWidgetFilters(filteredPosts, widget.filters),
@@ -1826,9 +1881,11 @@ function SocialWidgetRendererImpl({
         {...frameProps}
         widgetIndex={widgetIndex}
         posts={widgetPosts}
+        basePosts={filteredPosts}
         topics={topics}
         onFilterToggle={onFilterToggle}
         onTopicNavigate={onTopicNavigate}
+        computedFields={reportComputedFields}
       />
     );
   }

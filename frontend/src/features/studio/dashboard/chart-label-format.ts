@@ -28,6 +28,7 @@ export function composeLabel(
   total: number,
   display: TableColumnDisplay,
 ): string {
+  if (display === 'none') return '';
   if (display === 'pct') return formatPct(value, total);
   if (display === 'abs_pct') return `${absText} (${formatPct(value, total)})`;
   return absText;

@@ -5,7 +5,7 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { Sparkles, Check, EyeOff } from 'lucide-react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
-import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, DashboardOrientation, ComputedField } from './types-social-dashboard.ts';
 import { SocialWidgetRenderer } from './SocialWidgetRenderer.tsx';
 import { buildCompactLayout } from './buildCompactLayout.ts';
 import { canPersistDesktopLayout, layoutHasGeometryChange, LG_MIN_WIDTH } from './layout-persist-guard.ts';
@@ -55,6 +55,12 @@ interface SocialDashboardGridProps {
   attachedWidgetIds?: Set<string>;
   /** Toggle a widget's pin. Receives id + current title for the chip. */
   onToggleAttachWidget?: (w: AttachedWidget) => void;
+  /** Report-level value colors (field → value → hex). Applied as the base
+   *  series-color layer; per-widget overrides win. */
+  reportValueColors?: Record<string, Record<string, string>>;
+  /** Report-level computed fields. Forwarded so widgets can aggregate `expr`
+   *  computed metrics. */
+  reportComputedFields?: ComputedField[];
 }
 
 // A4 portrait/landscape content-width ratio (after page margins). Used to
@@ -80,6 +86,8 @@ export function SocialDashboardGrid({
   coAuthorActive = false,
   attachedWidgetIds,
   onToggleAttachWidget,
+  reportValueColors,
+  reportComputedFields,
 }: SocialDashboardGridProps) {
   const [currentBreakpoint, setCurrentBreakpoint] = useState<string>('lg');
   const isDragging = useRef(false);
@@ -318,6 +326,8 @@ export function SocialDashboardGrid({
                 serverKpis={serverKpis}
                 onAutoSize={onAutoSize}
                 onMediaAspect={handleMediaAspect}
+                reportValueColors={reportValueColors}
+                reportComputedFields={reportComputedFields}
               />
             </div>
           );

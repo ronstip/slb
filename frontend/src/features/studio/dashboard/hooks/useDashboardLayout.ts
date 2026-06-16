@@ -4,6 +4,7 @@ import type {
   SocialDashboardWidget,
   DashboardOrientation,
   ReportScope,
+  ReportConfig,
 } from '../types-social-dashboard.ts';
 
 export interface LayoutSavePayload {
@@ -12,6 +13,8 @@ export interface LayoutSavePayload {
   orientation?: DashboardOrientation;
   reportScope?: ReportScope | null;
   filterBarHidden?: boolean;
+  /** Report-level config (canonicalization, value colors, computed fields). */
+  reportConfig?: ReportConfig | null;
 }
 
 export interface LayoutResponse {
@@ -20,6 +23,7 @@ export interface LayoutResponse {
   orientation?: DashboardOrientation | null;
   reportScope?: ReportScope | null;
   filterBarHidden?: boolean | null;
+  reportConfig?: ReportConfig | null;
 }
 
 export function useDashboardLayout(

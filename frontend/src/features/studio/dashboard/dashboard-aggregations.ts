@@ -1,6 +1,7 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
-import type { CustomChartConfig, CustomDimension, CustomMetric, CustomTableConfig, PostField, TableColumn, WidgetData } from './types-social-dashboard.ts';
-import { isCustomFieldDimension, customFieldName, isCustomPostField, isDimensionColumn, isPostFieldColumn, normalizeTableConfig } from './types-social-dashboard.ts';
+import type { CustomChartConfig, CustomDimension, CustomMetric, CustomTableConfig, PostField, TableColumn, WidgetData, ComputedField } from './types-social-dashboard.ts';
+import { evaluateExpr, exprLeafRefs } from './report-expr.ts';
+import { isCustomFieldDimension, customFieldName, isCustomPostField, isDimensionColumn, isPostFieldColumn, normalizeTableConfig, isComputedRef, computedFieldId } from './types-social-dashboard.ts';
 import { toCumulativeSeries } from './sparkline-visibility.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
@@ -424,6 +425,9 @@ export interface EnhancedKpi {
   value: number;
   icon: 'posts' | 'views' | 'engagement' | 'rate' | 'avg';
   format?: 'number' | 'percent';
+  /** When set, the card renders this string verbatim instead of formatting
+   *  `value` (used by `mode` / "Top value" cards). */
+  displayText?: string;
   sparklineData: number[];
 }
 
@@ -506,7 +510,16 @@ export function getMetricValue(p: DashboardPost, metric: CustomMetric): number {
     case 'share_count':      return p.share_count;
     case 'engagement_total': return p.like_count + p.comment_count + p.share_count;
     // `customobj:` element tokens are resolved by the object aggregator, not here.
-    default: return 0;
+    default:
+      // Per-post computed metric (if/else → numeric). The value is attached by
+      // the server transform under `post.computed[id]`. Expr metrics are NOT
+      // attached (aggregate-then-evaluate) and are handled upstream by
+      // `aggregateComputedExpr`, never here.
+      if (isComputedRef(metric)) {
+        const v = p.computed?.[computedFieldId(metric)];
+        return typeof v === 'number' ? v : Number(v ?? 0) || 0;
+      }
+      return 0;
   }
 }
 
@@ -538,6 +551,12 @@ export function bucketDate(dateStr: string, timeBucket: NonNullable<CustomChartC
 }
 
 export function getDimensionKeys(p: DashboardPost, dim: CustomDimension, timeBucket: string): string[] {
+  // Report-level computed dimension (if/else → categorical). The value is
+  // attached by the server transform under `post.computed[id]`.
+  if (isComputedRef(dim)) {
+    const v = p.computed?.[computedFieldId(dim)];
+    return [v == null ? 'unknown' : String(v)];
+  }
   if (dim === 'themes') return p.themes?.length ? p.themes : [];
   if (dim === 'entities') return p.entities?.length ? p.entities : [];
   if (dim === 'brands') return p.detected_brands?.length ? p.detected_brands : [];
@@ -595,7 +614,117 @@ const DEFAULT_TOP_N = 50;
 /** Default limit on breakdown series count when topN is unset on a 2D config. */
 const DEFAULT_BREAKDOWN_LIMIT = 10;
 
-export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfig): WidgetData {
+/** Aggregate-then-evaluate path for an `expr` computed metric. Each referenced
+ *  leaf metric is summed per bucket, then the expression is evaluated over those
+ *  per-bucket sums (so `engagement/views` becomes SUM(engagement)/SUM(views) — a
+ *  correct weighted ratio, never an average of per-post ratios). Buckets whose
+ *  expression evaluates to null (e.g. divide-by-zero) are EXCLUDED, never shown
+ *  as 0. Mirrors the server (api/services/report_transform.py). Breakdown/2D
+ *  pivots are not supported for expr metrics in v1 — the breakdown is ignored. */
+function aggregateExprMetric(
+  posts: DashboardPost[],
+  config: CustomChartConfig,
+  field: Extract<ComputedField, { kind: 'expr' }>,
+): WidgetData {
+  const dimension = config.dimension as CustomDimension | undefined;
+  const { timeBucket = 'day', topN, includeOthers, cumulative } = config;
+  const leaves = exprLeafRefs(field.expr).map((m) => m as CustomMetric);
+  const label = field.name;
+
+  const blankSums = (): Record<string, number> => {
+    const s: Record<string, number> = {};
+    for (const leaf of leaves) s[leaf] = 0;
+    return s;
+  };
+  const addPost = (sums: Record<string, number>, p: DashboardPost) => {
+    for (const leaf of leaves) sums[leaf] += getMetricValue(p, leaf);
+  };
+
+  // Number-card (no dimension): one set of sums over all posts.
+  if (!dimension) {
+    const sums = blankSums();
+    for (const p of posts) addPost(sums, p);
+    const v = evaluateExpr(field.expr, sums) ?? 0;
+    return { value: v, labels: [label], values: [v] };
+  }
+
+  // Per-bucket leaf sums.
+  const acc = new Map<string, Record<string, number>>();
+  for (const p of posts) {
+    for (const key of getDimensionKeys(p, dimension, timeBucket)) {
+      let bucket = acc.get(key);
+      if (!bucket) { bucket = blankSums(); acc.set(key, bucket); }
+      addPost(bucket, p);
+    }
+  }
+
+  // Time series: chronological, no topN/Others. Null buckets are dropped.
+  if (dimension === 'posted_at') {
+    const resolved = [...acc.entries()]
+      .map(([labelKey, sums]) => ({ label: labelKey, value: evaluateExpr(field.expr, sums) }))
+      .filter((e): e is { label: string; value: number } => e.value !== null)
+      .sort((a, b) => a.label.localeCompare(b.label));
+    const seriesValues = cumulative
+      ? toCumulativeSeries(resolved.map((r) => r.value))
+      : resolved.map((r) => r.value);
+    const total = seriesValues.reduce((s, v) => s + v, 0);
+    return {
+      value: total,
+      labels: resolved.map((r) => r.label),
+      values: seriesValues,
+      timeSeries: resolved.map((r, i) => ({ date: r.label, value: seriesValues[i] })),
+    };
+  }
+
+  // Categorical: evaluate per bucket, drop nulls, sort desc, topN + Others.
+  const ranked = [...acc.entries()]
+    .map(([labelKey, sums]) => ({ label: labelKey, sums, value: evaluateExpr(field.expr, sums) }))
+    .filter((r): r is { label: string; sums: Record<string, number>; value: number } => r.value !== null)
+    .sort((a, b) => b.value - a.value);
+
+  const limit = topN ?? DEFAULT_TOP_N;
+  const top = ranked.slice(0, limit);
+  const tail = ranked.slice(limit);
+  const labels = top.map((r) => r.label);
+  const values = top.map((r) => r.value);
+
+  if (includeOthers && tail.length > 0) {
+    const merged = blankSums();
+    for (const r of tail) for (const leaf of leaves) merged[leaf] += r.sums[leaf];
+    const v = evaluateExpr(field.expr, merged);
+    if (v !== null) { labels.push('Others'); values.push(v); }
+  }
+
+  const total = values.reduce((s, v) => s + v, 0);
+  return { value: total, labels, values };
+}
+
+/** Median of a numeric list. Empty → 0. Even count → mean of the two middles. */
+function median(vals: number[]): number {
+  if (vals.length === 0) return 0;
+  const s = [...vals].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+export function aggregateCustom(
+  posts: DashboardPost[],
+  config: CustomChartConfig,
+  computedFields?: ComputedField[],
+  /** Dashboard-scope (pre-widget-filter) posts. Denominator for the `percent`
+   *  number-card aggregation; defaults to `posts` (→ 100%). */
+  basePosts?: DashboardPost[],
+): WidgetData {
+  // An `expr` computed metric is aggregate-then-evaluate: it can't go through
+  // the per-post `getMetricValue` path (that would force per-post-then-aggregate
+  // and break ratios). Route it to `aggregateExprMetric`. An if/else computed
+  // metric is per-post (its value is attached as `post.computed[id]`), so it
+  // falls through to the normal path below.
+  if (config.metric && isComputedRef(config.metric)) {
+    const cf = computedFields?.find((f) => f.id === computedFieldId(config.metric as `computed:${string}`));
+    if (cf?.kind === 'expr') return aggregateExprMetric(posts, config, cf);
+  }
+
   // CustomChartConfig.dimension/metric are widened to AnyDimension/AnyMetric
   // to carry topic widgets through the same shape. This aggregator is the
   // post-side path - only invoked when widget.dataSource === 'posts'. The
@@ -608,12 +737,49 @@ export function aggregateCustom(posts: DashboardPost[], config: CustomChartConfi
 
   if (!dimension) {
     if (metricAgg === 'count') return { value: posts.length, labels: ['Count'], values: [posts.length] };
+
+    // Categorical-field aggregations run over `categoricalField` (a dimension
+    // token), never the numeric `metric`. Tally value frequencies once.
+    if (metricAgg === 'distinct' || metricAgg === 'mode') {
+      const field = config.categoricalField as CustomDimension | undefined;
+      const counts = new Map<string, number>();
+      if (field) {
+        for (const p of posts) {
+          for (const key of getDimensionKeys(p, field, timeBucket)) {
+            // `getDimensionKeys` synthesizes 'unknown' for a missing scalar
+            // value; "no value" is not a value, so it counts toward neither the
+            // distinct tally, the top value, nor the percentage base.
+            if (key === 'unknown') continue;
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          }
+        }
+      }
+      if (metricAgg === 'distinct') {
+        return { value: counts.size, labels: ['Distinct'], values: [counts.size] };
+      }
+      // mode: most frequent value; ties resolve to first-seen (insertion order).
+      // `valueTotal` (posts with any value) is the percentage denominator.
+      let topLabel = ''; let topCount = 0; let total = 0;
+      for (const [k, c] of counts) {
+        total += c;
+        if (c > topCount) { topCount = c; topLabel = k; }
+      }
+      return { value: topCount, stringValue: topLabel, valueTotal: total, labels: [topLabel], values: [topCount] };
+    }
+
     const vals = posts.map((p) => getMetricValue(p, metric));
+    if (metricAgg === 'percent') {
+      const num = vals.reduce((a, b) => a + b, 0);
+      const den = (basePosts ?? posts).reduce((a, p) => a + getMetricValue(p, metric), 0);
+      const pct = den > 0 ? Math.round((num / den) * 1000) / 10 : 0;
+      return { value: pct, format: 'percent', labels: [metric], values: [pct] };
+    }
     let value: number;
     switch (metricAgg) {
       case 'avg': value = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0; break;
       case 'min': value = vals.length > 0 ? Math.min(...vals) : 0; break;
       case 'max': value = vals.length > 0 ? Math.max(...vals) : 0; break;
+      case 'median': value = median(vals); break;
       default: value = vals.reduce((a, b) => a + b, 0); break;
     }
     return { value, labels: [metric], values: [value] };

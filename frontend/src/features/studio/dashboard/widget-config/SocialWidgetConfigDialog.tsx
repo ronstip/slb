@@ -26,7 +26,7 @@ const MarkdownArtifactEditor = lazy(() =>
 );
 import { cn } from '../../../../lib/utils.ts';
 import type { CustomFieldDef, DashboardPost, TopicMetric } from '../../../../api/types.ts';
-import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension, TimeBucket } from '../types-social-dashboard.ts';
+import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension, TimeBucket, TopValuePart, ComputedField } from '../types-social-dashboard.ts';
 import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig, objectFieldOf, objectFieldOfTable } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
@@ -35,7 +35,7 @@ import { WidgetFilterForm } from './WidgetFilterForm.tsx';
 import { WidgetStyleForm } from './WidgetStyleForm.tsx';
 import { ChartStyleEditor } from './ChartStyleEditor.tsx';
 import { widgetContainerVisible } from '../widget-container.ts';
-import { aggregateCustom, aggregatePlatforms, aggregateSentiment, aggregateTable } from '../dashboard-aggregations.ts';
+import { aggregateCustom, aggregatePlatforms, aggregateSentiment, aggregateTable, aggregateThemeCloud } from '../dashboard-aggregations.ts';
 import { aggregateObjectList, aggregateObjectTable } from '../object-list-aggregations.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from '../topic-aggregations.ts';
 import { extractChartSeriesLabels } from '../chart-series-labels.ts';
@@ -139,6 +139,8 @@ interface SocialWidgetConfigDialogProps {
   objectFieldDefs?: CustomFieldDef[];
   /** All declared custom field defs - drives condition operator/input typing. */
   customFieldDefs?: CustomFieldDef[];
+  /** Report-level computed fields, surfaced as `computed:<id>` dims/metrics. */
+  computedFields?: ComputedField[];
   /** Agent context used to ground AI compose with task title + description. */
   agentId?: string;
   /** Agent-scoped topic_metrics rows. Empty when no agent context (in which
@@ -158,6 +160,7 @@ export function SocialWidgetConfigDialog({
   customFieldNames,
   objectFieldDefs,
   customFieldDefs,
+  computedFields,
   agentId,
   topics,
 }: SocialWidgetConfigDialogProps) {
@@ -177,6 +180,7 @@ export function SocialWidgetConfigDialog({
       customFieldNames={customFieldNames}
       objectFieldDefs={objectFieldDefs}
       customFieldDefs={customFieldDefs}
+      computedFields={computedFields}
       agentId={agentId}
       topics={topics}
     />
@@ -242,6 +246,7 @@ function SocialWidgetConfigDialogInner({
   customFieldNames,
   objectFieldDefs,
   customFieldDefs,
+  computedFields,
   agentId,
   topics = [],
 }: SocialWidgetConfigDialogProps & { widget: SocialDashboardWidget }) {
@@ -692,6 +697,7 @@ function SocialWidgetConfigDialogInner({
                       chartType={draft.chartType}
                       customFieldNames={customFieldNames}
                       objectFieldDefs={objectFieldDefs}
+                      computedFields={computedFields}
                       dataSource={dataSource}
                     />
                   )}
@@ -757,6 +763,9 @@ function SocialWidgetConfigDialogInner({
                     }
                     onTrendCumulativeChange={(trendCumulative) =>
                       setDraft((prev) => ({ ...prev, trendCumulative }))
+                    }
+                    onTopValuePartsChange={(topValueParts) =>
+                      setDraft((prev) => ({ ...prev, topValueParts }))
                     }
                   />
                 </TabsContent>
@@ -832,6 +841,7 @@ function StyleTab({
   onTrendDimensionChange,
   onTrendTimeBucketChange,
   onTrendCumulativeChange,
+  onTopValuePartsChange,
 }: {
   draft: SocialDashboardWidget;
   previewPosts: DashboardPost[];
@@ -845,6 +855,7 @@ function StyleTab({
   onTrendDimensionChange: (dim: CustomDimension) => void;
   onTrendTimeBucketChange: (bucket: TimeBucket) => void;
   onTrendCumulativeChange: (cumulative: boolean) => void;
+  onTopValuePartsChange: (parts: TopValuePart[]) => void;
 }) {
   const isTopicsSource = (draft.dataSource ?? 'posts') === 'topics';
   // KPI cards: size + accent + (optional) KPI index picker.
@@ -859,6 +870,8 @@ function StyleTab({
         trendDimension={draft.trendDimension}
         trendTimeBucket={draft.trendTimeBucket}
         trendCumulative={draft.trendCumulative}
+        metricAgg={draft.customConfig?.metricAgg}
+        topValueParts={draft.topValueParts}
         onKpiIndexChange={onKpiIndexChange}
         onAccentChange={onAccentChange}
         onNumberSizeChange={onNumberSizeChange}
@@ -866,6 +879,7 @@ function StyleTab({
         onTrendDimensionChange={onTrendDimensionChange}
         onTrendTimeBucketChange={onTrendTimeBucketChange}
         onTrendCumulativeChange={onTrendCumulativeChange}
+        onTopValuePartsChange={onTopValuePartsChange}
       />
     );
   }
@@ -949,9 +963,22 @@ function StyleTab({
           ? aggregateTopicsCustom(topics, draft.customConfig)
           : aggregateCustom(chartAggPosts, draft.customConfig))
     : undefined;
-  const seriesLabels = extractChartSeriesLabels(draft.chartType, previewData);
+  // Word cloud has no customConfig-driven previewData; its "series" are the
+  // theme words. Surface them so the per-series color/rename picker renders
+  // (mirrors ThemeCloud's seriesColors/seriesLabels keys, which are raw words).
+  const seriesLabels = draft.chartType === 'word-cloud'
+    ? aggregateThemeCloud(applyWidgetValueFilters(previewPosts, draft.filters, 'themes')).map((w) => w.text)
+    : extractChartSeriesLabels(draft.chartType, previewData);
   const styleOverrides: ChartStyleOverrides = draft.styleOverrides
     ?? (draft.accent ? { accent: draft.accent } : {});
+
+  // Default donut center label (shown as placeholder) - mirrors the renderer's
+  // metricLabel(activeMetric) fallback for the widget's primary metric.
+  const centerLabelDefault = draft.customConfig
+    ? (isTopicsSource
+        ? TOPIC_METRIC_META[draft.customConfig.metric as keyof typeof TOPIC_METRIC_META]?.label
+        : METRIC_META[draft.customConfig.metric as CustomMetric]?.label) ?? String(draft.customConfig.metric)
+    : undefined;
 
   return (
     <ChartStyleEditor
@@ -959,6 +986,7 @@ function StyleTab({
       chartType={draft.chartType}
       value={styleOverrides}
       onChange={onStyleChange}
+      centerLabelDefault={centerLabelDefault}
     />
   );
 }

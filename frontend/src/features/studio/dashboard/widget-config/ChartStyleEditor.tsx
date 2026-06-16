@@ -21,6 +21,14 @@ const VALUE_LABEL_OPTIONS: Array<{ value: TableColumnDisplay; label: string }> =
   { value: 'abs',     label: 'Number'  },
   { value: 'pct',     label: 'Percent' },
   { value: 'abs_pct', label: 'Both'    },
+  { value: 'none',    label: 'None'    },
+];
+
+/** Word-cloud size multipliers (applied on top of the adaptive range). */
+const WORD_CLOUD_SIZE_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 0.7, label: 'Small'  },
+  { value: 1,   label: 'Medium' },
+  { value: 1.4, label: 'Large'  },
 ];
 
 interface ChartStyleEditorProps {
@@ -32,6 +40,9 @@ interface ChartStyleEditorProps {
   /** Current overrides (controlled). */
   value: ChartStyleOverrides;
   onChange: (next: ChartStyleOverrides) => void;
+  /** Default donut center label (the active metric's label) - shown as the
+   *  placeholder when no custom center label is set. Doughnut only. */
+  centerLabelDefault?: string;
 }
 
 /** Compute the default color a label *would* render with given the
@@ -47,7 +58,7 @@ function computeDefaultColor(
   return palette[index % palette.length];
 }
 
-export function ChartStyleEditor({ seriesLabels, chartType, value, onChange }: ChartStyleEditorProps) {
+export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, centerLabelDefault }: ChartStyleEditorProps) {
   const { accentColor: appAccent, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -60,6 +71,15 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange }: C
 
   const setLabelDisplay = (labelDisplay: TableColumnDisplay) =>
     onChange({ ...value, labelDisplay });
+
+  const setCenterLabel = (centerLabel: string) =>
+    onChange({ ...value, centerLabel: centerLabel.trim() === '' ? undefined : centerLabel });
+
+  const setWordCloudScale = (wordCloudScale: number) =>
+    onChange({ ...value, wordCloudScale: wordCloudScale === 1 ? undefined : wordCloudScale });
+
+  const isWordCloud = chartType === 'word-cloud';
+  const activeWordCloudScale = value.wordCloudScale ?? 1;
 
   // Whether to offer the value-label format toggle, and which option reads as
   // active. Line charts draw labels only once a format is chosen, so an unset
@@ -140,6 +160,35 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange }: C
         </div>
       </div>
 
+      {/* Word-cloud size (multiplier on the adaptive, container-driven range) */}
+      {isWordCloud && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Size
+          </Label>
+          <p className="text-xs text-muted-foreground/80">
+            Words scale to fit the widget automatically. Nudge the overall size up or down.
+          </p>
+          <div className="grid grid-cols-3 gap-1.5 pt-1">
+            {WORD_CLOUD_SIZE_OPTIONS.map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => setWordCloudScale(opt.value)}
+                className={cn(
+                  'rounded-md border px-2 py-1.5 text-xs font-medium transition-all',
+                  activeWordCloudScale === opt.value
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Value-label format (number / percent / both) */}
       {showValueLabels && (
         <div className="space-y-2">
@@ -153,14 +202,14 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange }: C
                 ? 'Label data points with the absolute number, percent of the total shown, or both. Off until you pick one.'
                 : 'Label bars with the absolute number, percent of the total shown, or both.'}
           </p>
-          <div className="grid grid-cols-3 gap-1.5 pt-1">
+          <div className="grid grid-cols-4 gap-1.5 pt-1">
             {VALUE_LABEL_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
                 onClick={() => setLabelDisplay(opt.value)}
                 className={cn(
-                  'rounded-md border px-3 py-1.5 text-xs font-medium transition-all',
+                  'rounded-md border px-2 py-1.5 text-xs font-medium transition-all',
                   activeDisplay === opt.value
                     ? 'border-primary bg-primary/5 text-primary'
                     : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
@@ -170,6 +219,25 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange }: C
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Donut center label (text above the KPI number) */}
+      {chartType === 'doughnut' && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Center Label
+          </Label>
+          <p className="text-xs text-muted-foreground/80">
+            Text shown inside the donut, above the total. Leave blank to use the metric name.
+          </p>
+          <Input
+            type="text"
+            value={value.centerLabel ?? ''}
+            placeholder={centerLabelDefault ?? 'Total'}
+            onChange={(e) => setCenterLabel(e.target.value)}
+            className="h-8 text-xs"
+          />
         </div>
       )}
 

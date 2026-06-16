@@ -1,4 +1,4 @@
-import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, Quote, Image, RectangleHorizontal, RectangleVertical, Filter, FilterX, Undo2, Redo2 } from 'lucide-react';
+import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, Quote, Image, RectangleHorizontal, RectangleVertical, Filter, FilterX, Undo2, Redo2, SlidersHorizontal } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ interface SocialDashboardToolbarProps {
   onDone: () => void;
   onAddWidget: (kind: AddWidgetKind) => void;
   onResetToDefaults: () => void;
+  onOpenReportConfig: () => void;
   onOrientationChange: (orientation: DashboardOrientation) => void;
   onFilterBarHiddenChange: (hidden: boolean) => void;
   onUndo: () => void;
@@ -41,6 +42,7 @@ export function SocialDashboardToolbar({
   onDone,
   onAddWidget,
   onResetToDefaults,
+  onOpenReportConfig,
   onOrientationChange,
   onFilterBarHiddenChange,
   onUndo,
@@ -110,6 +112,16 @@ export function SocialDashboardToolbar({
           <Filter className="h-3.5 w-3.5" />
         )}
         {filterBarHidden ? 'Filters off' : 'Filters on'}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        onClick={onOpenReportConfig}
+        title="Report-level config: canonicalization, value colors, computed fields"
+      >
+        <SlidersHorizontal className="h-3.5 w-3.5" />
+        Report Config
       </Button>
       <Button
         variant="outline"

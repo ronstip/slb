@@ -3,7 +3,7 @@ import { useStore } from 'zustand';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { CustomFieldDef, DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
-import type { SocialDashboardWidget, DashboardOrientation } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, DashboardOrientation, ReportConfig } from './types-social-dashboard.ts';
 import { AGGREGATION_META, DEFAULT_DASHBOARD_ORIENTATION } from './types-social-dashboard.ts';
 import type { DashboardFilters, FilterOptions } from './use-dashboard-filters.ts';
 import { useSocialDashboardStore } from './social-dashboard-store.ts';
@@ -18,6 +18,7 @@ import { useDashboardLayout, useSaveDashboardLayout } from './hooks/useDashboard
 import { SocialDashboardGrid } from './SocialDashboardGrid.tsx';
 import { visibleWidgets } from './visible-widgets.ts';
 import { SocialWidgetConfigDialog } from './widget-config/SocialWidgetConfigDialog.tsx';
+import { ReportConfigDialog } from './widget-config/ReportConfigDialog.tsx';
 import type { AttachedWidget } from './coauthor-context.ts';
 
 type ArrayFilterKey = Exclude<keyof DashboardFilters, 'date_range'>;
@@ -49,6 +50,7 @@ export interface DashboardToolbarHandlers {
   onDone: () => void;
   onAddWidget: (kind: AddWidgetKind) => void;
   onResetToDefaults: () => void;
+  onOpenReportConfig: () => void;
   orientation: DashboardOrientation;
   onOrientationChange: (orientation: DashboardOrientation) => void;
   filterBarHidden: boolean;
@@ -102,6 +104,11 @@ interface SocialDashboardViewProps {
   attachedWidgetIds?: string[];
   /** Toggle a widget's pin. Receives id + current title for the chip. */
   onToggleAttachWidget?: (w: AttachedWidget) => void;
+  /** Seed report config for read-only mode, where the authed layout fetch is
+   *  disabled. The public share endpoint forwards it; canonicalization is
+   *  already baked into `allPosts`, this drives value colors + computed-field
+   *  rendering. Ignored in edit mode (the layout doc is the source there). */
+  reportConfig?: ReportConfig | null;
 }
 
 export function SocialDashboardView({
@@ -128,6 +135,7 @@ export function SocialDashboardView({
   coAuthorActive = false,
   attachedWidgetIds,
   onToggleAttachWidget,
+  reportConfig: reportConfigProp = null,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
   const navigate = useNavigate();
@@ -181,6 +189,14 @@ export function SocialDashboardView({
   const [configWidget, setConfigWidget] = useState<SocialDashboardWidget | null>(null);
   const [configMode, setConfigMode] = useState<'add' | 'edit'>('edit');
 
+  // Report-level config (canonicalization, value colors, computed fields). Held
+  // in a ref so every layout save preserves it (the save payload writes each
+  // field explicitly, so an omitted field would be nulled server-side).
+  const [reportConfig, setReportConfig] = useState<ReportConfig | null>(null);
+  const reportConfigRef = useRef<ReportConfig | null>(null);
+  useEffect(() => { reportConfigRef.current = reportConfig; }, [reportConfig]);
+  const [reportConfigOpen, setReportConfigOpen] = useState(false);
+
   // Load persisted layout. Skipped in readOnly (shared) mode - the layout is
   // already inlined in the public share response and the authed endpoint 401s
   // for unauthenticated viewers, which now globally redirects to landing.
@@ -196,6 +212,7 @@ export function SocialDashboardView({
   useEffect(() => {
     if (layoutLoading || initialised.current) return;
     initialised.current = true;
+    setReportConfig(layoutData?.reportConfig ?? reportConfigProp ?? null);
     const persistedOrientation = layoutData?.orientation ?? defaultOrientation ?? DEFAULT_DASHBOARD_ORIENTATION;
     hydrateReportHistory(historyStore, {
       widgets:
@@ -261,6 +278,7 @@ export function SocialDashboardView({
           filterBarFilters: updatedFilterBar ?? filterBarFiltersRef.current,
           orientation: updatedOrientation ?? orientationRef.current,
           filterBarHidden: filterBarHiddenRef.current,
+          reportConfig: reportConfigRef.current,
         });
       }, 800);
     },
@@ -342,6 +360,7 @@ export function SocialDashboardView({
         filterBarFilters: filterBarFiltersRef.current,
         orientation: orientationRef.current,
         filterBarHidden: filterBarHiddenRef.current,
+        reportConfig: reportConfigRef.current,
       });
       setEditMode(false);
     } catch (err) {
@@ -470,8 +489,30 @@ export function SocialDashboardView({
       filterBarFilters: filterBarFiltersRef.current,
       orientation: orientationRef.current,
       filterBarHidden: filterBarHiddenRef.current,
+      reportConfig: reportConfigRef.current,
     });
   }, [historyStore, saveLayout]);
+
+  // Apply a report-config change from the dialog. Local state/ref update
+  // immediately (so value-color / computed previews are instant), but the SAVE
+  // is debounced: each save updates the layout cache, which changes the parent's
+  // data-query key and triggers a canonical refetch — doing that on every
+  // keystroke would thrash. The trailing save persists the settled config.
+  const reportConfigSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleReportConfigChange = useCallback((next: ReportConfig | null) => {
+    setReportConfig(next);
+    reportConfigRef.current = next;
+    if (reportConfigSaveTimer.current) clearTimeout(reportConfigSaveTimer.current);
+    reportConfigSaveTimer.current = setTimeout(() => {
+      saveLayout({
+        layout: widgetsRef.current,
+        filterBarFilters: filterBarFiltersRef.current,
+        orientation: orientationRef.current,
+        filterBarHidden: filterBarHiddenRef.current,
+        reportConfig: reportConfigRef.current,
+      });
+    }, 600);
+  }, [saveLayout]);
 
   const handleFilterBarHiddenChange = useCallback(
     (hidden: boolean) => {
@@ -542,6 +583,7 @@ export function SocialDashboardView({
       onDone: handleDone,
       onAddWidget: handleOpenAdd,
       onResetToDefaults: handleResetToDefaults,
+      onOpenReportConfig: () => setReportConfigOpen(true),
       orientation,
       onOrientationChange: handleOrientationChange,
       filterBarHidden,
@@ -588,6 +630,8 @@ export function SocialDashboardView({
         coAuthorActive={coAuthorActive}
         attachedWidgetIds={attachedSet}
         onToggleAttachWidget={onToggleAttachWidget}
+        reportValueColors={reportConfig?.valueColors}
+        reportComputedFields={reportConfig?.computedFields}
       />
 
       {/* Single config dialog - used for both add and edit */}
@@ -603,8 +647,19 @@ export function SocialDashboardView({
         customFieldNames={customFieldNames}
         objectFieldDefs={objectFieldDefs}
         customFieldDefs={customFieldDefs}
+        computedFields={reportConfig?.computedFields}
         agentId={agentId}
         topics={topics}
+      />
+
+      {/* Report-level config: canonicalization, value colors, computed fields. */}
+      <ReportConfigDialog
+        open={reportConfigOpen}
+        onClose={() => setReportConfigOpen(false)}
+        value={reportConfig}
+        onChange={handleReportConfigChange}
+        allPosts={allPosts}
+        customFieldDefs={customFieldDefs}
       />
     </div>
   );

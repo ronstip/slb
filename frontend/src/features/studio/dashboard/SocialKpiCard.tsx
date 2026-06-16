@@ -139,9 +139,11 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, 
   const styles = SIZE_STYLES[size ?? DEFAULT_NUMBER_SIZE];
 
   const displayValue = kpi
-    ? kpi.format === 'percent'
-      ? `${kpi.value}%`
-      : formatNumber(kpi.value)
+    ? kpi.displayText != null
+      ? kpi.displayText
+      : kpi.format === 'percent'
+        ? `${kpi.value}%`
+        : formatNumber(kpi.value)
     : '-';
 
   const Icon = kpi ? ICON_MAP[kpi.icon] : Hash;

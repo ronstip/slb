@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from api.routers.dashboard_schema import ReportConfig
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -102,6 +104,10 @@ class MultiFeedRequest(BaseModel):
 class DashboardDataRequest(BaseModel):
     collection_ids: list[str]
     agent_id: str | None = None  # When set, dashboard data is scoped via scope_posts TVF
+    # Report-level config (canonicalization, computed fields). Applied to the
+    # posts after the cached BigQuery core, so live-edit recompute reuses the
+    # cache without re-querying. See api/services/report_transform.py.
+    report_config: ReportConfig | None = None
 
 
 class CreateDashboardShareRequest(BaseModel):

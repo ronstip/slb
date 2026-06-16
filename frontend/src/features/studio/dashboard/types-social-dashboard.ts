@@ -64,9 +64,15 @@ export type CustomDimension =
   | 'themes'
   | 'entities'
   | 'brands'
-  | `custom:${string}`;
+  | `custom:${string}`
+  // Report-defined if/else computed field with categorical output. See
+  // ReportConfig / ComputedField below. Resolved via `computed:<id>`.
+  | `computed:${string}`;
 
-export type StandardCustomDimension = Exclude<CustomDimension, `custom:${string}`>;
+export type StandardCustomDimension = Exclude<
+  CustomDimension,
+  `custom:${string}` | `computed:${string}`
+>;
 
 /** Prefix used to namespace agent-defined enrichment fields as group-by dimensions. */
 export const CUSTOM_DIM_PREFIX = 'custom:';
@@ -333,7 +339,10 @@ export type CustomMetric =
   | 'share_count'
   | 'engagement_total'
   // list[object] element metrics, e.g. `customobj:men.age`, `customobj:men.__count`
-  | `customobj:${string}`;
+  | `customobj:${string}`
+  // Report-defined computed field with numeric output (expr, or if/else→metric).
+  // See ReportConfig / ComputedField below. Resolved via `computed:<id>`.
+  | `computed:${string}`;
 
 // ─── Topic dimensions & metrics (used when widget.dataSource === 'topics') ─────
 
@@ -441,6 +450,9 @@ export function getTopicDimensionMeta(
 /** Granularity for time-series (posted_at) aggregation. */
 export type TimeBucket = 'hour' | 'day' | 'week' | 'month';
 
+/** A renderable piece of a `mode` ("Top value") number-card. */
+export type TopValuePart = 'label' | 'count' | 'percent';
+
 export interface CustomChartConfig {
   /** What to group by. undefined = no groupBy → number-card.
    *  Vocabulary depends on the widget's `dataSource`:
@@ -449,8 +461,15 @@ export interface CustomChartConfig {
   dimension?: AnyDimension;
   /** Vocabulary depends on `dataSource` - see `dimension`. */
   metric: AnyMetric;
-  /** default 'sum' */
-  metricAgg?: 'sum' | 'avg' | 'min' | 'max' | 'count';
+  /** default 'sum'. `median` is numeric (over `metric`); `distinct`/`mode` run
+   *  over `categoricalField` instead of `metric`; `percent` is `metric` as a
+   *  share of the dashboard-scope baseline. `distinct`/`mode`/`percent`/`median`
+   *  are number-card only. */
+  metricAgg?: 'sum' | 'avg' | 'min' | 'max' | 'count' | 'median' | 'distinct' | 'mode' | 'percent';
+  /** Categorical field that `distinct` / `mode` aggregations run over (a
+   *  dimension token, e.g. `channel_handle`). Ignored for numeric aggregations.
+   *  Number-card only. */
+  categoricalField?: AnyDimension;
   /** only applies when dimension === 'posted_at' */
   timeBucket?: TimeBucket;
   /** Bar orientation - default 'horizontal' */
@@ -577,8 +596,9 @@ export type TableColumnViz = 'none' | 'bar' | 'heatmap';
 
 /** Numeric format for a column. 'abs' (default) = raw number; 'pct' = the
  *  cell's share of the column's total across visible rows; 'abs_pct' = both,
- *  e.g. "1,234 (12.3%)". Ignored for string dimension cells. */
-export type TableColumnDisplay = 'abs' | 'pct' | 'abs_pct';
+ *  e.g. "1,234 (12.3%)". 'none' = no value label (chart value-labels only -
+ *  table columns always render a value). Ignored for string dimension cells. */
+export type TableColumnDisplay = 'abs' | 'pct' | 'abs_pct' | 'none';
 
 /** Body/header text size for a table widget. 'xs' (default) matches the
  *  historical compact look; 'sm'/'base' make the table read larger in a brief. */
@@ -918,6 +938,12 @@ export interface ChartStyleOverrides {
    *  both. Unset preserves each chart's historical default (pie/doughnut =
    *  percent, others = absolute) - see `resolveLabelDisplay`. */
   labelDisplay?: TableColumnDisplay;
+  /** Doughnut only: custom text shown inside the donut, above the KPI number.
+   *  Unset → falls back to the active metric's label. */
+  centerLabel?: string;
+  /** Word-cloud only: size multiplier applied on top of the adaptive
+   *  (container-width-driven) font range. 1 = default. */
+  wordCloudScale?: number;
 }
 
 /** Aggregations that were superseded by `aggregation: 'custom'` with the right
@@ -1122,6 +1148,98 @@ export interface ReportScope {
   date_range?: { from: string | null; to: string | null } | null;
 }
 
+// ─── Report config (report-level defaults above per-widget config) ────────────
+// Persisted on the dashboard layout doc as `reportConfig`. The authoritative
+// server transform applies it ONCE to the shared posts array (consumed by the
+// interactive dashboard, the Brief, and shareable reports) so every consumer
+// sees identical canonical data. Per-widget config overrides the report default
+// only when intentionally set. See docs/report-config-architecture.md.
+// Mirrors `ReportConfig` in api/routers/dashboard_schema.py.
+
+/** Fields a canonicalization group / value color can target: scalar +
+ *  multi-valued built-ins, plus dynamic `custom:<name>` enrichment fields. */
+export type FieldKey =
+  | 'sentiment'
+  | 'emotion'
+  | 'platform'
+  | 'language'
+  | 'content_type'
+  | 'channel_type'
+  | 'themes'
+  | 'entities'
+  | 'brands'
+  | `custom:${string}`;
+
+/** Groups raw values into one canonical value, per chosen fields. On a
+ *  multi-valued field the transform remaps THEN dedupes within each post's
+ *  array, so merging can only drop or move counts, never inflate them. A raw
+ *  value may belong to at most one group per field (validated at save). */
+export interface CanonGroup {
+  id: string;
+  /** The value the members collapse into, e.g. "Cal". */
+  canonical: string;
+  /** Raw values mapped to `canonical`, e.g. ["cal", "Cal credit cards"]. */
+  members: string[];
+  /** Which fields this grouping applies to. */
+  fields: FieldKey[];
+}
+
+/** Closed arithmetic AST for an `expr` computed field. The operator/function
+ *  set is intentionally small so the TS and Python evaluators stay identical.
+ *  A `field` ref is a numeric leaf metric aggregated per bucket BEFORE the
+ *  expression evaluates (aggregate-then-evaluate → correct weighted ratios). */
+export type ExprNode =
+  | { t: 'num'; v: number }
+  | { t: 'field'; ref: AnyMetric }
+  | { t: 'bin'; op: '+' | '-' | '*' | '/'; l: ExprNode; r: ExprNode }
+  | { t: 'fn'; fn: 'min' | 'max' | 'abs'; args: ExprNode[] };
+
+/** One case of an if/elif/else computed field: when ALL `when` conditions hold
+ *  (AND), the field takes `value`. Cases evaluate in order, first match wins;
+ *  no match → the field's `elseValue`. */
+export interface IfElseCase {
+  when: FilterCondition[];
+  value: string | number;
+}
+
+/** A report-defined field, referenced elsewhere as `computed:<id>`.
+ *  - `expr`   → numeric metric, evaluated over per-bucket aggregated leaves.
+ *  - `ifelse` → categorical dimension, or per-post numeric metric. */
+export type ComputedField =
+  | { id: string; name: string; kind: 'expr'; expr: ExprNode; output: 'metric' }
+  | {
+      id: string;
+      name: string;
+      kind: 'ifelse';
+      cases: IfElseCase[];
+      elseValue: string | number;
+      output: 'dimension' | 'metric';
+    };
+
+export interface ReportConfig {
+  /** Value groupings applied to the shared posts before any aggregation. */
+  canonicalization?: CanonGroup[];
+  /** Report-wide value colors, keyed by {@link FieldKey} → canonical value →
+   *  hex. A widget's `styleOverrides.seriesColors` overrides these when set. */
+  valueColors?: Record<string, Record<string, string>>;
+  /** Report-defined computed fields, referenced as `computed:<id>`. */
+  computedFields?: ComputedField[];
+}
+
+/** Prefix marking a computed-field reference inside the dimension/metric
+ *  vocabularies (mirrors {@link CUSTOM_DIM_PREFIX} for custom enrichment fields). */
+export const COMPUTED_PREFIX = 'computed:';
+
+export function isComputedRef(
+  ref: AnyDimension | AnyMetric | undefined | null,
+): ref is `computed:${string}` {
+  return typeof ref === 'string' && ref.startsWith(COMPUTED_PREFIX);
+}
+
+export function computedFieldId(ref: `computed:${string}`): string {
+  return ref.slice(COMPUTED_PREFIX.length);
+}
+
 // ─── Widget config ────────────────────────────────────────────────────────────
 
 /** Media-widget payload (aggregation === 'media'). */
@@ -1205,6 +1323,10 @@ export interface SocialDashboardWidget {
   /** When true, the number-card trendline shows a running total (cumulative)
    *  rather than per-bucket values. Undefined → false. */
   trendCumulative?: boolean;
+  /** Which pieces a `mode` ("Top value") number-card renders, in order.
+   *  Undefined → `['label']`. e.g. `['label','count','percent']` →
+   *  "positive · 1,240 · 31%". Ignored for non-`mode` aggregations. */
+  topValueParts?: TopValuePart[];
   /** Set once the user manually resizes a text/embed card. Disables the
    *  auto-fit-height behaviour so the saved `h` is respected (content scrolls
    *  if it overflows). Undefined → legacy auto-fit for untouched cards. */
@@ -1237,6 +1359,17 @@ export interface GroupedCategoricalDataset {
 export interface WidgetData {
   /** Single numeric value (for number-card) */
   value?: number;
+  /** String result for number-card aggregations whose result is a label, not a
+   *  number (currently `mode` / "Top value"). When set, `value` carries the
+   *  supporting count. */
+  stringValue?: string;
+  /** How a number-card should format `value`. Set by aggregations whose result
+   *  is inherently a percentage (`percent`). Undefined → plain number. */
+  format?: 'number' | 'percent';
+  /** Denominator for a `mode` ("Top value") card's percentage: the count of
+   *  values that are present (missing values excluded). `value / valueTotal` is
+   *  the top value's share among posts that actually have a value. */
+  valueTotal?: number;
   /** Categorical labels */
   labels?: string[];
   /** Corresponding values */

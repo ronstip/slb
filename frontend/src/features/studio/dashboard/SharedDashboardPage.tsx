@@ -15,7 +15,7 @@ import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilte
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
-import type { SocialDashboardWidget, ReportScope } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, ReportScope, ReportConfig } from './types-social-dashboard.ts';
 
 export function SharedDashboardPage() {
   // Token-gated; must never be indexed.
@@ -201,6 +201,7 @@ export function SharedDashboardPage() {
               onLayoutLoaded={handleLayoutLoaded}
               defaultLayout={response.layout as SocialDashboardWidget[] | undefined ?? undefined}
               defaultOrientation={response.orientation ?? undefined}
+              reportConfig={(response.reportConfig as ReportConfig | null) ?? null}
               gridRef={gridRef}
               readOnly
             />

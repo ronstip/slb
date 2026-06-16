@@ -15,6 +15,7 @@ import type { CustomFieldDef } from '../../../../api/types.ts';
 import type {
   AnyDimension,
   AnyMetric,
+  ComputedField,
   CustomChartConfig,
   CustomDimension,
   CustomMetric,
@@ -24,6 +25,9 @@ import type {
   TopicMetric,
 } from '../types-social-dashboard.ts';
 import {
+  COMPUTED_PREFIX,
+  computedFieldId,
+  isComputedRef,
   CUSTOM_DIM_PREFIX,
   DIMENSION_META,
   METRIC_META,
@@ -65,6 +69,24 @@ const AGG_OPTIONS: Array<{ value: CustomChartConfig['metricAgg']; label: string 
   { value: 'count', label: 'Count' },
 ];
 
+// Number-card (single-value KPI) gets the full set: the numeric aggregations
+// plus median, distinct-count, top-value (mode) and percent-of-total. `distinct`
+// and `mode` run over a categorical field (see the Metric → Field swap below).
+const NUMBER_CARD_AGG_OPTIONS: Array<{ value: CustomChartConfig['metricAgg']; label: string }> = [
+  { value: 'sum', label: 'Total (Sum)' },
+  { value: 'avg', label: 'Average (Mean)' },
+  { value: 'median', label: 'Median' },
+  { value: 'min', label: 'Minimum' },
+  { value: 'max', label: 'Maximum' },
+  { value: 'count', label: 'Count' },
+  { value: 'distinct', label: 'Distinct count' },
+  { value: 'mode', label: 'Top value' },
+  { value: 'percent', label: '% of total' },
+];
+
+/** Aggregations that operate on a categorical field rather than the numeric metric. */
+const CATEGORICAL_AGGS = new Set<CustomChartConfig['metricAgg']>(['distinct', 'mode']);
+
 const RATIO_AGG_OPTIONS = AGG_OPTIONS.filter(
   (o) => o.value === 'avg' || o.value === 'min' || o.value === 'max',
 );
@@ -88,6 +110,11 @@ interface DataSourceFormProps {
   /** Declared list[object] field defs - source of typed object-leaf
    *  dimensions/metrics. */
   objectFieldDefs?: CustomFieldDef[];
+  /** Report-level computed fields. `output:'dimension'` ifelse fields are
+   *  appended to the post Group-by vocabulary; `output:'metric'` fields (expr
+   *  or ifelse) to the post Metric vocabulary - both as `computed:<id>` tokens.
+   *  Excluded from topics + object-field modes. */
+  computedFields?: ComputedField[];
   /** Which BigQuery source the widget reads. Default 'posts'. The widget-level
    *  Data Source toggle lives in the dialog, not the form. */
   dataSource?: DataSource;
@@ -100,6 +127,7 @@ export function DataSourceForm({
   chartType,
   customFieldNames,
   objectFieldDefs,
+  computedFields,
   dataSource = 'posts',
 }: DataSourceFormProps) {
   const isTopics = dataSource === 'topics';
@@ -114,6 +142,34 @@ export function DataSourceForm({
   const activeObjDef = activeObjField
     ? (objectFieldDefs ?? []).find((d) => d.name === activeObjField)
     : undefined;
+
+  // Computed fields are post-level only - never offered in topics or
+  // element-as-unit object modes (the vocabularies swap there). `id → name` map
+  // resolves `computed:<id>` tokens to a human label.
+  const computedAvailable = !isTopics && !activeObjField;
+  const computedNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const cf of computedFields ?? []) m.set(cf.id, cf.name);
+    return m;
+  }, [computedFields]);
+  const computedDimTokens = useMemo<CustomDimension[]>(
+    () =>
+      computedAvailable
+        ? (computedFields ?? [])
+            .filter((cf) => cf.output === 'dimension')
+            .map((cf) => `${COMPUTED_PREFIX}${cf.id}` as CustomDimension)
+        : [],
+    [computedAvailable, computedFields],
+  );
+  const computedMetricTokens = useMemo<CustomMetric[]>(
+    () =>
+      computedAvailable
+        ? (computedFields ?? [])
+            .filter((cf) => cf.output === 'metric')
+            .map((cf) => `${COMPUTED_PREFIX}${cf.id}` as CustomMetric)
+        : [],
+    [computedAvailable, computedFields],
+  );
   const objKind = isObjectMetric(config.metric)
     ? parseObjectMetric(config.metric as string)?.kind ?? null
     : null;
@@ -128,14 +184,16 @@ export function DataSourceForm({
     const customDims = (customFieldNames ?? [])
       .filter((n) => !objectFieldNames.has(n))
       .map((n) => `${CUSTOM_DIM_PREFIX}${n}` as CustomDimension);
-    return [...STANDARD_DIMENSIONS, ...customDims];
-  }, [customFieldNames, objectFieldDefs]);
+    return [...STANDARD_DIMENSIONS, ...customDims, ...computedDimTokens];
+  }, [customFieldNames, objectFieldDefs, computedDimTokens]);
 
   const metricMeta = isTopics ? TOPIC_METRIC_META : METRIC_META;
   const labelForMetric = (m: AnyMetric): string =>
-    isObjectMetric(m)
-      ? getObjectMetricLabel(m as string)
-      : metricMeta[m as keyof typeof metricMeta]?.label ?? (m as string);
+    isComputedRef(m)
+      ? computedNameById.get(computedFieldId(m)) ?? (m as string)
+      : isObjectMetric(m)
+        ? getObjectMetricLabel(m as string)
+        : metricMeta[m as keyof typeof metricMeta]?.label ?? (m as string);
 
   // In object mode the Metric dropdown is grouped (Count / field fields /
   // Inherited from post); other modes use a flat list.
@@ -146,9 +204,13 @@ export function DataSourceForm({
       ? (objMetricGroups
           ? objMetricGroups.flatMap((g) => g.metrics)
           : [config.metric]) // object token active but defs unavailable (shared dashboard)
-      : ALL_POST_METRICS;
-  const renderDimMeta = (dim: AnyDimension) =>
-    isTopics ? getTopicDimensionMeta(dim as TopicDimension) : getDimensionMeta(dim as CustomDimension);
+      : [...ALL_POST_METRICS, ...computedMetricTokens];
+  const renderDimMeta = (dim: AnyDimension): { label: string } => {
+    if (isComputedRef(dim)) {
+      return { label: computedNameById.get(computedFieldId(dim)) ?? (dim as string) };
+    }
+    return isTopics ? getTopicDimensionMeta(dim as TopicDimension) : getDimensionMeta(dim as CustomDimension);
+  };
 
   // Dimension vocabularies, as labeled groups for the Select. In object mode the
   // element is the unit, but it can be grouped/broken-down by a leaf of this
@@ -280,18 +342,41 @@ export function DataSourceForm({
     onChange(next);
   };
 
+  // Single-value KPI: a number-card with no group-by. It gets the extended
+  // aggregation set (median/distinct/mode/percent); grouped charts keep the
+  // basic numeric set.
+  const isNumberCardKpi = !isTopics && chartType === 'number-card' && !config.dimension && !activeObjField;
+  // `distinct`/`mode` run over a categorical field, so the Metric row swaps to a
+  // field picker bound to `categoricalField`.
+  const isCategoricalAgg = isNumberCardKpi && CATEGORICAL_AGGS.has(config.metricAgg);
+
   const aggOptions = isTopics && TOPIC_RATIO_METRICS.has(config.metric as TopicMetric)
     ? RATIO_AGG_OPTIONS
     : objKind === 'own'
       ? RATIO_AGG_OPTIONS
       : objKind === 'inherited'
         ? INHERITED_AGG_OPTIONS
-        : AGG_OPTIONS;
-  // Aggregation control shows for any grouped widget, plus single-value object
-  // agg metrics (avg age / sum views with no group-by). Count + distinct-posts
-  // need no agg.
-  const showAgg = (!!config.dimension || isObjAggMetric)
+        : isNumberCardKpi
+          ? NUMBER_CARD_AGG_OPTIONS
+          : AGG_OPTIONS;
+  // Aggregation control shows for any grouped widget, the single-value KPI card,
+  // plus single-value object agg metrics (avg age / sum views with no group-by).
+  // Count + distinct-posts (object) need no agg.
+  const showAgg = (!!config.dimension || isObjAggMetric || isNumberCardKpi)
     && objKind !== 'count' && objKind !== 'distinctPosts';
+
+  // Categorical fields the distinct/top-value aggs can run over (exclude the
+  // time axis - distinct/top-of dates isn't a meaningful KPI).
+  const categoricalFieldOptions = allPostDimensions.filter((d) => d !== 'posted_at');
+
+  const handleAggChange = (value: CustomChartConfig['metricAgg']) => {
+    const next: CustomChartConfig = { ...config, metricAgg: value };
+    // Seed a categorical field the first time distinct/top-value is picked.
+    if (CATEGORICAL_AGGS.has(value) && !next.categoricalField) {
+      next.categoricalField = (categoricalFieldOptions[0] ?? 'platform') as AnyDimension;
+    }
+    onChange(next);
+  };
   const aggFallback = objKind === 'own'
     ? 'avg'
     : objKind === 'inherited'
@@ -326,7 +411,29 @@ export function DataSourceForm({
         </div>
       )}
 
-      {/* Metric */}
+      {/* Field - distinct/top-value run over a categorical field, so the Metric
+          row becomes a field picker bound to `categoricalField`. */}
+      {isCategoricalAgg ? (
+        <div className="flex items-center gap-3">
+          <Label className="text-xs w-24 shrink-0">Field</Label>
+          <Select
+            value={(config.categoricalField as string | undefined) ?? ''}
+            onValueChange={(v) => onChange({ ...config, categoricalField: v as AnyDimension })}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select a field" />
+            </SelectTrigger>
+            <SelectContent>
+              {categoricalFieldOptions.map((dim) => (
+                <SelectItem key={dim as string} value={dim as string}>
+                  {renderDimMeta(dim).label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+      /* Metric */
       <div className="flex items-center gap-3">
         <Label className="text-xs w-24 shrink-0">Metric</Label>
         <Select
@@ -356,14 +463,15 @@ export function DataSourceForm({
           </SelectContent>
         </Select>
       </div>
+      )}
 
-      {/* Aggregation - visible for grouped widgets + single-value object numerics */}
+      {/* Aggregation - visible for grouped widgets, the KPI card, + single-value object numerics */}
       {showAgg && (
         <div className="flex items-center gap-3">
           <Label className="text-xs w-24 shrink-0">Aggregation</Label>
           <Select
             value={config.metricAgg ?? aggFallback}
-            onValueChange={(v) => onChange({ ...config, metricAgg: v as CustomChartConfig['metricAgg'] })}
+            onValueChange={(v) => handleAggChange(v as CustomChartConfig['metricAgg'])}
           >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
