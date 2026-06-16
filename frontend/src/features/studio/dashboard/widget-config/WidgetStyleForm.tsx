@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from '../../../../components/ui/select.tsx';
 import { cn } from '../../../../lib/utils.ts';
-import type { CustomDimension, NumberSize, SocialAggregation, TimeBucket } from '../types-social-dashboard.ts';
+import type { CustomChartConfig, CustomDimension, NumberSize, SocialAggregation, TimeBucket, TopValuePart } from '../types-social-dashboard.ts';
 import { DATETIME_DIMENSIONS, DEFAULT_NUMBER_SIZE, KPI_OPTIONS, getDimensionMeta } from '../types-social-dashboard.ts';
 import { resolveSparklineEnabled } from '../sparkline-visibility.ts';
 
@@ -25,6 +25,13 @@ const NUMBER_SIZE_OPTIONS: Array<{ value: NumberSize; label: string }> = [
   { value: 'big',    label: 'Big'    },
 ];
 
+const TOP_VALUE_PART_OPTIONS: Array<{ value: TopValuePart; label: string }> = [
+  { value: 'label',   label: 'Value'   },
+  { value: 'count',   label: 'Count'   },
+  { value: 'percent', label: 'Percent' },
+];
+const DEFAULT_TOP_VALUE_PARTS: TopValuePart[] = ['label'];
+
 interface WidgetStyleFormProps {
   aggregation: SocialAggregation;
   kpiIndex?: number;
@@ -34,6 +41,9 @@ interface WidgetStyleFormProps {
   trendDimension?: CustomDimension;
   trendTimeBucket?: TimeBucket;
   trendCumulative?: boolean;
+  /** Number-card aggregation - drives the Top-value display control. */
+  metricAgg?: CustomChartConfig['metricAgg'];
+  topValueParts?: TopValuePart[];
   onKpiIndexChange?: (index: number) => void;
   onAccentChange: (color: string | undefined) => void;
   onNumberSizeChange?: (size: NumberSize) => void;
@@ -41,6 +51,7 @@ interface WidgetStyleFormProps {
   onTrendDimensionChange?: (dim: CustomDimension) => void;
   onTrendTimeBucketChange?: (bucket: TimeBucket) => void;
   onTrendCumulativeChange?: (cumulative: boolean) => void;
+  onTopValuePartsChange?: (parts: TopValuePart[]) => void;
 }
 
 export function WidgetStyleForm({
@@ -52,6 +63,8 @@ export function WidgetStyleForm({
   trendDimension,
   trendTimeBucket,
   trendCumulative,
+  metricAgg,
+  topValueParts,
   onKpiIndexChange,
   onAccentChange,
   onNumberSizeChange,
@@ -59,7 +72,9 @@ export function WidgetStyleForm({
   onTrendDimensionChange,
   onTrendTimeBucketChange,
   onTrendCumulativeChange,
+  onTopValuePartsChange,
 }: WidgetStyleFormProps) {
+  const activeTopValueParts = topValueParts?.length ? topValueParts : DEFAULT_TOP_VALUE_PARTS;
   const activeSize = numberSize ?? DEFAULT_NUMBER_SIZE;
   // default the toggle to the per-size behaviour so the checkbox reflects what's rendered
   const sparklineOn = showSparkline ?? resolveSparklineEnabled(activeSize, undefined);
@@ -88,6 +103,42 @@ export function WidgetStyleForm({
           </div>
           <p className="text-[10px] text-muted-foreground">
             Changing size also resizes the widget on the grid.
+          </p>
+        </div>
+      )}
+
+      {/* Top-value display pieces (mode number-card only) */}
+      {metricAgg === 'mode' && onTopValuePartsChange && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Show</Label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {TOP_VALUE_PART_OPTIONS.map((opt) => {
+              const checked = activeTopValueParts.includes(opt.value);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    const next = TOP_VALUE_PART_OPTIONS
+                      .map((o) => o.value)
+                      .filter((v) => (v === opt.value ? !checked : activeTopValueParts.includes(v)));
+                    // Never empty - keep at least the value label.
+                    onTopValuePartsChange(next.length ? next : DEFAULT_TOP_VALUE_PARTS);
+                  }}
+                  className={cn(
+                    'rounded-md border px-3 py-1.5 text-xs font-medium transition-all',
+                    checked
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Pieces shown on the card, e.g. &ldquo;positive · 1,240 · 31%&rdquo;.
           </p>
         </div>
       )}

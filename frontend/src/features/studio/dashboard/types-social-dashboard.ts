@@ -450,6 +450,9 @@ export function getTopicDimensionMeta(
 /** Granularity for time-series (posted_at) aggregation. */
 export type TimeBucket = 'hour' | 'day' | 'week' | 'month';
 
+/** A renderable piece of a `mode` ("Top value") number-card. */
+export type TopValuePart = 'label' | 'count' | 'percent';
+
 export interface CustomChartConfig {
   /** What to group by. undefined = no groupBy → number-card.
    *  Vocabulary depends on the widget's `dataSource`:
@@ -458,8 +461,15 @@ export interface CustomChartConfig {
   dimension?: AnyDimension;
   /** Vocabulary depends on `dataSource` - see `dimension`. */
   metric: AnyMetric;
-  /** default 'sum' */
-  metricAgg?: 'sum' | 'avg' | 'min' | 'max' | 'count';
+  /** default 'sum'. `median` is numeric (over `metric`); `distinct`/`mode` run
+   *  over `categoricalField` instead of `metric`; `percent` is `metric` as a
+   *  share of the dashboard-scope baseline. `distinct`/`mode`/`percent`/`median`
+   *  are number-card only. */
+  metricAgg?: 'sum' | 'avg' | 'min' | 'max' | 'count' | 'median' | 'distinct' | 'mode' | 'percent';
+  /** Categorical field that `distinct` / `mode` aggregations run over (a
+   *  dimension token, e.g. `channel_handle`). Ignored for numeric aggregations.
+   *  Number-card only. */
+  categoricalField?: AnyDimension;
   /** only applies when dimension === 'posted_at' */
   timeBucket?: TimeBucket;
   /** Bar orientation - default 'horizontal' */
@@ -931,6 +941,9 @@ export interface ChartStyleOverrides {
   /** Doughnut only: custom text shown inside the donut, above the KPI number.
    *  Unset → falls back to the active metric's label. */
   centerLabel?: string;
+  /** Word-cloud only: size multiplier applied on top of the adaptive
+   *  (container-width-driven) font range. 1 = default. */
+  wordCloudScale?: number;
 }
 
 /** Aggregations that were superseded by `aggregation: 'custom'` with the right
@@ -1310,6 +1323,10 @@ export interface SocialDashboardWidget {
   /** When true, the number-card trendline shows a running total (cumulative)
    *  rather than per-bucket values. Undefined → false. */
   trendCumulative?: boolean;
+  /** Which pieces a `mode` ("Top value") number-card renders, in order.
+   *  Undefined → `['label']`. e.g. `['label','count','percent']` →
+   *  "positive · 1,240 · 31%". Ignored for non-`mode` aggregations. */
+  topValueParts?: TopValuePart[];
   /** Set once the user manually resizes a text/embed card. Disables the
    *  auto-fit-height behaviour so the saved `h` is respected (content scrolls
    *  if it overflows). Undefined → legacy auto-fit for untouched cards. */
@@ -1342,6 +1359,17 @@ export interface GroupedCategoricalDataset {
 export interface WidgetData {
   /** Single numeric value (for number-card) */
   value?: number;
+  /** String result for number-card aggregations whose result is a label, not a
+   *  number (currently `mode` / "Top value"). When set, `value` carries the
+   *  supporting count. */
+  stringValue?: string;
+  /** How a number-card should format `value`. Set by aggregations whose result
+   *  is inherently a percentage (`percent`). Undefined → plain number. */
+  format?: 'number' | 'percent';
+  /** Denominator for a `mode` ("Top value") card's percentage: the count of
+   *  values that are present (missing values excluded). `value / valueTotal` is
+   *  the top value's share among posts that actually have a value. */
+  valueTotal?: number;
   /** Categorical labels */
   labels?: string[];
   /** Corresponding values */

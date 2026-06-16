@@ -39,6 +39,7 @@ import {
   aggregateContentTypes,
   aggregateLanguages,
   aggregateCustom,
+  aggregateThemeCloud,
 } from './dashboard-aggregations.ts';
 import { aggregateObjectList } from './object-list-aggregations.ts';
 import { aggregateTopicsCustom } from './topic-aggregations.ts';
@@ -50,7 +51,7 @@ const MAX_LABELS = 40;
 
 /** Chart types that ignore `seriesColors` — coloring categories does nothing,
  *  so there's no point attaching labels. */
-const NON_SERIES_CHART_TYPES = new Set(['number-card', 'word-cloud', 'table']);
+const NON_SERIES_CHART_TYPES = new Set(['number-card', 'table']);
 
 /** The keys `styleOverrides.seriesColors` actually tints. */
 export function getWidgetCategoryLabels(
@@ -71,9 +72,9 @@ export function getWidgetRenamableLabels(
   topics?: TopicMetric[],
 ): string[] {
   // `table` renames via the same `seriesLabels` map (renameValue on cells), so
-  // it IS renamable even though it's not colorable. number-card/word-cloud have
-  // no per-category labels to rename.
-  if (widget.chartType === 'number-card' || widget.chartType === 'word-cloud') return [];
+  // it IS renamable even though it's not colorable. number-card has no
+  // per-category labels to rename. (word-cloud renames per-word.)
+  if (widget.chartType === 'number-card') return [];
   const data = widgetData(widget, posts, topics);
   if (!data) return [];
   return dedupeCap(labelKeysFromData(data, widget.chartType));
@@ -95,6 +96,9 @@ function widgetData(
       return { labels: aggregatePlatforms(posts).map((x) => x.platform) };
     case 'themes':
       return { labels: aggregateThemes(posts).map((x) => x.theme) };
+    case 'theme-cloud':
+      // Word cloud: each word is a series, keyed by the raw theme string.
+      return { labels: aggregateThemeCloud(posts).map((x) => x.text) };
     case 'content-type':
       return { labels: aggregateContentTypes(posts).map((x) => x.content_type) };
     case 'language':

@@ -227,7 +227,12 @@ class CustomChartConfig(BaseModel):
     # Pydantic validates against the union; the runtime aggregator branches.
     dimension: AnyDimension | None = None
     metric: AnyMetric = "post_count"
-    metricAgg: Literal["sum", "avg", "min", "max", "count"] | None = None
+    metricAgg: (
+        Literal["sum", "avg", "min", "max", "count", "median", "distinct", "mode", "percent"]
+        | None
+    ) = None
+    # Categorical field that `distinct` / `mode` run over (number-card only).
+    categoricalField: AnyDimension | None = None
     timeBucket: Literal["hour", "day", "week", "month"] | None = None
     barOrientation: Literal["horizontal", "vertical"] | None = None
     breakdownDimension: AnyDimension | None = None
@@ -246,6 +251,13 @@ class ChartStyleOverrides(BaseModel):
     accent: str | None = None
     seriesColors: dict[str, str] | None = None
     seriesLabels: dict[str, str] | None = None
+    # How numeric value labels render ('abs' | 'pct' | 'abs_pct' | 'none').
+    # Loose str so the Literal stays client-side; declared so it survives
+    # extra='ignore' and round-trips into Firestore + shared dashboards.
+    labelDisplay: str | None = None
+    # Doughnut-only custom center label. Declared so it isn't silently dropped
+    # on save (otherwise it vanishes on refresh).
+    centerLabel: str | None = None
 
 
 class FilterCondition(BaseModel):
@@ -512,6 +524,9 @@ class SocialDashboardWidget(BaseModel):
     trendDimension: AnyDimension | None = None
     trendTimeBucket: Literal["hour", "day", "week", "month"] | None = None
     trendCumulative: bool | None = None
+    # Which pieces a `mode` ("Top value") number-card renders, in order.
+    # Declared so it survives the Firestore round-trip onto shared/Brief boards.
+    topValueParts: list[Literal["label", "count", "percent"]] | None = None
 
 
 class DashboardLayout(BaseModel):

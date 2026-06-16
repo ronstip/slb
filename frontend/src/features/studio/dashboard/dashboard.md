@@ -70,6 +70,17 @@ Each widget is a `SocialDashboardWidget` with:
 - **Aggregation:** preset (`sentiment`, `volume`, etc.) or `custom`
 - **Chart type:** `bar | line | pie | doughnut | number-card | word-cloud | table | progress-list`
 - **Custom config:** dimension (groupBy) + metric + aggregation (sum/avg) + time bucket
+
+### KPI (number-card) aggregations
+
+A number-card with no Group-By exposes an **Aggregation** dropdown (grouped charts keep `sum/avg/min/max/count`). Number-card modes:
+
+- `sum` / `avg` (mean) / `min` / `max` / `median` / `count` — numeric, run over `metric`
+- `distinct` — distinct-value count of `categoricalField` (a dimension token, e.g. `channel_handle`)
+- `mode` — most frequent value of `categoricalField` ("Top value"); renders a **string** label. Style tab `topValueParts` picks which of `label | count | percent` to show (default `['label']`)
+- `percent` — `metric` over the widget-filtered posts ÷ same `metric` over the dashboard-scope (pre-widget-filter) posts, as a percentage
+
+`distinct`/`mode` read `categoricalField` (the Metric dropdown swaps to a categorical-field picker), not the numeric `metric`. `percent` needs the dashboard-scope baseline, plumbed into `CustomWidget` as `basePosts`.
 - **Per-widget filters:** applied on top of global filters
 - **Accent color:** optional custom color
 

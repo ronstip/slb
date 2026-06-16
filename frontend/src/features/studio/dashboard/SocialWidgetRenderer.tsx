@@ -1024,6 +1024,9 @@ function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onD
       <SocialWordCloudWidget
         data={cloudData}
         onWordClick={onFilterToggle ? (v) => onFilterToggle('themes', v) : undefined}
+        scale={widget.styleOverrides?.wordCloudScale}
+        seriesColors={widget.styleOverrides?.seriesColors}
+        seriesLabels={widget.styleOverrides?.seriesLabels}
       />
     </SocialWidgetFrame>
   );
@@ -1100,6 +1103,7 @@ function CustomWidget({
   widget,
   widgetIndex = 0,
   posts,
+  basePosts,
   topics,
   isEditMode,
   onConfigure,
@@ -1111,6 +1115,9 @@ function CustomWidget({
 }: FrameProps & {
   widgetIndex?: number;
   posts: DashboardPost[];
+  /** Dashboard-scope (pre-widget-filter) posts. Baseline for the `percent`
+   *  number-card aggregation. */
+  basePosts?: DashboardPost[];
   topics?: TopicMetric[];
   onFilterToggle?: (key: string, value: string) => void;
   onTopicNavigate?: (clusterId: string) => void;
@@ -1152,8 +1159,8 @@ function CustomWidget({
     if (objField) return aggregateObjectList(aggPosts, objField, effectiveConfig);
     return isTopicsSource
       ? aggregateTopicsCustom(topics ?? [], effectiveConfig)
-      : aggregateCustom(aggPosts, effectiveConfig, computedFields);
-  }, [isTopicsSource, aggPosts, topics, effectiveConfig, computedFields]);
+      : aggregateCustom(aggPosts, effectiveConfig, computedFields, basePosts);
+  }, [isTopicsSource, aggPosts, topics, effectiveConfig, computedFields, basePosts]);
 
   const cloudData = useMemo(() => {
     if (!data?.labels || !data.values) return [];
@@ -1177,10 +1184,27 @@ function CustomWidget({
     return widget.trendCumulative ? toCumulativeSeries(values) : values;
   }, [effectiveConfig, aggPosts, widget.numberSize, widget.showSparkline, widget.trendDimension, widget.trendTimeBucket, widget.trendCumulative, computedFields]);
 
-  const syntheticKpi = useMemo(
-    () => ({ label: widget.title, value: data?.value ?? 0, icon: 'posts' as const, sparklineData }),
-    [widget.title, data?.value, sparklineData],
-  );
+  const syntheticKpi = useMemo(() => {
+    const base = { label: widget.title, icon: 'posts' as const, sparklineData };
+    // `mode` ("Top value") returns a string label; compose the card text from
+    // the chosen pieces (label / count / percent-of-posts). Default: label only.
+    if (data?.stringValue != null) {
+      const parts = widget.topValueParts?.length ? widget.topValueParts : ['label'];
+      const count = data.value ?? 0;
+      // Percentage base = posts that have a value (missing excluded), not every
+      // post in the widget.
+      const total = data.valueTotal ?? 0;
+      const pieces = parts.map((part) =>
+        part === 'count'
+          ? formatNumber(count)
+          : part === 'percent'
+            ? `${total > 0 ? Math.round((count / total) * 1000) / 10 : 0}%`
+            : data.stringValue!,
+      );
+      return { ...base, value: count, displayText: pieces.join(' · ') };
+    }
+    return { ...base, value: data?.value ?? 0, format: data?.format };
+  }, [widget.title, widget.topValueParts, data?.value, data?.stringValue, data?.valueTotal, data?.format, sparklineData]);
 
   const metricLabel = (m: AnyMetric): string => {
     if (isTopicsSource) {
@@ -1238,7 +1262,12 @@ function CustomWidget({
   if (widget.chartType === 'word-cloud') {
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
-        <SocialWordCloudWidget data={cloudData} />
+        <SocialWordCloudWidget
+          data={cloudData}
+          scale={widget.styleOverrides?.wordCloudScale}
+          seriesColors={widget.styleOverrides?.seriesColors}
+          seriesLabels={widget.styleOverrides?.seriesLabels}
+        />
       </SocialWidgetFrame>
     );
   }
@@ -1852,6 +1881,7 @@ function SocialWidgetRendererImpl({
         {...frameProps}
         widgetIndex={widgetIndex}
         posts={widgetPosts}
+        basePosts={filteredPosts}
         topics={topics}
         onFilterToggle={onFilterToggle}
         onTopicNavigate={onTopicNavigate}

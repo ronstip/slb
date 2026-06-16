@@ -425,6 +425,9 @@ export interface EnhancedKpi {
   value: number;
   icon: 'posts' | 'views' | 'engagement' | 'rate' | 'avg';
   format?: 'number' | 'percent';
+  /** When set, the card renders this string verbatim instead of formatting
+   *  `value` (used by `mode` / "Top value" cards). */
+  displayText?: string;
   sparklineData: number[];
 }
 
@@ -696,10 +699,21 @@ function aggregateExprMetric(
   return { value: total, labels, values };
 }
 
+/** Median of a numeric list. Empty → 0. Even count → mean of the two middles. */
+function median(vals: number[]): number {
+  if (vals.length === 0) return 0;
+  const s = [...vals].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
 export function aggregateCustom(
   posts: DashboardPost[],
   config: CustomChartConfig,
   computedFields?: ComputedField[],
+  /** Dashboard-scope (pre-widget-filter) posts. Denominator for the `percent`
+   *  number-card aggregation; defaults to `posts` (→ 100%). */
+  basePosts?: DashboardPost[],
 ): WidgetData {
   // An `expr` computed metric is aggregate-then-evaluate: it can't go through
   // the per-post `getMetricValue` path (that would force per-post-then-aggregate
@@ -723,12 +737,49 @@ export function aggregateCustom(
 
   if (!dimension) {
     if (metricAgg === 'count') return { value: posts.length, labels: ['Count'], values: [posts.length] };
+
+    // Categorical-field aggregations run over `categoricalField` (a dimension
+    // token), never the numeric `metric`. Tally value frequencies once.
+    if (metricAgg === 'distinct' || metricAgg === 'mode') {
+      const field = config.categoricalField as CustomDimension | undefined;
+      const counts = new Map<string, number>();
+      if (field) {
+        for (const p of posts) {
+          for (const key of getDimensionKeys(p, field, timeBucket)) {
+            // `getDimensionKeys` synthesizes 'unknown' for a missing scalar
+            // value; "no value" is not a value, so it counts toward neither the
+            // distinct tally, the top value, nor the percentage base.
+            if (key === 'unknown') continue;
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          }
+        }
+      }
+      if (metricAgg === 'distinct') {
+        return { value: counts.size, labels: ['Distinct'], values: [counts.size] };
+      }
+      // mode: most frequent value; ties resolve to first-seen (insertion order).
+      // `valueTotal` (posts with any value) is the percentage denominator.
+      let topLabel = ''; let topCount = 0; let total = 0;
+      for (const [k, c] of counts) {
+        total += c;
+        if (c > topCount) { topCount = c; topLabel = k; }
+      }
+      return { value: topCount, stringValue: topLabel, valueTotal: total, labels: [topLabel], values: [topCount] };
+    }
+
     const vals = posts.map((p) => getMetricValue(p, metric));
+    if (metricAgg === 'percent') {
+      const num = vals.reduce((a, b) => a + b, 0);
+      const den = (basePosts ?? posts).reduce((a, p) => a + getMetricValue(p, metric), 0);
+      const pct = den > 0 ? Math.round((num / den) * 1000) / 10 : 0;
+      return { value: pct, format: 'percent', labels: [metric], values: [pct] };
+    }
     let value: number;
     switch (metricAgg) {
       case 'avg': value = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0; break;
       case 'min': value = vals.length > 0 ? Math.min(...vals) : 0; break;
       case 'max': value = vals.length > 0 ? Math.max(...vals) : 0; break;
+      case 'median': value = median(vals); break;
       default: value = vals.reduce((a, b) => a + b, 0); break;
     }
     return { value, labels: [metric], values: [value] };

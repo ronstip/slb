@@ -24,6 +24,13 @@ const VALUE_LABEL_OPTIONS: Array<{ value: TableColumnDisplay; label: string }> =
   { value: 'none',    label: 'None'    },
 ];
 
+/** Word-cloud size multipliers (applied on top of the adaptive range). */
+const WORD_CLOUD_SIZE_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 0.7, label: 'Small'  },
+  { value: 1,   label: 'Medium' },
+  { value: 1.4, label: 'Large'  },
+];
+
 interface ChartStyleEditorProps {
   /** Series labels in render order - drives the per-series rows. */
   seriesLabels: string[];
@@ -67,6 +74,12 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
 
   const setCenterLabel = (centerLabel: string) =>
     onChange({ ...value, centerLabel: centerLabel.trim() === '' ? undefined : centerLabel });
+
+  const setWordCloudScale = (wordCloudScale: number) =>
+    onChange({ ...value, wordCloudScale: wordCloudScale === 1 ? undefined : wordCloudScale });
+
+  const isWordCloud = chartType === 'word-cloud';
+  const activeWordCloudScale = value.wordCloudScale ?? 1;
 
   // Whether to offer the value-label format toggle, and which option reads as
   // active. Line charts draw labels only once a format is chosen, so an unset
@@ -146,6 +159,35 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
           <span className="text-xs text-muted-foreground">Custom hex</span>
         </div>
       </div>
+
+      {/* Word-cloud size (multiplier on the adaptive, container-driven range) */}
+      {isWordCloud && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Size
+          </Label>
+          <p className="text-xs text-muted-foreground/80">
+            Words scale to fit the widget automatically. Nudge the overall size up or down.
+          </p>
+          <div className="grid grid-cols-3 gap-1.5 pt-1">
+            {WORD_CLOUD_SIZE_OPTIONS.map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => setWordCloudScale(opt.value)}
+                className={cn(
+                  'rounded-md border px-2 py-1.5 text-xs font-medium transition-all',
+                  activeWordCloudScale === opt.value
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Value-label format (number / percent / both) */}
       {showValueLabels && (

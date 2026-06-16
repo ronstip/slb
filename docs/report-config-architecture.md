@@ -272,3 +272,32 @@ dashboards). Left as a dedicated follow-up rather than bolted on, to preserve th
 **Other known limits:** expr/ratio metrics ignore a `breakdownDimension` (v1); live preview applies on
 save (config persists immediately via the dialog, dashboard refetches) rather than a separate unsaved
 draft.
+
+---
+
+## Enhancement: free-form formula input for `expr` fields (2026-06-16)
+
+**Problem.** The `expr` evaluator (`report-expr.ts` / `evaluate_expr`) is a full closed AST —
+constants, arbitrary nesting, `min`/`max`/`abs`, any numeric leaf. The editor exposes none of it:
+`ExprFieldCard` builds only `leaf OP leaf` (one binary op, two field operands, no constants),
+and `readSimpleExpr` discards any AST that isn't exactly that shape. So common KPIs the engine can
+already compute are unreachable from the UI — e.g. engagement rate as a percent
+(`(like_count + comment_count + share_count) / view_count * 100`) needs a constant and nesting.
+
+**Decision.** Replace the two-select builder with a **single formula text input** parsed to the
+existing `ExprNode` AST. No engine change, no backend change — only the editor and a new pure parser.
+
+- New file `report-expr-parse.ts`: `parseExpr(src, knownRefs?) → { node } | { error }` (recursive
+  descent: `+ - * /` with precedence, parens, `min/max/abs(...)`, number literals, identifier =
+  metric leaf) and `exprToString(node) → string` (round-trips a saved AST back to editable text).
+- `parseExpr(exprToString(node))` is identity for any AST the editor can produce (round-trip test).
+- Identifiers are the snake_case metric leaves (`like_count`, `view_count`, …). Unknown identifiers
+  parse as field refs but the editor flags them against the known-leaf set (a warning, not a parse
+  error) so a typo surfaces instead of silently evaluating to null.
+- Editor: live-parse on each keystroke; show the parse error inline; insert-leaf chips append a token
+  at the cursor for discoverability. Persist only when parse succeeds (sanitize already drops
+  empty-name fields; an unparseable formula keeps the prior valid AST).
+
+**Out of scope (follow-ups):** output formatting (`%`/decimals/suffix) on expr fields; feeding
+custom/object/other-computed metrics into the leaf vocabulary; if/else value autocomplete;
+delete-safety for referenced computed fields. Tracked as P2–P4 in the review.

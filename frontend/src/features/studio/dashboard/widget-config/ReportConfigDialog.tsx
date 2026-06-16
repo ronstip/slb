@@ -24,7 +24,6 @@ import type {
   CanonGroup,
   ComputedField,
   FieldKey,
-  ExprNode,
   IfElseCase,
   FilterCondition,
   FilterConditionField,
@@ -39,6 +38,8 @@ import {
   CUSTOM_DIM_PREFIX,
 } from '../types-social-dashboard.ts';
 import { distinctFieldValues } from '../report-config-values.ts';
+import { parseExpr, exprToString } from '../report-expr-parse.ts';
+import { exprLeafRefs } from '../report-expr.ts';
 
 // ─── Props (do not change — other code is wired to this contract) ──────────────
 
@@ -79,8 +80,9 @@ const EXPR_METRIC_LEAVES: Array<{ value: AnyMetric; label: string }> = [
   { value: 'engagement_total', label: 'Total Engagement' },
 ];
 
-type ExprOp = '+' | '-' | '*' | '/';
-const EXPR_OPS: ExprOp[] = ['+', '-', '*', '/'];
+/** Identifier set the formula input accepts as bare field refs; anything else is
+ *  flagged as an unknown reference (a warning, not a parse error). */
+const KNOWN_EXPR_REFS = new Set<string>(EXPR_METRIC_LEAVES.map((m) => m.value as string));
 
 function humanize(name: string): string {
   return name.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -661,17 +663,6 @@ function ColorsTab({
 
 // ─── Computed fields tab ───────────────────────────────────────────────────────
 
-/** Read a simple two-operand expr AST back into editor state, if it matches the
- *  shape this editor produces; otherwise default operands. */
-function readSimpleExpr(
-  expr: ExprNode | undefined,
-): { left: AnyMetric; op: ExprOp; right: AnyMetric } {
-  if (expr && expr.t === 'bin' && expr.l.t === 'field' && expr.r.t === 'field') {
-    return { left: expr.l.ref, op: expr.op, right: expr.r.ref };
-  }
-  return { left: 'engagement_total', op: '/', right: 'view_count' };
-}
-
 function ComputedFieldsTab({
   fields,
   customFieldDefs,
@@ -799,29 +790,6 @@ function CardHeader({
   );
 }
 
-function MetricSelect({
-  value,
-  onChange,
-}: {
-  value: AnyMetric;
-  onChange: (v: AnyMetric) => void;
-}) {
-  return (
-    <Select value={value as string} onValueChange={(v) => onChange(v as AnyMetric)}>
-      <SelectTrigger className="h-8 w-full text-xs">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {EXPR_METRIC_LEAVES.map((m) => (
-          <SelectItem key={m.value as string} value={m.value as string} className="text-xs">
-            {m.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
 function ExprFieldCard({
   field,
   onChange,
@@ -831,18 +799,45 @@ function ExprFieldCard({
   onChange: (next: Extract<ComputedField, { kind: 'expr' }>) => void;
   onRemove: () => void;
 }) {
-  const { left, op, right } = readSimpleExpr(field.expr);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Local formula text, seeded once from the saved AST. We keep it local while
+  // editing so an in-progress (unparseable) formula doesn't get pushed up — the
+  // last valid AST stays persisted until the text parses again.
+  const [text, setText] = useState(() => exprToString(field.expr));
+  const parsed = useMemo(() => parseExpr(text), [text]);
+  const error = 'error' in parsed ? parsed.error : null;
 
-  const setExpr = (l: AnyMetric, o: ExprOp, r: AnyMetric) =>
-    onChange({
-      ...field,
-      expr: {
-        t: 'bin',
-        op: o,
-        l: { t: 'field', ref: l },
-        r: { t: 'field', ref: r },
-      },
+  // Refs in a valid formula that aren't known metric leaves → typo warning.
+  const unknownRefs = useMemo(() => {
+    if (error || !('node' in parsed)) return [];
+    return exprLeafRefs(parsed.node)
+      .map((r) => String(r))
+      .filter((r) => !KNOWN_EXPR_REFS.has(r));
+  }, [parsed, error]);
+
+  const commit = (next: string) => {
+    setText(next);
+    const r = parseExpr(next);
+    if ('node' in r) onChange({ ...field, expr: r.node });
+  };
+
+  const insertToken = (token: string) => {
+    const el = inputRef.current;
+    const cur = text;
+    const at = el ? el.selectionStart ?? cur.length : cur.length;
+    const before = cur.slice(0, at);
+    const after = cur.slice(at);
+    // Pad with a space so adjacent tokens don't fuse (`a` + `b` → `a b`).
+    const pad = before && !before.endsWith(' ') && !before.endsWith('(') ? ' ' : '';
+    const next = `${before}${pad}${token}${after}`;
+    commit(next);
+    // Restore focus + caret after the inserted token.
+    requestAnimationFrame(() => {
+      const pos = before.length + pad.length + token.length;
+      el?.focus();
+      el?.setSelectionRange(pos, pos);
     });
+  };
 
   return (
     <div className="rounded-lg border border-border p-3 space-y-3">
@@ -854,27 +849,58 @@ function ExprFieldCard({
         onRemove={onRemove}
       />
       <div className="space-y-1.5">
-        <Label className="text-xs">Expression (metric)</Label>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <MetricSelect value={left} onChange={(v) => setExpr(v, op, right)} />
-          <Select value={op} onValueChange={(v) => setExpr(left, v as ExprOp, right)}>
-            <SelectTrigger className="h-8 w-14 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EXPR_OPS.map((o) => (
-                <SelectItem key={o} value={o} className="text-xs">
-                  {o}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <MetricSelect value={right} onChange={(v) => setExpr(left, op, v)} />
+        <Label className="text-xs">Formula (metric)</Label>
+        <Input
+          ref={inputRef}
+          value={text}
+          placeholder="(like_count + comment_count) / view_count * 100"
+          onChange={(e) => commit(e.target.value)}
+          className={cn(
+            'h-8 font-mono text-xs',
+            error && text.trim() !== '' && 'border-destructive focus-visible:ring-destructive',
+          )}
+          spellCheck={false}
+        />
+
+        {/* Insert chips: metrics + operators/functions */}
+        <div className="flex flex-wrap gap-1">
+          {EXPR_METRIC_LEAVES.map((m) => (
+            <button
+              key={m.value as string}
+              type="button"
+              onClick={() => insertToken(m.value as string)}
+              className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              title={`Insert ${m.label}`}
+            >
+              {m.value as string}
+            </button>
+          ))}
+          {['+', '-', '*', '/', '(', ')', 'min(', 'max(', 'abs('].map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => insertToken(t)}
+              className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:border-primary/40 hover:text-foreground"
+            >
+              {t}
+            </button>
+          ))}
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Evaluated over per-bucket aggregated values (sum ÷ sum), so ratios stay
-          statistically correct.
-        </p>
+
+        {error && text.trim() !== '' ? (
+          <p className="text-[11px] text-destructive">{error}</p>
+        ) : unknownRefs.length > 0 ? (
+          <p className="text-[11px] text-amber-600 dark:text-amber-500">
+            Unknown field{unknownRefs.length === 1 ? '' : 's'}: {unknownRefs.join(', ')} — will
+            evaluate to nothing unless it’s a valid metric.
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            Arithmetic over metric fields: <code>+ - * /</code>, parentheses,{' '}
+            <code>min/max/abs</code>, constants. Evaluated over per-bucket aggregated values (sum ÷
+            sum), so ratios stay statistically correct.
+          </p>
+        )}
       </div>
     </div>
   );
