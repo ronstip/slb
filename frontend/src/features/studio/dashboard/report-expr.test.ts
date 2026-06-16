@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { evaluateExpr, exprLeafRefs } from './report-expr.ts';
-import type { ExprNode } from './types-social-dashboard.ts';
+import type { AnyMetric, ExprNode } from './types-social-dashboard.ts';
+
+// Synthetic field refs (`a`, `b`, `missing`) stand in for arbitrary leaf names;
+// cast keeps the test focused on evaluator semantics, not the metric vocabulary.
+const ref = (name: string) => name as AnyMetric;
 
 // Parity with api/tests/test_report_transform.py (evaluate_expr). Same inputs
 // must yield the same outputs so the dashboard, Brief, and shares agree.
@@ -13,23 +17,23 @@ describe('evaluateExpr', () => {
   });
 
   it('divide by zero → null', () => {
-    const node: ExprNode = { t: 'bin', op: '/', l: { t: 'field', ref: 'a' }, r: { t: 'field', ref: 'b' } };
+    const node: ExprNode = { t: 'bin', op: '/', l: { t: 'field', ref: ref('a') }, r: { t: 'field', ref: ref('b') } };
     expect(evaluateExpr(node, { a: 10, b: 0 })).toBeNull();
   });
 
   it('missing leaf → null', () => {
-    expect(evaluateExpr({ t: 'field', ref: 'missing' }, { a: 1 })).toBeNull();
+    expect(evaluateExpr({ t: 'field', ref: ref('missing') }, { a: 1 })).toBeNull();
   });
 
   it('null propagates through ops', () => {
-    const node: ExprNode = { t: 'bin', op: '+', l: { t: 'field', ref: 'missing' }, r: { t: 'num', v: 5 } };
+    const node: ExprNode = { t: 'bin', op: '+', l: { t: 'field', ref: ref('missing') }, r: { t: 'num', v: 5 } };
     expect(evaluateExpr(node, {})).toBeNull();
   });
 
   it('fn + nesting', () => {
     const node: ExprNode = { t: 'fn', fn: 'max', args: [
       { t: 'num', v: 2 },
-      { t: 'bin', op: '*', l: { t: 'field', ref: 'a' }, r: { t: 'num', v: 3 } },
+      { t: 'bin', op: '*', l: { t: 'field', ref: ref('a') }, r: { t: 'num', v: 3 } },
     ] };
     expect(evaluateExpr(node, { a: 4 })).toBe(12);
     expect(evaluateExpr({ t: 'fn', fn: 'abs', args: [{ t: 'num', v: -7 }] }, {})).toBe(7);

@@ -315,6 +315,14 @@ export function getDimensionMeta(dim: CustomDimension | undefined | null): Dimen
       description: `Group by custom enrichment field "${name}"`,
     };
   }
+  if (isComputedRef(dim)) {
+    const id = computedFieldId(dim);
+    return {
+      label: humanizeFieldName(id),
+      icon: 'Sigma',
+      description: `Group by computed field "${id}"`,
+    };
+  }
   return DIMENSION_META[dim] ?? UNKNOWN_DIMENSION_META;
 }
 
