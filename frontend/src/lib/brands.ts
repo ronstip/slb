@@ -2,14 +2,18 @@
  * Brand → canonical domain resolution for brand icons.
  *
  * Unlike platforms (a tiny fixed set with bundled SVGs), brands number in the
- * thousands, so we don't ship logos. Instead we map a curated set of known
- * brand names to their domain and resolve a favicon at render time
- * (see BrandIcon.tsx). Names not in the map fall back to a colored initial
- * chip — never blank.
+ * thousands, so we don't ship logos. We resolve a logo.dev image at render
+ * time (see BrandIcon.tsx) from the brand's domain. The domain comes from:
+ *   1. this curated OVERRIDE map — only for names whose domain isn't just
+ *      "<name>.com" (e.g. jordan -> nike.com, ea sports -> ea.com), then
+ *   2. a heuristic "<name>.com" guess for everything else.
+ * logo.dev is queried with fallback=404 so a wrong/unknown guess fails the
+ * <img> and BrandIcon shows a colored initial chip — never blank, never a
+ * generic monogram.
  *
  * Keys are pre-normalized (see `normalizeBrandKey`): lowercase, apostrophes
  * stripped, every other non-alphanumeric run collapsed to a single space.
- * Grow this map as new brands show up in dashboards.
+ * Only add entries here when the heuristic guess is wrong.
  */
 export const BRAND_DOMAINS: Record<string, string> = {
   fifa: 'fifa.com',
@@ -66,7 +70,15 @@ export function normalizeBrandKey(raw: string): string {
     .trim();
 }
 
-/** Resolve a brand name to its canonical domain, or null if uncovered. */
+/**
+ * Resolve a brand name to its canonical domain. Curated overrides win;
+ * otherwise guess "<collapsed-name>.com" (spaces dropped). Returns null only
+ * when the name has no alphanumerics to build a domain from. The guess can be
+ * wrong — BrandIcon relies on logo.dev's fallback=404 to fail those <img>s and
+ * render an initial chip instead.
+ */
 export function brandDomain(raw: string): string | null {
-  return BRAND_DOMAINS[normalizeBrandKey(raw)] ?? null;
+  const key = normalizeBrandKey(raw);
+  if (!key) return null;
+  return BRAND_DOMAINS[key] ?? `${key.replace(/ /g, '')}.com`;
 }
