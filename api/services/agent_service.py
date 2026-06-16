@@ -809,8 +809,17 @@ def dispatch_agent_run(
     agent_version = agent.get("version", 1)
     run_id = fs.create_run(agent_id, trigger=trigger, agent_version=agent_version)
 
-    # Update agent status to executing
-    fs.update_agent(agent_id, status="running", active_run_id=run_id)
+    # Update agent status to executing. Clear continuation bookkeeping from any
+    # prior run: a stale continuation_ready_at makes the stuck-agent watchdog
+    # mis-classify this run as orphaned_running (see agent f9022b29, 2026-06-16).
+    fs.update_agent(
+        agent_id,
+        status="running",
+        active_run_id=run_id,
+        continuation_ready=False,
+        continuation_ready_at=None,
+        continuation_attempts=0,
+    )
 
     base_extra = _build_base_extra_config(agent)
 

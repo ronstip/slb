@@ -75,6 +75,36 @@ def test_orphaned_running_alive_skipped():
     assert classify_stuck(agent, now=NOW) is None
 
 
+def test_orphaned_running_still_enriching_skipped():
+    # Regression: agent f9022b29 (2026-06-16). continuation_ready_at was
+    # stale from a *prior* successful run (never cleared), so the orphaned
+    # branch fired while the current run's collections were still enriching.
+    # Enrichment logs go to a subcollection and don't bump the agent doc's
+    # updated_at, so a healthy run looks idle after stale_minutes. When the
+    # collections aren't all terminal yet, the agent is NOT orphaned.
+    agent = {
+        "status": "running",
+        "continuation_ready_at": _stale(60),
+        "updated_at": _stale(30),
+        "collection_ids": ["c1", "c2"],
+    }
+    statuses = [{"status": "success"}, {"status": "running"}]
+    assert classify_stuck(agent, statuses, now=NOW) is None
+
+
+def test_orphaned_running_all_terminal_caught():
+    # Genuine orphan: continuation entered (all collections terminal) but the
+    # continuation process died and the doc went idle.
+    agent = {
+        "status": "running",
+        "continuation_ready_at": _stale(60),
+        "updated_at": _stale(30),
+        "collection_ids": ["c1", "c2"],
+    }
+    statuses = [{"status": "success"}, {"status": "failed"}]
+    assert classify_stuck(agent, statuses, now=NOW) == SIGNAL_ORPHANED_RUNNING
+
+
 def test_missed_handoff_caught():
     agent = {
         "status": "running",

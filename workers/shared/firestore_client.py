@@ -329,15 +329,14 @@ class FirestoreClient:
                 data = doc.to_dict()
                 data["agent_id"] = doc.id
 
-                # Only fetch collection statuses for the missed-handoff path
-                # - it's the only signal that needs them, and the fetch is
-                # pricey (one read per collection).
+                # Fetch collection statuses for running agents: the
+                # missed-handoff path needs them, and the orphaned-running
+                # path uses them to avoid killing a run whose collections are
+                # still enriching (stale continuation_ready_at from a prior
+                # run). Pricey (one read per collection) but running agents
+                # are few.
                 collection_statuses: list[dict] | None = None
-                if (
-                    status_val == "running"
-                    and not data.get("continuation_ready_at")
-                    and data.get("collection_ids")
-                ):
+                if status_val == "running" and data.get("collection_ids"):
                     collection_statuses = [
                         self.get_collection_status(cid) or {}
                         for cid in data["collection_ids"]
