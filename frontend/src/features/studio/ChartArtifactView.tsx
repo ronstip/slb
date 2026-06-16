@@ -132,6 +132,8 @@ export function ChartArtifactView({ artifact }: ChartArtifactViewProps) {
           seriesLabelOverrides={artifact.styleOverrides?.seriesLabels}
           barOrientation={(artifact.barOrientation as 'horizontal' | 'vertical') ?? 'horizontal'}
           stacked={artifact.stacked ?? true}
+          xAxis={artifact.styleOverrides?.xAxis}
+          yAxis={artifact.styleOverrides?.yAxis}
         />
       </div>
     );

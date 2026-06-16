@@ -148,6 +148,8 @@ export function InlineChart({ data }: InlineChartProps) {
           seriesLabelOverrides={styleOverrides.seriesLabels}
           barOrientation={(barOrientation as 'horizontal' | 'vertical') ?? 'horizontal'}
           stacked={stacked ?? true}
+          xAxis={styleOverrides.xAxis}
+          yAxis={styleOverrides.yAxis}
         />
       </div>
     );

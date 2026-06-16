@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
 import type { SocialDashboardWidget, WidgetData, FilterCondition, FilterConditionField, CustomMetric, AnyMetric, CustomTableConfig, CustomDimension, DataSource, TableColumnViz, TableColumnDisplay, ComputedField } from './types-social-dashboard.ts';
-import { DATE_CONDITION_FIELDS, isPostCountCondition, isCustomFieldDimension, customFieldName, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, getDimensionMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension } from './types-social-dashboard.ts';
+import { DATE_CONDITION_FIELDS, isPostCountCondition, isCustomFieldDimension, customFieldName, METRIC_META, TOPIC_METRIC_META, normalizeWidgetAggregation, defaultTableConfigFor, defaultTopicTableConfig, autoColumnHeader, isDimensionColumn, isPostFieldColumn, getPostFieldMeta, getDimensionMeta, normalizeTableConfig, objectFieldOf, objectFieldOfTable, isBrandDimension, defaultAxisTitles } from './types-social-dashboard.ts';
 import { aggregateTopicsCustom, aggregateTopicsTable } from './topic-aggregations.ts';
 import { aggregateObjectList, aggregateObjectTable } from './object-list-aggregations.ts';
 import {
@@ -1334,6 +1334,10 @@ function CustomWidget({
         timeBucket={widget.customConfig?.timeBucket}
         centerLabel={widget.styleOverrides?.centerLabel?.trim() || metricLabel(activeMetric)}
         labelDisplay={widget.styleOverrides?.labelDisplay}
+        sliceLabelDisplay={widget.styleOverrides?.sliceLabelDisplay}
+        xAxis={widget.styleOverrides?.xAxis}
+        yAxis={widget.styleOverrides?.yAxis}
+        axisTitleDefaults={defaultAxisTitles(effectiveConfig ?? config, widget.chartType, dataSource)}
       />
     </SocialWidgetFrame>
   );
@@ -1408,6 +1412,9 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
         barOrientation={widget.customConfig?.barOrientation}
         centerLabel={widget.styleOverrides?.centerLabel?.trim() || 'Posts'}
         labelDisplay={widget.styleOverrides?.labelDisplay}
+        sliceLabelDisplay={widget.styleOverrides?.sliceLabelDisplay}
+        xAxis={widget.styleOverrides?.xAxis}
+        yAxis={widget.styleOverrides?.yAxis}
       />
     </SocialWidgetFrame>
   );

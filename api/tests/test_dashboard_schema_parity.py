@@ -66,6 +66,47 @@ def _extract_valid_chart_types(ts: str) -> dict[str, set[str]]:
     return result
 
 
+def _extract_interface_fields(ts: str, interface_name: str) -> set[str]:
+    """Parse `export interface FOO { name?: T; ... }` → set of field names.
+
+    Skips JSDoc/comment lines (they start with `/`, `*`, or have no
+    `name:`/`name?:` head), so only real property declarations are returned.
+    """
+    m = re.search(
+        rf"export interface {re.escape(interface_name)}\s*\{{(.*?)\n\}}",
+        ts,
+        re.DOTALL,
+    )
+    assert m, f"Could not find `export interface {interface_name}` in TS source"
+    fields: set[str] = set()
+    for line in m.group(1).splitlines():
+        prop = re.match(r"\s*([A-Za-z_]\w*)\??\s*:", line)
+        if prop:
+            fields.add(prop.group(1))
+    assert fields, f"No fields parsed from {interface_name}"
+    return fields
+
+
+def test_chart_style_overrides_fields_declared_in_backend():
+    """Every field on the frontend `ChartStyleOverrides` interface must be
+    declared on the backend Pydantic model. The model uses `extra='ignore'`,
+    so any field the frontend persists but the backend doesn't declare is
+    SILENTLY DROPPED on save - it vanishes on refresh and never reaches shared
+    dashboards. This guard makes that drift a test failure instead of a bug
+    report (it has bitten labelDisplay, centerLabel, sliceLabelDisplay,
+    wordCloudScale, xAxis/yAxis)."""
+    from api.routers.dashboard_schema import ChartStyleOverrides
+
+    ts = _ts_source()
+    ts_fields = _extract_interface_fields(ts, "ChartStyleOverrides")
+    py_fields = set(ChartStyleOverrides.model_fields.keys())
+    missing = ts_fields - py_fields
+    assert not missing, (
+        f"ChartStyleOverrides fields persisted by the frontend but NOT declared "
+        f"on the backend model (will be silently dropped on save): {sorted(missing)}"
+    )
+
+
 def test_social_aggregation_matches():
     ts = _ts_source()
     ts_set = _extract_union(ts, "SocialAggregation")

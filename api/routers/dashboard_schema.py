@@ -245,6 +245,17 @@ class CustomChartConfig(BaseModel):
     cumulative: bool | None = None
 
 
+class ChartAxisStyle(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    # Hide the whole axis (line, ticks, gridlines, title).
+    hidden: bool | None = None
+    # Draw the axis title.
+    showTitle: bool | None = None
+    # Custom axis-title text; empty/unset falls back to the system default.
+    title: str | None = None
+
+
 class ChartStyleOverrides(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -255,9 +266,20 @@ class ChartStyleOverrides(BaseModel):
     # Loose str so the Literal stays client-side; declared so it survives
     # extra='ignore' and round-trips into Firestore + shared dashboards.
     labelDisplay: str | None = None
+    # Pie/doughnut on-slice label content ('name' | 'abs' | 'pct' | 'abs_pct' |
+    # 'none'), independent of the legend. Declared so it survives extra='ignore'
+    # and round-trips into Firestore + shared dashboards.
+    sliceLabelDisplay: str | None = None
     # Doughnut-only custom center label. Declared so it isn't silently dropped
     # on save (otherwise it vanishes on refresh).
     centerLabel: str | None = None
+    # Word-cloud size multiplier on the adaptive range. Declared so it survives
+    # extra='ignore' and round-trips into Firestore + shared dashboards.
+    wordCloudScale: float | None = None
+    # Bar/line per-axis show/hide + title overrides. Declared so they survive
+    # extra='ignore' and round-trip into Firestore + shared dashboards.
+    xAxis: ChartAxisStyle | None = None
+    yAxis: ChartAxisStyle | None = None
 
 
 class FilterCondition(BaseModel):
