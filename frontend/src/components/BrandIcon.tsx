@@ -55,9 +55,11 @@ export function BrandIcon({ brand, className }: BrandIconProps) {
   }
 
   // size 64 covers retina at our 14px render; format=png for transparent bg.
+  // fallback=404 makes logo.dev 404 on an unknown domain (instead of serving a
+  // generic monogram) so onError fires and we show our own initial chip.
   return (
     <img
-      src={`https://img.logo.dev/${domain}?token=${LOGODEV_TOKEN}&size=64&format=png&retina=true`}
+      src={`https://img.logo.dev/${domain}?token=${LOGODEV_TOKEN}&size=64&format=png&retina=true&fallback=404`}
       alt=""
       className={`rounded-sm object-contain ${className ?? ''}`}
       loading="lazy"
