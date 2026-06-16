@@ -27,7 +27,7 @@ const MarkdownArtifactEditor = lazy(() =>
 import { cn } from '../../../../lib/utils.ts';
 import type { CustomFieldDef, DashboardPost, TopicMetric } from '../../../../api/types.ts';
 import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension, TimeBucket, TopValuePart, ComputedField } from '../types-social-dashboard.ts';
-import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig, objectFieldOf, objectFieldOfTable } from '../types-social-dashboard.ts';
+import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig, objectFieldOf, objectFieldOfTable, defaultAxisTitles } from '../types-social-dashboard.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
 import { TableDataForm } from './TableDataForm.tsx';
@@ -980,6 +980,14 @@ function StyleTab({
         : METRIC_META[draft.customConfig.metric as CustomMetric]?.label) ?? String(draft.customConfig.metric)
     : undefined;
 
+  // Default axis titles (placeholder + the value used when a title is enabled
+  // without custom text) - mirrors the renderer so the editor previews match.
+  const axisTitleDefaults = defaultAxisTitles(
+    draft.customConfig,
+    draft.chartType,
+    isTopicsSource ? 'topics' : 'posts',
+  );
+
   return (
     <ChartStyleEditor
       seriesLabels={seriesLabels}
@@ -987,6 +995,8 @@ function StyleTab({
       value={styleOverrides}
       onChange={onStyleChange}
       centerLabelDefault={centerLabelDefault}
+      xAxisDefault={axisTitleDefaults.x}
+      yAxisDefault={axisTitleDefaults.y}
     />
   );
 }

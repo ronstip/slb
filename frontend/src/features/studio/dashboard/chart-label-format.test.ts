@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveLabelDisplay, formatPct, composeLabel } from './chart-label-format.ts';
+import { resolveLabelDisplay, formatPct, composeLabel, formatBucketLabel } from './chart-label-format.ts';
 
 describe('resolveLabelDisplay', () => {
   it('defaults pie/doughnut to percent, others to absolute', () => {
@@ -26,6 +26,33 @@ describe('formatPct', () => {
   it('guards a zero or invalid total', () => {
     expect(formatPct(5, 0)).toBe('0%');
     expect(formatPct(5, Number.NaN)).toBe('0%');
+  });
+});
+
+describe('formatBucketLabel', () => {
+  it('formats a day/week bucket key as "MMM d"', () => {
+    expect(formatBucketLabel('2026-06-02')).toBe('Jun 2');
+    expect(formatBucketLabel('2026-06-14')).toBe('Jun 14');
+  });
+
+  it('formats a month bucket key as "MMM yyyy"', () => {
+    expect(formatBucketLabel('2026-06')).toBe('Jun 2026');
+  });
+
+  it('formats an hour bucket key as "MMM d, HH:mm"', () => {
+    expect(formatBucketLabel('2026-06-02T13:00:00')).toBe('Jun 2, 13:00');
+  });
+
+  it('does not drift across timezones (parts parsed as local)', () => {
+    // Bare "2026-01-01" must stay Jan 1 (UTC parsing would slip to Dec 31 in
+    // negative-offset zones).
+    expect(formatBucketLabel('2026-01-01')).toBe('Jan 1');
+  });
+
+  it('passes non-date category labels through unchanged', () => {
+    expect(formatBucketLabel('Isracard')).toBe('Isracard');
+    expect(formatBucketLabel('pro-bibi')).toBe('pro-bibi');
+    expect(formatBucketLabel('2026')).toBe('2026'); // year alone is not a bucket key
   });
 });
 

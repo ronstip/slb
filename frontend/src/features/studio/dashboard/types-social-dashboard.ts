@@ -932,6 +932,10 @@ export function defaultPostTableConfig(): CustomTableConfig {
 
 // ─── Chart style overrides (accent + per-series colors) ─────────────────────
 
+/** What the on-slice label shows for pie/doughnut: the category name, one of the
+ *  numeric formats (shared with `TableColumnDisplay`), or nothing. */
+export type SliceLabelContent = 'none' | 'name' | 'abs' | 'pct' | 'abs_pct';
+
 export interface ChartStyleOverrides {
   /** Base accent color for the generated palette. */
   accent?: string;
@@ -946,12 +950,70 @@ export interface ChartStyleOverrides {
    *  both. Unset preserves each chart's historical default (pie/doughnut =
    *  percent, others = absolute) - see `resolveLabelDisplay`. */
   labelDisplay?: TableColumnDisplay;
+  /** Pie/doughnut only: what the on-slice label shows (category name or a
+   *  numeric format), independent of the legend (`labelDisplay`). Unset → 'none'
+   *  (bare slices, the historical default). */
+  sliceLabelDisplay?: SliceLabelContent;
   /** Doughnut only: custom text shown inside the donut, above the KPI number.
    *  Unset → falls back to the active metric's label. */
   centerLabel?: string;
   /** Word-cloud only: size multiplier applied on top of the adaptive
    *  (container-width-driven) font range. 1 = default. */
   wordCloudScale?: number;
+  /** Bar/line only: visibility + title override for the rendered screen X axis
+   *  (Chart.js scales.x). Undefined → axis shown, no title. */
+  xAxis?: ChartAxisStyle;
+  /** Bar/line only: same as `xAxis` for the screen Y axis (Chart.js scales.y). */
+  yAxis?: ChartAxisStyle;
+}
+
+/** Per-axis style override for the Cartesian (bar/line) chart axes. */
+export interface ChartAxisStyle {
+  /** Hide the whole axis - line, ticks, gridlines and title. Default: shown. */
+  hidden?: boolean;
+  /** Draw the axis title. Default: off (Chart.js renders no axis title). */
+  showTitle?: boolean;
+  /** Custom axis-title text. Empty/unset → the system default (the dimension or
+   *  metric name for that axis). Only rendered when `showTitle` is on. */
+  title?: string;
+}
+
+/** Chart types that draw Cartesian axes and so expose axis show/hide + title
+ *  controls. Circular (pie/doughnut), word-cloud, tables and number-cards have
+ *  no x/y axes. */
+export const AXIS_CHART_TYPES: SocialChartType[] = ['bar', 'line'];
+
+/** System-default axis titles - the placeholder shown in the editor and the
+ *  text used when an axis title is enabled without a custom override. Accounts
+ *  for chart type and bar orientation so `x`/`y` line up with the rendered
+ *  screen axes (Chart.js scales.x / scales.y). */
+export function defaultAxisTitles(
+  config: CustomChartConfig | undefined,
+  chartType: SocialChartType,
+  dataSource: DataSource = 'posts',
+): { x: string; y: string } {
+  if (!config) return { x: '', y: '' };
+  const isTopics = dataSource === 'topics';
+  const metricLabel = isTopics
+    ? (TOPIC_METRIC_META[config.metric as TopicMetric]?.label ?? String(config.metric))
+    : isObjectMetric(config.metric)
+      ? getObjectMetricLabel(config.metric as string)
+      : (METRIC_META[config.metric as CustomMetric]?.label ?? String(config.metric));
+  const dimLabel = config.dimension
+    ? (isTopics
+        ? getTopicDimensionMeta(config.dimension as TopicDimension).label
+        : getDimensionMeta(config.dimension as CustomDimension).label)
+    : '';
+  if (chartType === 'line') {
+    // Line: X is always the time/category axis, Y the value axis.
+    return { x: dimLabel || 'Date', y: metricLabel };
+  }
+  // Bar: a 'vertical' orientation renders horizontal bars (indexAxis 'y'), so
+  // the category sits on Y and the value on X. Otherwise category on X.
+  const horizontalBars = config.barOrientation === 'vertical';
+  return horizontalBars
+    ? { x: metricLabel, y: dimLabel }
+    : { x: dimLabel, y: metricLabel };
 }
 
 /** Aggregations that were superseded by `aggregation: 'custom'` with the right

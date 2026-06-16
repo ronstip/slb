@@ -19,6 +19,21 @@ def test_label_display_round_trips():
     assert overrides.model_dump(exclude_none=True)["labelDisplay"] == "abs_pct"
 
 
+def test_slice_label_display_round_trips():
+    """Pie/doughnut on-slice label content (independent of the legend). Was
+    dropped on save, so it vanished on refresh and never reached shares."""
+    overrides = ChartStyleOverrides.model_validate({"sliceLabelDisplay": "name"})
+    assert overrides.sliceLabelDisplay == "name"
+    assert overrides.model_dump(exclude_none=True)["sliceLabelDisplay"] == "name"
+
+
+def test_word_cloud_scale_round_trips():
+    """Word-cloud size multiplier. Same silent-drop class of bug."""
+    overrides = ChartStyleOverrides.model_validate({"wordCloudScale": 1.4})
+    assert overrides.wordCloudScale == 1.4
+    assert overrides.model_dump(exclude_none=True)["wordCloudScale"] == 1.4
+
+
 def test_known_color_fields_still_round_trip():
     overrides = ChartStyleOverrides.model_validate(
         {"accent": "#abc", "seriesColors": {"positive": "#0f0"}}

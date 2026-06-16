@@ -6,6 +6,7 @@ import {
   conditionFieldKind,
   isPostCountCondition,
   operatorsForConditionField,
+  defaultAxisTitles,
 } from './types-social-dashboard.ts';
 
 describe('isCustomFieldDimension', () => {
@@ -77,5 +78,35 @@ describe('conditionFieldKind', () => {
     expect(operatorsForConditionField('sentiment')).toEqual(['isAnyOf', 'isNoneOf']);
     expect(operatorsForConditionField('post_count')).toContain('greaterThan');
     expect(operatorsForConditionField('custom:note', defs)).toContain('contains');
+  });
+});
+
+describe('defaultAxisTitles', () => {
+  it('maps category to X and value to Y for vertical (default) bars', () => {
+    expect(defaultAxisTitles({ dimension: 'platform', metric: 'post_count' }, 'bar'))
+      .toEqual({ x: 'Platform', y: 'Post Count' });
+  });
+
+  it('swaps axes for horizontal bars (barOrientation "vertical")', () => {
+    expect(defaultAxisTitles({ dimension: 'platform', metric: 'view_count', barOrientation: 'vertical' }, 'bar'))
+      .toEqual({ x: 'Views', y: 'Platform' });
+  });
+
+  it('uses the time axis on X and metric on Y for line charts', () => {
+    expect(defaultAxisTitles({ dimension: 'posted_at', metric: 'engagement_total' }, 'line'))
+      .toEqual({ x: 'Date', y: 'Total Engagement' });
+  });
+
+  it('falls back to "Date" on the line X axis when no dimension is set', () => {
+    expect(defaultAxisTitles({ metric: 'post_count' }, 'line').x).toBe('Date');
+  });
+
+  it('returns empty titles when there is no config', () => {
+    expect(defaultAxisTitles(undefined, 'bar')).toEqual({ x: '', y: '' });
+  });
+
+  it('resolves topic vocabulary when dataSource is topics', () => {
+    expect(defaultAxisTitles({ dimension: 'topic', metric: 'signal_score' }, 'bar', 'topics'))
+      .toEqual({ x: 'Topic', y: 'Signal Score' });
   });
 });

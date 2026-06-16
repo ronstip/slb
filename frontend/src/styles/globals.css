@@ -484,6 +484,18 @@
   margin-top: 0;
   margin-bottom: 8px;
 }
+/* H2 is a real section header - lift it clearly above the 12.5px body and the
+   13.5px H3 subhead so it doesn't read as just another paragraph. */
+.db-text.brief-prose h2 {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+/* A label paragraph directly above a quote hugs it - drop the auto gap so the
+   blockquote reads as belonging to the label rather than floating below it. */
+.db-text.brief-prose p:has(+ blockquote) {
+  margin-bottom: 4px;
+}
 
 /* ── Dashboard page title (db-title) ────────────────────────────────────────
    The frameless heading widget is the dashboard's display title. Design uses

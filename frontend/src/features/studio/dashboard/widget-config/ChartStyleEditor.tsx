@@ -3,7 +3,8 @@ import { Label } from '../../../../components/ui/label.tsx';
 import { Input } from '../../../../components/ui/input.tsx';
 import { cn } from '../../../../lib/utils.ts';
 import type { ChartStyleOverrides } from '../../../../stores/studio-store.ts';
-import type { SocialChartType, TableColumnDisplay } from '../types-social-dashboard.ts';
+import type { ChartAxisStyle, SocialChartType, TableColumnDisplay, SliceLabelContent } from '../types-social-dashboard.ts';
+import { AXIS_CHART_TYPES } from '../types-social-dashboard.ts';
 import { resolveLabelDisplay } from '../chart-label-format.ts';
 import { SENTIMENT_COLORS } from '../../../../lib/constants.ts';
 import { generateChartPalette } from '../../../../lib/accent-colors.ts';
@@ -18,6 +19,16 @@ const PRESET_COLORS = [
 const VALUE_LABEL_CHART_TYPES: SocialChartType[] = ['bar', 'line', 'pie', 'doughnut'];
 
 const VALUE_LABEL_OPTIONS: Array<{ value: TableColumnDisplay; label: string }> = [
+  { value: 'abs',     label: 'Number'  },
+  { value: 'pct',     label: 'Percent' },
+  { value: 'abs_pct', label: 'Both'    },
+  { value: 'none',    label: 'None'    },
+];
+
+/** On-slice label content for pie/doughnut - the numeric formats plus the
+ *  category name. */
+const SLICE_LABEL_OPTIONS: Array<{ value: SliceLabelContent; label: string }> = [
+  { value: 'name',    label: 'Name'    },
   { value: 'abs',     label: 'Number'  },
   { value: 'pct',     label: 'Percent' },
   { value: 'abs_pct', label: 'Both'    },
@@ -43,6 +54,11 @@ interface ChartStyleEditorProps {
   /** Default donut center label (the active metric's label) - shown as the
    *  placeholder when no custom center label is set. Doughnut only. */
   centerLabelDefault?: string;
+  /** System-default axis titles (dimension/metric names) - shown as the title
+   *  input placeholders and used when a title is enabled without custom text.
+   *  Bar/line only. */
+  xAxisDefault?: string;
+  yAxisDefault?: string;
 }
 
 /** Compute the default color a label *would* render with given the
@@ -58,7 +74,7 @@ function computeDefaultColor(
   return palette[index % palette.length];
 }
 
-export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, centerLabelDefault }: ChartStyleEditorProps) {
+export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, centerLabelDefault, xAxisDefault, yAxisDefault }: ChartStyleEditorProps) {
   const { accentColor: appAccent, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -72,8 +88,22 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
   const setLabelDisplay = (labelDisplay: TableColumnDisplay) =>
     onChange({ ...value, labelDisplay });
 
+  const setSliceLabelDisplay = (sliceLabelDisplay: SliceLabelContent) =>
+    onChange({ ...value, sliceLabelDisplay: sliceLabelDisplay === 'none' ? undefined : sliceLabelDisplay });
+
   const setCenterLabel = (centerLabel: string) =>
     onChange({ ...value, centerLabel: centerLabel.trim() === '' ? undefined : centerLabel });
+
+  // Patch one axis (x/y) and prune it back to undefined when it carries no
+  // non-default settings, so an untouched axis never bloats the stored config.
+  const setAxis = (key: 'xAxis' | 'yAxis', patch: Partial<ChartAxisStyle>) => {
+    const merged = { ...(value[key] ?? {}), ...patch };
+    const cleaned: ChartAxisStyle = {};
+    if (merged.hidden) cleaned.hidden = true;
+    if (merged.showTitle) cleaned.showTitle = true;
+    if (merged.title && merged.title.trim() !== '') cleaned.title = merged.title;
+    onChange({ ...value, [key]: Object.keys(cleaned).length > 0 ? cleaned : undefined });
+  };
 
   const setWordCloudScale = (wordCloudScale: number) =>
     onChange({ ...value, wordCloudScale: wordCloudScale === 1 ? undefined : wordCloudScale });
@@ -88,6 +118,18 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
   const showValueLabels = VALUE_LABEL_CHART_TYPES.includes(chartType);
   const activeDisplay: TableColumnDisplay | undefined = value.labelDisplay
     ?? (chartType === 'line' ? undefined : resolveLabelDisplay(chartType, undefined));
+
+  // Pie/doughnut expose a second, independent format toggle for the value drawn
+  // on the slices. Defaults to 'none' (bare slices) so it's opt-in.
+  const isCircular = chartType === 'pie' || chartType === 'doughnut';
+  const activeSliceDisplay: SliceLabelContent = value.sliceLabelDisplay ?? 'none';
+
+  // Cartesian charts (bar/line) expose per-axis show/hide + title controls.
+  const showAxes = AXIS_CHART_TYPES.includes(chartType);
+  const AXES: Array<{ key: 'xAxis' | 'yAxis'; label: string; def?: string }> = [
+    { key: 'xAxis', label: 'X Axis', def: xAxisDefault },
+    { key: 'yAxis', label: 'Y Axis', def: yAxisDefault },
+  ];
 
   const setSeriesColor = (label: string, color: string | undefined) => {
     const next = { ...(value.seriesColors ?? {}) };
@@ -193,11 +235,11 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
       {showValueLabels && (
         <div className="space-y-2">
           <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Value Labels
+            {isCircular ? 'Legend Labels' : 'Value Labels'}
           </Label>
           <p className="text-xs text-muted-foreground/80">
             {chartType === 'pie' || chartType === 'doughnut'
-              ? 'Show each slice as its absolute number, percent of the total shown, or both (in the legend).'
+              ? "Show each slice's value in the legend as a number, percent of the total shown, or both."
               : chartType === 'line'
                 ? 'Label data points with the absolute number, percent of the total shown, or both. Off until you pick one.'
                 : 'Label bars with the absolute number, percent of the total shown, or both.'}
@@ -218,6 +260,96 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
                 {opt.label}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Slice labels (pie/doughnut: value drawn on the slices, independent of legend) */}
+      {isCircular && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Slice Labels
+          </Label>
+          <p className="text-xs text-muted-foreground/80">
+            Draw the name or value on each slice. Small slices are skipped automatically. Off by default.
+          </p>
+          <div className="grid grid-cols-5 gap-1.5 pt-1">
+            {SLICE_LABEL_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setSliceLabelDisplay(opt.value)}
+                className={cn(
+                  'rounded-md border px-2 py-1.5 text-xs font-medium transition-all',
+                  activeSliceDisplay === opt.value
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Axes (bar/line: show/hide each axis + optional axis title) */}
+      {showAxes && (
+        <div className="space-y-2">
+          <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Axes
+          </Label>
+          <p className="text-xs text-muted-foreground/80">
+            Show or hide each axis, and optionally draw a title. Leave the title blank to use the default name.
+          </p>
+          <div className="space-y-3 pt-1">
+            {AXES.map(({ key, label, def }) => {
+              const axis = value[key];
+              const shown = !axis?.hidden;
+              const titleOn = !!axis?.showTitle;
+              return (
+                <div key={key} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-foreground">{label}</span>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setAxis(key, { hidden: shown })}
+                        className={cn(
+                          'rounded-md border px-2 py-1 text-[11px] font-medium transition-all',
+                          shown
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                        )}
+                      >
+                        {shown ? 'Shown' : 'Hidden'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAxis(key, { showTitle: !titleOn })}
+                        className={cn(
+                          'rounded-md border px-2 py-1 text-[11px] font-medium transition-all',
+                          titleOn
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                        )}
+                      >
+                        Title
+                      </button>
+                    </div>
+                  </div>
+                  {titleOn && (
+                    <Input
+                      type="text"
+                      value={axis?.title ?? ''}
+                      placeholder={def || 'Axis title'}
+                      onChange={(e) => setAxis(key, { title: e.target.value })}
+                      className="h-8 text-xs"
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

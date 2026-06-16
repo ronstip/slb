@@ -16,8 +16,8 @@ import {
 import type { ChartOptions } from 'chart.js';
 import { Bar, Doughnut, Pie, Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
-import type { SocialChartType, TableColumnDisplay, WidgetData } from './types-social-dashboard.ts';
-import { resolveLabelDisplay, formatPct, composeLabel } from './chart-label-format.ts';
+import type { ChartAxisStyle, SocialChartType, TableColumnDisplay, WidgetData, SliceLabelContent } from './types-social-dashboard.ts';
+import { resolveLabelDisplay, formatPct, composeLabel, formatBucketLabel } from './chart-label-format.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { getCategoricalPalette } from '../../../lib/accent-colors.ts';
 import { SENTIMENT_COLORS, PLATFORM_COLORS } from '../../../lib/constants.ts';
@@ -290,6 +290,71 @@ const barDatalabelsPlugin = {
   },
 };
 
+// Pie/doughnut on-slice value labels - opt-in (attached only when the user
+// chooses to draw values on the slices). Draws the value at each arc's centroid
+// in white with a soft shadow so it reads on any slice color. Reads `display`
+// from chart.options.plugins.sliceDatalabels so this static plugin picks up
+// format changes each draw. Skips slivers and hidden slices. Reads the arc's
+// geometry off the element directly (post-layout) - more robust than getProps.
+type ArcGeometry = {
+  x: number;
+  y: number;
+  startAngle: number;
+  endAngle: number;
+  innerRadius: number;
+  outerRadius: number;
+};
+
+export const sliceDatalabelsPlugin = {
+  id: 'sliceDatalabels',
+  afterDatasetsDraw(chart: ChartJS) {
+    const content = (chart.options.plugins as { sliceDatalabels?: { display?: SliceLabelContent } } | undefined)
+      ?.sliceDatalabels?.display;
+    if (!content || content === 'none') return;
+    const { ctx } = chart;
+    const meta = chart.getDatasetMeta(0);
+    const values = chart.data.datasets[0]?.data as number[] | undefined;
+    if (!values) return;
+    const labels = chart.data.labels as string[] | undefined;
+    // Percent base = sum of the currently-visible slices (legend toggles hide
+    // slices), matching the legend/tooltip's "share of total shown".
+    let total = 0;
+    meta.data.forEach((_, i) => { if (chart.getDataVisibility(i)) total += Number(values[i]) || 0; });
+    ctx.save();
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    meta.data.forEach((arc, i) => {
+      if (!chart.getDataVisibility(i)) return;
+      const val = Number(values[i]) || 0;
+      if (val === 0) return;
+      const a = arc as unknown as ArcGeometry;
+      if (!Number.isFinite(a.outerRadius)) return;
+      // Skip slivers too narrow to hold a label without overlapping neighbours
+      // (~4.8% of the ring); the tooltip still surfaces the exact value.
+      if (Math.abs(a.endAngle - a.startAngle) < 0.3) return;
+      // 'name' draws the (already-formatted) category label; the rest are
+      // numeric formats handled by composeLabel.
+      const text = content === 'name'
+        ? String(labels?.[i] ?? '')
+        : composeLabel(formatNumber(val), val, total, content);
+      if (!text) return;
+      const mid = (a.startAngle + a.endAngle) / 2;
+      const r = (a.innerRadius + a.outerRadius) / 2;
+      const x = a.x + Math.cos(mid) * r;
+      const y = a.y + Math.sin(mid) * r;
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = 3;
+      ctx.fillText(text, x, y);
+    });
+    ctx.restore();
+  },
+};
+
+// Stable identity for the Pie plugins prop (Doughnut uses DOUGHNUT_PLUGINS).
+const PIE_PLUGINS = [sliceDatalabelsPlugin];
+
 // Line point labels - opt-in (only attached when the user picks a value-label
 // format). Reads `display` from chart.options.plugins.lineDatalabels. Declutters
 // by skipping points that would crowd the previously drawn label on the same
@@ -361,13 +426,41 @@ interface SocialChartWidgetProps {
    *  legend): absolute, percent of total shown, or both. Unset → each chart's
    *  historical default (pie/doughnut percent, others absolute). */
   labelDisplay?: TableColumnDisplay;
+  /** Pie/doughnut only: what the on-slice label shows (name or a numeric
+   *  format), independent of the legend (`labelDisplay`). Unset → 'none'. */
+  sliceLabelDisplay?: SliceLabelContent;
+  /** Bar/line only: visibility + title override for the screen X/Y axes. */
+  xAxis?: ChartAxisStyle;
+  yAxis?: ChartAxisStyle;
+  /** System-default axis titles (placeholder + the text used when an axis title
+   *  is enabled without a custom override). Keyed to the screen axes. */
+  axisTitleDefaults?: { x: string; y: string };
 }
 
-export function SocialChartWidget({ chartType, data, accent, seriesColorOverrides, seriesLabelOverrides, barOrientation = 'horizontal', stacked = true, timeBucket = 'day', centerLabel, labelDisplay }: SocialChartWidgetProps) {
+export function SocialChartWidget({ chartType, data, accent, seriesColorOverrides, seriesLabelOverrides, barOrientation = 'horizontal', stacked = true, timeBucket = 'day', centerLabel, labelDisplay, sliceLabelDisplay, xAxis, yAxis, axisTitleDefaults = { x: '', y: '' } }: SocialChartWidgetProps) {
   // Effective format for on-chart/legend value labels. Line labels are opt-in:
   // they only render when the user explicitly set a format (lineLabelsOn).
   const valueDisplay = resolveLabelDisplay(chartType, labelDisplay);
   const lineLabelsOn = !!labelDisplay;
+  // Pie/doughnut: legend value (driven by `labelDisplay`) and on-slice label
+  // (driven by `sliceLabelDisplay`) are fully independent. Slices off by default.
+  // The slice plugin is always attached and self-gates on this 'none' (so it
+  // reacts to toggles - react-chartjs-2 only reads the `plugins` prop at mount).
+  const sliceDisplay: SliceLabelContent = sliceLabelDisplay ?? 'none';
+  const legendValuesOn = valueDisplay !== 'none';
+  // Bar/line axis overrides: hide the whole axis and/or draw a title (custom
+  // text, else the system default). Spread onto each scale's config object so it
+  // wins over the base `display`/`title`. `def` is the screen-axis default title.
+  const axisTitleColor = resolveThemeColor('--muted-foreground');
+  const axisOpts = (axis: ChartAxisStyle | undefined, def: string) => {
+    const text = axis?.title?.trim() || def;
+    return {
+      display: axis?.hidden ? false : true,
+      title: axis?.showTitle && text
+        ? { display: true as const, text, color: axisTitleColor, font: { size: 12, weight: 500 as const } }
+        : { display: false as const },
+    };
+  };
   const { accentColor, theme } = useTheme();
   const themeIsDark =
     theme === 'dark' ||
@@ -541,11 +634,13 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
           type: 'time' as const,
           time: timeScale,
           ...getAxisStyle(),
+          ...axisOpts(xAxis, axisTitleDefaults.x),
         },
         y: {
           beginAtZero: true,
           ...getAxisStyle(),
           ticks: { ...getAxisStyle().ticks, callback: (v: string | number) => formatNumber(Number(v)) },
+          ...axisOpts(yAxis, axisTitleDefaults.y),
         },
       },
     };
@@ -595,11 +690,13 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
           type: 'time' as const,
           time: timeScale,
           ...getAxisStyle(),
+          ...axisOpts(xAxis, axisTitleDefaults.x),
         },
         y: {
           beginAtZero: true,
           ...getAxisStyle(),
           ticks: { ...getAxisStyle().ticks, callback: (v: string | number) => formatNumber(Number(v)) },
+          ...axisOpts(yAxis, axisTitleDefaults.y),
         },
       },
     };
@@ -631,7 +728,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     );
     const chartData = {
       labels: labels.map((l) => {
-        const f = displayLabel(l, seriesLabelOverrides);
+        const f = formatBucketLabel(displayLabel(l, seriesLabelOverrides));
         return f.length > 30 ? f.substring(0, 30) + '…' : f;
       }),
       datasets: datasets.map((ds, i) => ({
@@ -681,8 +778,8 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
         },
       },
       scales: {
-        x: { ...(isHorizontal ? valueAxisCfg : categoryAxisCfg), stacked },
-        y: { ...(isHorizontal ? categoryAxisCfg : valueAxisCfg), stacked },
+        x: { ...(isHorizontal ? valueAxisCfg : categoryAxisCfg), stacked, ...axisOpts(xAxis, axisTitleDefaults.x) },
+        y: { ...(isHorizontal ? categoryAxisCfg : valueAxisCfg), stacked, ...axisOpts(yAxis, axisTitleDefaults.y) },
       },
     };
 
@@ -746,8 +843,9 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
                     : valueDisplay === 'pct'
                       ? formatPct(val, total)
                       : `${formatNumber(val)}, ${formatPct(val, total)}`;
-                  // 'none' → legend shows the slice name only, no value.
-                  const text = valueDisplay === 'none' ? label : `${label} (${inner})`;
+                  // Legend shows "name (value)" unless the legend format is
+                  // 'none', in which case it's the name only.
+                  const text = legendValuesOn ? `${label} (${inner})` : label;
                   return { text, fillStyle: chartColors[i % chartColors.length], strokeStyle: 'transparent', hidden: false, index: i };
                 });
               },
@@ -765,14 +863,29 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
         },
       };
 
+      // Always carry the slice-label content on the options; the always-attached
+      // sliceDatalabelsPlugin self-gates on 'none'. Setting it here (vs the typed
+      // `options` literal, which rejects the custom plugin key) lets toggles take
+      // effect without a remount - react-chartjs-2 reads `plugins` only at mount.
+      const withSliceOpts = { ...options, plugins: { ...(options.plugins ?? {}), sliceDatalabels: { display: sliceDisplay } } };
+
       if (chartType === 'pie') {
-        return <div className="h-full w-full"><Pie ref={pieRef as never} data={chartData} options={options as ChartOptions<'pie'>} /></div>;
+        return (
+          <div className="h-full w-full">
+            <Pie
+              ref={pieRef as never}
+              data={chartData}
+              options={withSliceOpts as ChartOptions<'pie'>}
+              plugins={PIE_PLUGINS}
+            />
+          </div>
+        );
       }
 
       return (
         <DoughnutWithCenter
           data={chartData}
-          options={options as ChartOptions<'doughnut'>}
+          options={withSliceOpts as ChartOptions<'doughnut'>}
           total={total}
           label={centerLabel ?? 'total'}
         />
@@ -783,7 +896,7 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
     const isHorizontal = barOrientation !== 'horizontal';
     const chartData = {
       labels: labels.map((l) => {
-        const f = displayLabel(l, seriesLabelOverrides);
+        const f = formatBucketLabel(displayLabel(l, seriesLabelOverrides));
         return f.length > 30 ? f.substring(0, 30) + '…' : f;
       }),
       datasets: [{
@@ -823,8 +936,8 @@ export function SocialChartWidget({ chartType, data, accent, seriesColorOverride
         },
       },
       scales: {
-        x: isHorizontal ? valueAxisCfg : categoryAxisCfg,
-        y: isHorizontal ? categoryAxisCfg : valueAxisCfg,
+        x: { ...(isHorizontal ? valueAxisCfg : categoryAxisCfg), ...axisOpts(xAxis, axisTitleDefaults.x) },
+        y: { ...(isHorizontal ? categoryAxisCfg : valueAxisCfg), ...axisOpts(yAxis, axisTitleDefaults.y) },
       },
     };
 
@@ -874,6 +987,11 @@ const doughnutCenterTextPlugin = {
   },
 };
 
+// Center text + slice labels are both always attached; each self-gates on its
+// own options (doughnutCenterText / sliceDatalabels). Static array identity so
+// react-chartjs-2 never re-registers them.
+const DOUGHNUT_PLUGINS = [doughnutCenterTextPlugin, sliceDatalabelsPlugin];
+
 const DoughnutWithCenter = forwardRef<ChartJS<'doughnut'>, DoughnutWithCenterProps>(
   function DoughnutWithCenter({ data, options, total, label }, ref) {
     const mergedOptions = useMemo(() => ({
@@ -886,7 +1004,7 @@ const DoughnutWithCenter = forwardRef<ChartJS<'doughnut'>, DoughnutWithCenterPro
 
     return (
       <div className="h-full w-full">
-        <Doughnut ref={ref as never} data={data} options={mergedOptions} plugins={[doughnutCenterTextPlugin]} />
+        <Doughnut ref={ref as never} data={data} options={mergedOptions} plugins={DOUGHNUT_PLUGINS} />
       </div>
     );
   },
