@@ -109,6 +109,10 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_SENTRY_ENVIRONMENT: production
           VITE_SENTRY_RELEASE: ${{ github.sha }}
+          # GA4 Measurement ID is a public value (ships in the bundle), so it's
+          # a literal here rather than a secret - guarantees the build never
+          # silently ships without analytics if a secret is forgotten.
+          VITE_GA_MEASUREMENT_ID: G-764Y77BXL7
           # Source-map upload (vite plugin runs only when the auth token is set)
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}

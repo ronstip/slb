@@ -6,6 +6,7 @@ import { captureGoogleEmail } from './firebase.ts';
 import { apiPost } from '../api/client.ts';
 import { ScoltoMark } from '../components/Logo.tsx';
 import { SiteFooter } from '../landing/SiteFooter.tsx';
+import { trackEvent } from '../lib/analytics.ts';
 
 const FAQ_ITEMS: ReadonlyArray<{ q: string; a: string }> = [
   {
@@ -3017,6 +3018,12 @@ function WaitlistModal({
       });
       setEmail(capturedEmail);
       setStatus('success');
+      // Primary landing conversion. GA4 recommended event name for a captured
+      // lead; `has_brief` lets us segment intent-rich signups from bare ones.
+      trackEvent('generate_lead', {
+        source: 'landing_page',
+        has_brief: !!interestedIn,
+      });
     } catch (err: unknown) {
       const code = (err as { code?: string } | null)?.code;
       if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
@@ -3273,6 +3280,9 @@ export function LandingPage() {
   const openWaitlist = (brief?: string) => {
     setWaitlistInterest(brief);
     setWaitlistOpen(true);
+    // Funnel start: dividing this by `generate_lead` gives the waitlist
+    // open->submit conversion rate.
+    trackEvent('waitlist_open', { has_brief: !!brief });
   };
   const closeWaitlist = () => setWaitlistOpen(false);
 
@@ -3283,6 +3293,7 @@ export function LandingPage() {
       if (provider === 'google') await signIn();
       else await signInWithMicrosoft();
       setAuthOpen(false);
+      trackEvent('login', { method: provider });
     } catch {
       // popup closed or cancelled - handled internally
     } finally {
