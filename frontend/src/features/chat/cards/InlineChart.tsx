@@ -234,6 +234,7 @@ export function InlineChart({ data }: InlineChartProps) {
             </SheetHeader>
             <div className="overflow-y-auto px-4 pb-6">
               <ChartStyleEditor
+                chartType={chartType as SocialChartType}
                 seriesLabels={extractChartSeriesLabels(
                   chartType as SocialChartType,
                   toWidgetData(chartData),

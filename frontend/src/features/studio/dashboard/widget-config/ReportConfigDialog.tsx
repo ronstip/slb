@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Plus, Trash2, X, Combine, Palette, Sigma, ChevronDown } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {

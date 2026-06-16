@@ -102,6 +102,22 @@ function toNumber(v: unknown): number | null {
   return null;
 }
 
+/** Narrow a config metricAgg (which may include KPI-only aggs like median/
+ *  distinct/mode/percent) to the stat-based aggs this module supports. Anything
+ *  unsupported drops to undefined so aggFor falls back to the kind default. */
+function coerceAgg(agg: string | undefined): MetricAgg | undefined {
+  switch (agg) {
+    case 'sum':
+    case 'avg':
+    case 'min':
+    case 'max':
+    case 'count':
+      return agg;
+    default:
+      return undefined;
+  }
+}
+
 /** Resolve the aggregation for an object metric, honoring the config override and
  *  falling back to the kind default (own→avg, inherited→sum, count→count). */
 function aggFor(kind: ParsedObjectMetric['kind'], override: MetricAgg | undefined): MetricAgg {
@@ -212,7 +228,7 @@ export function aggregateObjectList(
   // Unparseable metric defaults to count-of-elements.
   const kind: ParsedObjectMetric['kind'] = metricParsed?.kind ?? 'count';
   const parsed: ParsedObjectMetric = metricParsed ?? { field: fieldName, kind: 'count' };
-  const agg = aggFor(kind, config.metricAgg);
+  const agg = aggFor(kind, coerceAgg(config.metricAgg));
 
   const timeBucket = config.timeBucket ?? 'day';
   const dim = config.dimension as string | undefined;
