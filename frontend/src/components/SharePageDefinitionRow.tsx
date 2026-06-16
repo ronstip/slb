@@ -42,9 +42,7 @@ export function SharePageDefinitionRow({
           style={{ fontFamily: "'Inter Tight', ui-sans-serif, system-ui, sans-serif" }}
         >
           <span className="sm:hidden">{BRAND_NAME} · AI agent on social</span>
-          <span className="hidden sm:inline">
-            {BRAND_NAME} is the AI agent on social - it watches video, reads comments, ships the answers.
-          </span>
+          <span className="hidden sm:inline">{BRAND_NAME} · AI agent on social</span>
         </p>
         {sources.length > 0 && (
           <div className="flex shrink-0 items-center gap-2.5 text-muted-foreground">
