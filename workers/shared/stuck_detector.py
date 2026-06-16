@@ -41,7 +41,12 @@ def classify_stuck(
         [docs/bugs/api-agent-stuck-terminal-inconsistent.md].
       - ``orphaned_running``: status=running, continuation entered
         (continuation_ready_at set) but the doc has not updated for
-        ``stale_minutes`` - the continuation process died.
+        ``stale_minutes`` - the continuation process died. When
+        ``collection_statuses`` are provided and not all terminal, the run is
+        still collecting/enriching (which doesn't bump the agent doc), so it
+        is NOT orphaned - guards against a stale ``continuation_ready_at``
+        carried over from a prior run. Caught agent f9022b29 (2026-06-16);
+        see [docs/bugs/api-agent-false-orphaned-running.md].
       - ``missed_handoff``: status=running, all collections terminal, but
         continuation_ready_at was never set. Requires ``collection_statuses``
         to verify; returns None if not provided.
@@ -61,6 +66,18 @@ def classify_stuck(
     if status == "running":
         if agent.get("continuation_ready_at"):
             if updated_at is not None and updated_at < cutoff:
+                # Still collecting/enriching -> not orphaned, even if the doc
+                # looks idle (enrichment writes logs to a subcollection, not
+                # the agent doc). Only treat as orphaned once all collections
+                # are terminal, i.e. continuation genuinely should have run.
+                if collection_statuses is not None and agent.get("collection_ids"):
+                    terminal = {"success", "failed"}
+                    all_terminal = all(
+                        (cs or {}).get("status") in terminal
+                        for cs in collection_statuses
+                    )
+                    if not all_terminal:
+                        return None
                 return SIGNAL_ORPHANED_RUNNING
             return None
 
