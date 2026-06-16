@@ -9,11 +9,16 @@ import {
 import { createHead, UnheadProvider } from '@unhead/react/client';
 import { Toaster } from 'sonner';
 import { initSentry } from './lib/sentry.ts';
+import { initAnalytics } from './lib/analytics.ts';
 import { notifyError } from './lib/notify.ts';
 
 // Initialise error tracking before anything else so early failures are caught.
 // No-op unless VITE_SENTRY_DSN is set (local dev stays silent).
 initSentry();
+
+// Load GA4 (gtag.js) with Consent Mode v2 armed default-denied. No-op unless
+// VITE_GA_MEASUREMENT_ID is set, and never during the prerender snapshot.
+initAnalytics();
 import { AuthProvider } from './auth/AuthProvider.tsx';
 import { ThemeProvider } from './components/theme-provider.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
