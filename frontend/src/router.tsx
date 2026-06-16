@@ -1,9 +1,18 @@
 import { Suspense, lazy, useEffect, type ComponentType } from 'react';
-import { createBrowserRouter, Navigate, Outlet, useNavigate, useParams } from 'react-router';
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  useNavigate,
+  useParams,
+  useLocation,
+} from 'react-router';
 import { AuthGate } from './auth/AuthGate.tsx';
 import { useAuth } from './auth/useAuth.ts';
 import { setNavigateHandler } from './api/client.ts';
 import { accountBlock } from './lib/entitlement.ts';
+import { trackPageView } from './lib/analytics.ts';
+import { ConsentBanner } from './components/ConsentBanner.tsx';
 
 // Route-level code splitting. Each lazy() call produces a separate JS chunk
 // that is only fetched when the user navigates to that route. Keeps the
@@ -130,11 +139,28 @@ function NavigationBridge() {
  * `NavigationBridge` lives inside the RouterProvider context but above
  * every route, and the bridge survives navigations between routes.
  */
+/**
+ * Fires a GA4 page_view on every route change (and the initial load). gtag is
+ * configured with `send_page_view: false`, so this is the single source of
+ * page_view truth - no double-count of the first paint. `trackPageView` is a
+ * no-op until consent is granted, so this is safe to mount unconditionally.
+ * Search strings are included (share links carry no query, but app routes do).
+ */
+function PageViewTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    trackPageView(location.pathname + location.search);
+  }, [location.pathname, location.search]);
+  return null;
+}
+
 function RootLayout() {
   return (
     <>
       <NavigationBridge />
+      <PageViewTracker />
       <Outlet />
+      <ConsentBanner />
     </>
   );
 }

@@ -11,6 +11,7 @@ import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { useSharePageActions } from '../../../lib/share-actions.ts';
 import { getSharedDashboardData } from '../../../api/endpoints/dashboard.ts';
+import { trackEvent } from '../../../lib/analytics.ts';
 import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
@@ -41,6 +42,18 @@ export function SharedDashboardPage() {
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
+
+  // Fire a viral-reach event once the shared dashboard actually resolves (not
+  // on a revoked/404 link). The page_view already covers the visit; this adds
+  // the per-link dimension so we can see which shares drive traffic. Keyed on
+  // token so it fires once per link, not on every re-render.
+  const tracked = useRef<string | null>(null);
+  useEffect(() => {
+    if (response && token && tracked.current !== token) {
+      tracked.current = token;
+      trackEvent('shared_dashboard_view', { share_token: token });
+    }
+  }, [response, token]);
 
   const allPosts = response?.posts ?? [];
   // Landscape ("horizontal") fills a wide canvas; portrait keeps the narrow

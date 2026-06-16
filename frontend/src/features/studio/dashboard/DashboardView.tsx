@@ -19,6 +19,8 @@ import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilte
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { useDashboardLayout } from './hooks/useDashboardLayout.ts';
+import { useAuth } from '../../../auth/useAuth.ts';
+import { isAuthReady } from '../../../auth/authReady.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
 import type { DashboardToolbarHandlers } from './SocialDashboardView.tsx';
 import { SocialDashboardToolbar } from './SocialDashboardToolbar.tsx';
@@ -98,7 +100,13 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
   // `reportConfig` (canonicalization + computed fields) is sent with the data
   // request so the server returns already-canonical posts. Both must resolve
   // before the data query so a config change refetches transformed data.
-  const { data: layoutResponse } = useDashboardLayout(artifact.id);
+  //
+  // Gate on settled auth: firing before `/me` resolves can send a stale
+  // impersonation header / unsettled identity and 403 with a spurious "Access
+  // denied" toast before self-healing. See `isAuthReady`.
+  const { loading, profile, devMode } = useAuth();
+  const authReady = isAuthReady({ loading, profile, devMode });
+  const { data: layoutResponse } = useDashboardLayout(artifact.id, { enabled: authReady });
   const reportScope = layoutResponse?.reportScope ?? null;
   const reportConfig = layoutResponse?.reportConfig ?? null;
 

@@ -15,6 +15,8 @@ import {
 import { getDefaultLayout } from './defaults-social-dashboard.ts';
 import { DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import { useDashboardLayout, useSaveDashboardLayout } from './hooks/useDashboardLayout.ts';
+import { useAuth } from '../../../auth/useAuth.ts';
+import { isAuthReady } from '../../../auth/authReady.ts';
 import { SocialDashboardGrid } from './SocialDashboardGrid.tsx';
 import { visibleWidgets } from './visible-widgets.ts';
 import { SocialWidgetConfigDialog } from './widget-config/SocialWidgetConfigDialog.tsx';
@@ -200,17 +202,30 @@ export function SocialDashboardView({
   // Load persisted layout. Skipped in readOnly (shared) mode - the layout is
   // already inlined in the public share response and the authed endpoint 401s
   // for unauthenticated viewers, which now globally redirects to landing.
+  //
+  // Also gated on settled auth: firing before `/me` resolves can send a stale
+  // impersonation header / unsettled identity and 403 with a spurious "Access
+  // denied" toast before self-healing. Shares the queryKey with DashboardView,
+  // so both consumers must wait. See `isAuthReady`.
+  const { loading, profile, devMode } = useAuth();
+  const authReady = isAuthReady({ loading, profile, devMode });
   const { data: layoutData, isLoading: layoutLoading } = useDashboardLayout(
     artifactId,
-    { enabled: !readOnly },
+    { enabled: !readOnly && authReady },
   );
   const { mutate: saveLayout, mutateAsync: saveLayoutAsync, isPending: isSaving } = useSaveDashboardLayout(artifactId);
 
   // Initialise widgets from persisted layout or defaults. Hydrates the
   // history store without recording an entry (initial load isn't undoable).
+  // In the authed case the layout query is gated on `authReady`; while it's
+  // gated `enabled` is false so `layoutLoading` is also false, and without this
+  // extra guard we'd hydrate from defaults and never re-sync the saved layout
+  // once it loads (the one-shot `initialised` ref would already be set).
+  // readOnly viewers have the layout inlined (no fetch), so they don't wait.
+  const layoutGatePending = !readOnly && !authReady;
   const initialised = useRef(false);
   useEffect(() => {
-    if (layoutLoading || initialised.current) return;
+    if (layoutLoading || layoutGatePending || initialised.current) return;
     initialised.current = true;
     setReportConfig(layoutData?.reportConfig ?? reportConfigProp ?? null);
     const persistedOrientation = layoutData?.orientation ?? defaultOrientation ?? DEFAULT_DASHBOARD_ORIENTATION;
@@ -228,7 +243,7 @@ export function SocialDashboardView({
       onLayoutLoaded(persisted && persisted.length > 0 ? persisted : DEFAULT_FILTER_BAR_FILTERS);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layoutData, layoutLoading]);
+  }, [layoutData, layoutLoading, layoutGatePending]);
 
   // External re-sync: when the AI co-author (or any external writer) has
   // mutated the layout via update_dashboard, the parent invalidates the
