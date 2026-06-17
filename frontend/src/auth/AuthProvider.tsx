@@ -42,7 +42,7 @@ interface AuthContextValue {
   signInWithMicrosoft: () => Promise<void>;
   signOut: () => Promise<void>;
   linkAccount: (provider: 'google' | 'microsoft', loginHint?: string) => Promise<void>;
-  getToken: () => Promise<string | null>;
+  getToken: (forceRefresh?: boolean) => Promise<string | null>;
   refreshProfile: () => Promise<void>;
   devMode: boolean;
 }
@@ -101,12 +101,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authReadyRef.current = { resolve: resolve!, promise };
   }
 
-  const getToken = async (): Promise<string | null> => {
+  const getToken = async (forceRefresh = false): Promise<string | null> => {
     if (isFirebaseConfigured) {
       await authReadyRef.current!.promise;
     }
     if (!auth?.currentUser) return null;
-    return auth.currentUser.getIdToken();
+    // forceRefresh bypasses the SDK's cached token - the API client passes it on
+    // its 401 retry to recover an expired token after the tab was idle/asleep.
+    return auth.currentUser.getIdToken(forceRefresh);
   };
 
   const fetchProfile = async () => {

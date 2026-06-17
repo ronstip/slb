@@ -31,10 +31,10 @@ export function extractChartSeriesLabels(
   }
 
   if (data.groupedCategorical) {
-    if (chartType === 'bar' || chartType === 'progress-list') {
-      // Grouped bar / progress-list legend = dataset labels, axis = primary
-      // labels. User may want to rename either, so include both (primary axis
-      // first, then dataset labels - de-duped).
+    if (chartType === 'bar' || chartType === 'progress-list' || chartType === 'heatmap') {
+      // Grouped bar / progress-list / heatmap: axis = primary labels (heatmap
+      // columns), legend/rows = dataset labels. User may want to rename either,
+      // so include both (primary axis first, then dataset labels - de-duped).
       const seen = new Set<string>();
       const out: string[] = [];
       for (const l of data.groupedCategorical.labels) {

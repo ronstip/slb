@@ -14,8 +14,9 @@ import { Textarea } from '../../../../components/ui/textarea.tsx';
 import { Label } from '../../../../components/ui/label.tsx';
 import { Separator } from '../../../../components/ui/separator.tsx';
 import {
-  BarChart3, TrendingUp, PieChart, Circle, Hash, Cloud, List, Table2,
+  BarChart3, TrendingUp, PieChart, Circle, Hash, Cloud, List, Table2, Grid3x3,
   Database, Filter, Palette, GripHorizontal, Upload, Link as LinkIcon,
+  Eye, EyeOff, LayoutGrid, GalleryHorizontalEnd, ImageOff, Library,
 } from 'lucide-react';
 import { Switch } from '../../../../components/ui/switch.tsx';
 import { apiUploadFile } from '../../../../api/client.ts';
@@ -26,8 +27,18 @@ const MarkdownArtifactEditor = lazy(() =>
 );
 import { cn } from '../../../../lib/utils.ts';
 import type { CustomFieldDef, DashboardPost, TopicMetric } from '../../../../api/types.ts';
-import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension, TimeBucket, TopValuePart, ComputedField } from '../types-social-dashboard.ts';
-import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig, objectFieldOf, objectFieldOfTable, defaultAxisTitles } from '../types-social-dashboard.ts';
+import type { SocialDashboardWidget, SocialChartType, CustomChartConfig, ChartStyleOverrides, CustomTableConfig, NumberSize, DataSource, CustomMetric, CustomDimension, TimeBucket, TopValuePart, ComputedField, SocialEmbedConfig, EmbedSource, EmbedRankMetric, EmbedSpeed } from '../types-social-dashboard.ts';
+import { getValidChartTypesForCustom, presetToCustomConfig, METRIC_META, TOPIC_METRIC_META, TOPIC_DIMENSION_META, getDimensionMeta, getTopicDimensionMeta, defaultTableConfigFor, defaultTopicTableConfig, NUMBER_SIZE_GRID, isDimensionColumn, normalizeTableConfig, objectFieldOf, objectFieldOfTable, defaultAxisTitles, EMBED_RANK_LABELS, DEFAULT_EMBED_RANK, DEFAULT_EMBED_COUNT, MAX_EMBED_COUNT } from '../types-social-dashboard.ts';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../../components/ui/select.tsx';
+import { PlatformIcon } from '../../../../components/PlatformIcon.tsx';
+import { formatNumber } from '../../../../lib/format.ts';
+import { embedCandidatePosts, embedPostThumbnail, embedPostMetricValue, embedHandle } from '../embed-posts.ts';
 import type { FilterOptions } from '../use-dashboard-filters.ts';
 import { DataSourceForm } from './DataSourceForm.tsx';
 import { TableDataForm } from './TableDataForm.tsx';
@@ -52,12 +63,13 @@ const ALL_CHART_TYPES: Array<{ type: SocialChartType; label: string; icon: React
   { type: 'pie',           label: 'Pie',     icon: PieChart },
   { type: 'progress-list', label: 'List',    icon: List },
   { type: 'word-cloud',    label: 'Cloud',   icon: Cloud },
+  { type: 'heatmap',       label: 'Heatmap', icon: Grid3x3 },
   { type: 'table',         label: 'Table',   icon: Table2 },
 ];
 
 /** Chart types unavailable for topic widgets in phase 1. topic_metrics is a
- *  snapshot - no time series, so `line` doesn't apply. */
-const TOPIC_DISABLED_CHART_TYPES: ReadonlySet<SocialChartType> = new Set(['line']);
+ *  snapshot - no time series (so `line`) and no breakdown axis (so `heatmap`). */
+const TOPIC_DISABLED_CHART_TYPES: ReadonlySet<SocialChartType> = new Set(['line', 'heatmap']);
 
 /** Preset accent swatches for table styling (mirrors the chart style palette). */
 const TABLE_ACCENT_COLORS = [
@@ -373,6 +385,22 @@ function SocialWidgetConfigDialogInner({
         const seedDim = (prev.customConfig?.dimension as CustomDimension | undefined) ?? 'channel_handle';
         return { ...prev, chartType, tableConfig: defaultTableConfigFor(seedDim) };
       }
+      // Heatmap needs two axes. Seed any missing one with the posting-activity
+      // default (hour × weekday) while preserving whatever the user already
+      // chose, so a fresh pick lands on the familiar design.
+      if (chartType === 'heatmap' && (prev.dataSource ?? 'posts') !== 'topics') {
+        const cfg = prev.customConfig ?? { metric: 'post_count' as CustomMetric };
+        const dimension: CustomDimension = (cfg.dimension as CustomDimension | undefined) ?? 'hour_of_day';
+        let breakdownDimension = cfg.breakdownDimension as CustomDimension | undefined;
+        if (!breakdownDimension || breakdownDimension === dimension) {
+          breakdownDimension = dimension === 'day_of_week' ? 'hour_of_day' : 'day_of_week';
+        }
+        return {
+          ...prev,
+          chartType,
+          customConfig: { ...cfg, metric: cfg.metric ?? 'post_count', dimension, breakdownDimension },
+        };
+      }
       return { ...prev, chartType };
     });
   };
@@ -440,7 +468,16 @@ function SocialWidgetConfigDialogInner({
           {/* ── Left: config (wider in text mode for the markdown editor) ── */}
           <div className={`${isTextMode || isEmbedMode ? 'w-[55%]' : 'w-[55%]'} border-r border-border flex flex-col min-h-0 bg-white dark:bg-zinc-950`}>
             {isEmbedMode ? (
-              <EmbedConfigPanel draft={draft} setDraft={setDraft} />
+              <EmbedConfigPanel
+                draft={draft}
+                setDraft={setDraft}
+                posts={previewPosts}
+                filteredPosts={filteredPosts}
+                availableOptions={availableOptions}
+                customFieldDefs={customFieldDefs}
+                topics={topics}
+                portalContainer={popoverHost}
+              />
             ) : isMediaMode ? (
               <MediaConfigPanel draft={draft} setDraft={setDraft} />
             ) : isTextMode ? (
@@ -1577,14 +1614,37 @@ function MediaConfigPanel({
 function EmbedConfigPanel({
   draft,
   setDraft,
+  posts,
+  filteredPosts,
+  availableOptions,
+  customFieldDefs,
+  topics,
+  portalContainer,
 }: {
   draft: SocialDashboardWidget;
   setDraft: React.Dispatch<React.SetStateAction<SocialDashboardWidget>>;
+  /** Posts in scope (global-filtered + the draft's own widget filters) - the
+   *  candidate pool the collection-mode selection ranks. */
+  posts: DashboardPost[];
+  /** Global-filtered posts (pre widget-filter) - feeds the filter form's
+   *  per-value counts so they stay stable as you select (matches the chart
+   *  widget Filters tab). */
+  filteredPosts: DashboardPost[];
+  availableOptions: FilterOptions;
+  customFieldDefs?: CustomFieldDef[];
+  topics?: TopicMetric[];
+  portalContainer?: HTMLElement | null;
 }) {
   const urls = draft.embedUrls ?? [];
   // Local text mirrors the textarea so users can type blank lines / partial
   // URLs without them being stripped mid-edit; we normalize on blur.
   const [text, setText] = useState(() => urls.join('\n'));
+
+  const cfg: SocialEmbedConfig = draft.embedConfig ?? {};
+  const source: EmbedSource = cfg.source ?? 'urls';
+  const rankBy = cfg.rankBy ?? DEFAULT_EMBED_RANK;
+  const count = cfg.count ?? DEFAULT_EMBED_COUNT;
+  const display = cfg.display ?? 'grid';
 
   const commit = (raw: string) => {
     const next = raw
@@ -1592,6 +1652,23 @@ function EmbedConfigPanel({
       .map((u) => u.trim())
       .filter((u) => u.length > 0);
     setDraft((prev) => ({ ...prev, embedUrls: next }));
+  };
+
+  const patchCfg = (patch: Partial<SocialEmbedConfig>) =>
+    setDraft((prev) => ({ ...prev, embedConfig: { ...(prev.embedConfig ?? {}), ...patch } }));
+
+  const hidden = useMemo(() => new Set(cfg.hiddenPostIds ?? []), [cfg.hiddenPostIds]);
+  const candidates = useMemo(
+    () => embedCandidatePosts(posts, { source: 'collection', rankBy, count }),
+    [posts, rankBy, count],
+  );
+  const shownCount = candidates.reduce((n, p) => n + (hidden.has(p.post_id) ? 0 : 1), 0);
+
+  const toggleHidden = (id: string) => {
+    const next = new Set(hidden);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    patchCfg({ hiddenPostIds: next.size ? [...next] : undefined });
   };
 
   const mode = urls.length <= 1 ? 'Single' : `Carousel (${urls.length})`;
@@ -1632,27 +1709,239 @@ function EmbedConfigPanel({
 
       <Separator />
 
+      {/* Source: From collection | Links */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Post URLs
-          </Label>
-          <span className="text-[11px] text-muted-foreground">{mode}</span>
+        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Source
+        </Label>
+        <div className="inline-flex rounded-md border border-border p-0.5">
+          <Button
+            type="button"
+            variant={source === 'collection' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => patchCfg({ source: 'collection' })}
+          >
+            <Library className="h-3.5 w-3.5" />
+            From collection
+          </Button>
+          <Button
+            type="button"
+            variant={source === 'urls' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => patchCfg({ source: 'urls' })}
+          >
+            <LinkIcon className="h-3.5 w-3.5" />
+            Links
+          </Button>
         </div>
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={() => commit(text)}
-          placeholder={'https://x.com/user/status/123\nhttps://www.instagram.com/p/abc/\nhttps://www.tiktok.com/@user/video/123'}
-          className="text-xs font-mono min-h-[180px]"
-          rows={8}
-        />
-        <p className="text-[11px] text-muted-foreground">
-          One URL per line. Supported: X / Twitter, Instagram, TikTok, YouTube,
-          Facebook, LinkedIn. Other URLs render as a link card. Add 2+ to switch
-          to carousel automatically.
-        </p>
       </div>
+
+      {source === 'urls' ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Post URLs
+            </Label>
+            <span className="text-[11px] text-muted-foreground">{mode}</span>
+          </div>
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => commit(text)}
+            placeholder={'https://x.com/user/status/123\nhttps://www.instagram.com/p/abc/\nhttps://www.tiktok.com/@user/video/123'}
+            className="text-xs font-mono min-h-[180px]"
+            rows={8}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            One URL per line. Supported: X / Twitter, Instagram, TikTok, YouTube,
+            Facebook, LinkedIn. Other URLs render as a link card. Add 2+ to switch
+            to carousel automatically.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Layout: Grid | Marquee */}
+          <div className="space-y-2">
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Layout
+            </Label>
+            <div className="inline-flex rounded-md border border-border p-0.5">
+              <Button
+                type="button"
+                variant={display === 'grid' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => patchCfg({ display: 'grid' })}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Grid
+              </Button>
+              <Button
+                type="button"
+                variant={display === 'marquee' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => patchCfg({ display: 'marquee' })}
+              >
+                <GalleryHorizontalEnd className="h-3.5 w-3.5" />
+                Marquee
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Grid scrolls horizontally; Marquee auto-scrolls. Click any post to
+              open the original in a new tab.
+            </p>
+          </div>
+
+          {display === 'marquee' && (
+            <div className="flex items-center gap-3">
+              <Label className="text-xs w-24 shrink-0">Speed</Label>
+              <Select value={cfg.speed ?? 'normal'} onValueChange={(v) => patchCfg({ speed: v as EmbedSpeed })}>
+                <SelectTrigger className="h-8 w-40 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="slow">Slow</SelectItem>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="fast">Fast</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Rank metric */}
+          <div className="flex items-center gap-3">
+            <Label className="text-xs w-24 shrink-0">Top by</Label>
+            <Select value={rankBy} onValueChange={(v) => patchCfg({ rankBy: v as EmbedRankMetric })}>
+              <SelectTrigger className="h-8 flex-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(EMBED_RANK_LABELS) as EmbedRankMetric[]).map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {EMBED_RANK_LABELS[m]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Count */}
+          <div className="flex items-center gap-3">
+            <Label className="text-xs w-24 shrink-0">Number of posts</Label>
+            <Input
+              type="number"
+              min={1}
+              max={MAX_EMBED_COUNT}
+              value={count}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                patchCfg({
+                  count: Number.isFinite(n)
+                    ? Math.max(1, Math.min(MAX_EMBED_COUNT, Math.floor(n)))
+                    : DEFAULT_EMBED_COUNT,
+                });
+              }}
+              className="h-8 w-24 text-xs"
+            />
+            <span className="text-[11px] text-muted-foreground">
+              {shownCount} shown · top {Math.min(count, MAX_EMBED_COUNT)} by {EMBED_RANK_LABELS[rankBy].toLowerCase()}
+            </span>
+          </div>
+
+          <Separator />
+
+          {/* Scope filters (reuses the chart widget filter form) */}
+          <div className="space-y-2">
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Filter posts
+            </Label>
+            <WidgetFilterForm
+              filters={draft.filters ?? {}}
+              availableOptions={availableOptions}
+              posts={filteredPosts}
+              customFieldDefs={customFieldDefs}
+              portalContainer={portalContainer}
+              topics={topics}
+              onChange={(filters) =>
+                setDraft((prev) => ({ ...prev, filters: Object.keys(filters).length ? filters : undefined }))
+              }
+            />
+          </div>
+
+          <Separator />
+
+          {/* Candidate preview with per-post show/hide */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Selected posts
+              </Label>
+              <span className="text-[11px] text-muted-foreground">
+                {shownCount}/{candidates.length} shown
+              </span>
+            </div>
+            {candidates.length === 0 ? (
+              <p className="py-4 text-center text-[11px] italic text-muted-foreground">
+                No posts match the current filters.
+              </p>
+            ) : (
+              <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                {candidates.map((post) => {
+                  const isHidden = hidden.has(post.post_id);
+                  const thumb = embedPostThumbnail(post);
+                  const metricVal = embedPostMetricValue(post, rankBy === 'recent' ? 'view_count' : rankBy);
+                  return (
+                    <div
+                      key={post.post_id}
+                      className={cn(
+                        'flex items-center gap-2 rounded-md border border-border p-1.5 transition-opacity',
+                        isHidden && 'opacity-45',
+                      )}
+                    >
+                      <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded bg-zinc-800">
+                        {thumb ? (
+                          <img
+                            src={thumb.url}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <ImageOff className="h-4 w-4 text-white/40" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1 text-xs font-medium">
+                          <PlatformIcon platform={post.platform} className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{embedHandle(post.channel_handle)}</span>
+                        </div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {formatNumber(metricVal)} {rankBy === 'recent' ? 'views' : EMBED_RANK_LABELS[rankBy].replace(/^Most /, '')}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                        title={isHidden ? 'Show this post' : 'Hide this post'}
+                        onClick={() => toggleHidden(post.post_id)}
+                      >
+                        {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
