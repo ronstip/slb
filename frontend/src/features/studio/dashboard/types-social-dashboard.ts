@@ -43,6 +43,7 @@ export type SocialChartType =
   | 'number-card'
   | 'progress-list'
   | 'data-table'
+  | 'heatmap'
   | 'embed';
 
 // ─── Custom chart config (used when aggregation === 'custom') ─────────────────
@@ -61,6 +62,11 @@ export type CustomDimension =
   | 'channel_type'
   | 'channel_handle'
   | 'posted_at'
+  // Cyclical time-of-week dimensions derived from `posted_at`. Unlike the
+  // continuous `posted_at` buckets, these collapse all timestamps onto a fixed
+  // 24-hour / 7-weekday cycle - the two axes of the posting-activity heatmap.
+  | 'hour_of_day'
+  | 'day_of_week'
   | 'themes'
   | 'entities'
   | 'brands'
@@ -512,6 +518,8 @@ export const DIMENSION_META: Record<StandardCustomDimension, DimensionMeta> = {
   channel_type:   { label: 'Channel Type',  icon: 'Radio',         description: 'Group by channel type (e.g. news, influencer, brand)' },
   channel_handle: { label: 'Channel',       icon: 'Tv',            description: 'Group by source channel' },
   posted_at:      { label: 'Date',          icon: 'Calendar',      description: 'Group by date over time' },
+  hour_of_day:    { label: 'Hour of Day',   icon: 'Clock',         description: 'Group by hour of day (00–23)' },
+  day_of_week:    { label: 'Day of Week',   icon: 'CalendarDays',  description: 'Group by weekday (Mon–Sun)' },
   themes:         { label: 'Theme',         icon: 'Tag',           description: 'Group by topic / theme' },
   entities:       { label: 'Entity',        icon: 'Users',         description: 'Group by mentioned entity' },
   brands:         { label: 'Brand',         icon: 'Sparkles',      description: 'Group by detected brand' },
@@ -523,6 +531,43 @@ export const DIMENSION_META: Record<StandardCustomDimension, DimensionMeta> = {
  *  `aggregateCustom`) when another datetime dimension becomes available. */
 export const DATETIME_DIMENSIONS: CustomDimension[] = ['posted_at'];
 
+// ─── Cyclical time-of-week dimensions (heatmap axes) ──────────────────────────
+
+/** Canonical X-axis order for `hour_of_day`: the 24 zero-padded hours. Used as
+ *  both the dimension key (see `getDimensionKeys`) and the full grid order so a
+ *  heatmap shows every hour slot even when its count is 0. */
+export const HOUR_OF_DAY_LABELS: readonly string[] = Array.from({ length: 24 }, (_, h) =>
+  String(h).padStart(2, '0'),
+);
+
+/** Canonical row order for `day_of_week`, Monday-first (matches the
+ *  posting-activity design). */
+export const DAY_OF_WEEK_LABELS: readonly string[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/** `Date.getDay()` (0=Sun..6=Sat) → the Mon-first weekday label in
+ *  {@link DAY_OF_WEEK_LABELS}. */
+export const WEEKDAY_BY_GETDAY: readonly string[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Dimensions that occupy a fixed cyclical axis - rendered in a canonical order
+ *  (not ranked by total) and always shown in full, so the heatmap grid never
+ *  drops an empty hour/weekday slot. */
+export const CYCLICAL_DIMENSIONS: ReadonlySet<CustomDimension> = new Set<CustomDimension>([
+  'hour_of_day',
+  'day_of_week',
+]);
+
+export function isCyclicalDimension(dim: AnyDimension | undefined | null): boolean {
+  return typeof dim === 'string' && CYCLICAL_DIMENSIONS.has(dim as CustomDimension);
+}
+
+/** Full ordered label set for a cyclical dimension, or null for any other
+ *  (ranked-by-total) dimension. */
+export function cyclicalDimensionOrder(dim: AnyDimension | undefined | null): readonly string[] | null {
+  if (dim === 'hour_of_day') return HOUR_OF_DAY_LABELS;
+  if (dim === 'day_of_week') return DAY_OF_WEEK_LABELS;
+  return null;
+}
+
 export const METRIC_META: Record<CustomMetric, { label: string; description: string; supportsAvg: boolean }> = {
   post_count:       { label: 'Post Count',        description: 'Number of posts',            supportsAvg: false },
   like_count:       { label: 'Likes',             description: 'Total / avg likes',          supportsAvg: true },
@@ -533,7 +578,7 @@ export const METRIC_META: Record<CustomMetric, { label: string; description: str
 };
 
 const ALL_CHART_TYPES: SocialChartType[] = [
-  'number-card', 'bar', 'line', 'pie', 'doughnut', 'progress-list', 'word-cloud', 'table', 'data-table',
+  'number-card', 'bar', 'line', 'pie', 'doughnut', 'progress-list', 'word-cloud', 'heatmap', 'table', 'data-table',
 ];
 
 export function getValidChartTypesForCustom(
@@ -1332,6 +1377,63 @@ export interface SocialMediaConfig {
   controls?: boolean;
 }
 
+// ─── Embed Posts widget config (aggregation === 'embeds') ─────────────────────
+
+/** Where the embed widget's posts come from. `urls` (default, back-compat) =
+ *  manual links in `embedUrls`. `collection` = posts auto-selected from the
+ *  agent's collected data (the same posts feeding the dashboard's charts),
+ *  ranked by a metric and capped to a count. */
+export type EmbedSource = 'urls' | 'collection';
+
+/** How collection-mode posts are laid out. `grid` = a horizontally-scrollable
+ *  row of post cards; `marquee` = the same cards auto-scrolling continuously. */
+export type EmbedDisplay = 'grid' | 'marquee';
+
+/** Metric used to rank candidate posts in collection mode. `recent` orders by
+ *  `posted_at` (newest first); the rest are post-level engagement counts. */
+export type EmbedRankMetric =
+  | 'view_count'
+  | 'like_count'
+  | 'comment_count'
+  | 'share_count'
+  | 'engagement_total'
+  | 'recent';
+
+/** Marquee scroll speed (collection + `display: 'marquee'`). */
+export type EmbedSpeed = 'slow' | 'normal' | 'fast';
+
+export const DEFAULT_EMBED_RANK: EmbedRankMetric = 'view_count';
+export const DEFAULT_EMBED_COUNT = 8;
+export const MAX_EMBED_COUNT = 30;
+
+export const EMBED_RANK_LABELS: Record<EmbedRankMetric, string> = {
+  view_count: 'Most views',
+  like_count: 'Most likes',
+  comment_count: 'Most comments',
+  share_count: 'Most shares',
+  engagement_total: 'Most engagement',
+  recent: 'Most recent',
+};
+
+/** Collection-mode embed configuration. Persisted on the widget; the renderer
+ *  resolves it against the dashboard posts at display time so the selection
+ *  stays live as the data refreshes. URL mode keeps using `embedUrls`. */
+export interface SocialEmbedConfig {
+  /** `urls` (default) or `collection`. */
+  source?: EmbedSource;
+  /** Collection-mode layout. Undefined → 'grid'. */
+  display?: EmbedDisplay;
+  /** Collection-mode ranking metric. Undefined → 'view_count'. */
+  rankBy?: EmbedRankMetric;
+  /** Collection-mode cap on selected posts (before manual hiding).
+   *  Undefined → 8. */
+  count?: number;
+  /** post_ids manually hidden from the auto-selection (the show/hide toggles). */
+  hiddenPostIds?: string[];
+  /** Marquee scroll speed. Undefined → 'normal'. */
+  speed?: EmbedSpeed;
+}
+
 export interface SocialDashboardWidget {
   /** Unique widget ID (nanoid) */
   i: string;
@@ -1370,9 +1472,14 @@ export interface SocialDashboardWidget {
   tableConfig?: CustomTableConfig;
   /** Markdown body - set when aggregation === 'text' */
   markdownContent?: string;
-  /** Post URLs to embed - set when aggregation === 'embeds'. Mode (single vs
-   *  carousel) is derived from length at render time; user does not choose. */
+  /** Post URLs to embed - set when aggregation === 'embeds' with
+   *  `embedConfig.source === 'urls'` (or no embedConfig, the back-compat
+   *  default). Mode (single vs carousel) is derived from length at render time. */
   embedUrls?: string[];
+  /** Embed Posts widget config - set when aggregation === 'embeds'. Absent →
+   *  legacy URL-only behaviour (`embedUrls`). When `source === 'collection'`,
+   *  posts are auto-selected from the dashboard data and `embedUrls` is ignored. */
+  embedConfig?: SocialEmbedConfig;
   /** Media payload - set when aggregation === 'media'. Either an uploaded
    *  file (served via `/media/<uploadPath>`) or an external URL (`src`). */
   media?: SocialMediaConfig;
@@ -1475,7 +1582,7 @@ export const VALID_CHART_TYPES: Record<SocialAggregation, SocialChartType[]> = {
   'language': ['pie', 'doughnut', 'bar', 'progress-list'],
   'engagement-rate': ['line'],
   'posts': ['data-table'],
-  'custom': ['bar', 'pie', 'doughnut', 'line', 'number-card', 'progress-list', 'word-cloud', 'table'],
+  'custom': ['bar', 'pie', 'doughnut', 'line', 'number-card', 'progress-list', 'word-cloud', 'heatmap', 'table'],
   'text': ['table'],
   'embeds': ['embed'],
   'media': ['embed'],

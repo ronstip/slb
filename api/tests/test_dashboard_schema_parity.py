@@ -360,6 +360,75 @@ def test_widget_round_trip_preserves_media_config():
     assert dumped["media"]["kind"] == "image"
 
 
+def test_widget_round_trip_preserves_embed_config():
+    """A collection-mode Embed Posts widget persists its selection config on
+    `widget.embedConfig` (source/display/rankBy/count/hiddenPostIds/speed). With
+    `extra='ignore'`, a field missing from the Pydantic model is dropped on save
+    - so reloading or sharing the dashboard would lose the selection and the
+    widget would fall back to empty/URL mode. The nested object must round-trip.
+    Legacy URL-mode widgets (no embedConfig) must still validate."""
+    from api.routers.dashboard_schema import SocialDashboardWidget
+
+    payload = {
+        "i": "e1",
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 8,
+        "aggregation": "embeds",
+        "chartType": "embed",
+        "title": "Top posts",
+        "embedConfig": {
+            "source": "collection",
+            "display": "marquee",
+            "rankBy": "view_count",
+            "count": 12,
+            "hiddenPostIds": ["p1", "p2"],
+            "speed": "fast",
+        },
+        "filters": {"platform": ["tiktok"]},
+    }
+    w = SocialDashboardWidget.model_validate(payload)
+    assert w.embedConfig is not None
+    assert w.embedConfig.source == "collection"
+    assert w.embedConfig.display == "marquee"
+    assert w.embedConfig.rankBy == "view_count"
+    assert w.embedConfig.count == 12
+    assert w.embedConfig.hiddenPostIds == ["p1", "p2"]
+    assert w.embedConfig.speed == "fast"
+    # Serialized form must keep the nested config so it lands in Firestore.
+    dumped = w.model_dump(exclude_none=True, by_alias=True)
+    assert dumped["embedConfig"]["display"] == "marquee"
+    assert dumped["embedConfig"]["count"] == 12
+
+    # Legacy URL-mode widget (no embedConfig) still validates.
+    legacy = SocialDashboardWidget.model_validate(
+        {
+            "i": "e2",
+            "x": 0, "y": 0, "w": 4, "h": 8,
+            "aggregation": "embeds",
+            "chartType": "embed",
+            "title": "Embedded Posts",
+            "embedUrls": ["https://x.com/u/status/1"],
+        }
+    )
+    assert legacy.embedConfig is None
+    assert legacy.embedUrls == ["https://x.com/u/status/1"]
+
+    # Count is bounded (1..30) — an out-of-range value 422s.
+    with pytest.raises(Exception):
+        SocialDashboardWidget.model_validate(
+            {
+                "i": "e3",
+                "x": 0, "y": 0, "w": 4, "h": 8,
+                "aggregation": "embeds",
+                "chartType": "embed",
+                "title": "x",
+                "embedConfig": {"source": "collection", "count": 999},
+            }
+        )
+
+
 def test_custom_config_accepts_custom_field_dimension():
     """Frontend `CustomDimension` includes `custom:<name>` for agent-defined
     enrichment fields (see TS definition). The Pydantic model must accept these

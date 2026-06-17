@@ -44,6 +44,7 @@ SocialChartType = Literal[
     "number-card",
     "progress-list",
     "data-table",
+    "heatmap",
     "embed",
 ]
 
@@ -56,6 +57,9 @@ CustomDimension = Literal[
     "channel_type",
     "channel_handle",
     "posted_at",
+    # Cyclical time-of-week dims derived from posted_at - the heatmap axes.
+    "hour_of_day",
+    "day_of_week",
     "themes",
     "entities",
     "brands",
@@ -179,7 +183,7 @@ VALID_CHART_TYPES: dict[str, tuple[str, ...]] = {
     "language": ("pie", "doughnut", "bar", "progress-list"),
     "engagement-rate": ("line",),
     "posts": ("data-table",),
-    "custom": ("bar", "pie", "doughnut", "line", "number-card", "progress-list", "word-cloud", "table"),
+    "custom": ("bar", "pie", "doughnut", "line", "number-card", "progress-list", "word-cloud", "heatmap", "table"),
     "text": ("table",),
     "embeds": ("embed",),
     "media": ("embed",),
@@ -211,6 +215,8 @@ AGGREGATION_DEFAULTS: dict[str, dict] = {
 
 GRID_COLS = 12
 MAX_WIDGETS = 50
+# Cap on collection-mode Embed Posts cards (mirrors MAX_EMBED_COUNT in TS).
+MAX_EMBED_COUNT = 30
 
 DashboardOrientation = Literal["horizontal", "vertical"]
 
@@ -495,6 +501,27 @@ class SocialMediaConfig(BaseModel):
     controls: bool | None = None
 
 
+class SocialEmbedConfig(BaseModel):
+    """Embed Posts widget config (aggregation == 'embeds'). Mirrors the TS
+    `SocialEmbedConfig`. Declared explicitly so it survives the save round-trip
+    into Firestore + shared dashboards (the widget model uses extra='ignore').
+
+    `source == 'collection'` auto-selects posts from the dashboard data ranked by
+    `rankBy`, capped to `count`, minus `hiddenPostIds`; `source == 'urls'` (or no
+    config) keeps the legacy manual-link behaviour via `embedUrls`."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    source: Literal["urls", "collection"] | None = None
+    display: Literal["grid", "marquee"] | None = None
+    # Loose str (not a Literal) so the rank-metric vocabulary stays client-side
+    # and the schema doesn't 422 if the frontend adds a metric; validated in TS.
+    rankBy: str | None = None
+    count: int | None = Field(default=None, ge=1, le=MAX_EMBED_COUNT)
+    hiddenPostIds: list[str] | None = None
+    speed: Literal["slow", "normal", "fast"] | None = None
+
+
 class SocialDashboardWidget(BaseModel):
     """One widget in a dashboard layout.
 
@@ -525,6 +552,9 @@ class SocialDashboardWidget(BaseModel):
     tableConfig: CustomTableConfig | None = None
     markdownContent: str | None = None
     embedUrls: list[str] | None = None
+    # Embed Posts widget config (collection-mode selection + layout). Declared so
+    # it survives extra='ignore' and round-trips into Firestore + shared boards.
+    embedConfig: SocialEmbedConfig | None = None
     # Media-widget payload (aggregation == 'media'). Declared so it round-trips
     # into Firestore + shared dashboards instead of being dropped by extra='ignore'.
     media: SocialMediaConfig | None = None

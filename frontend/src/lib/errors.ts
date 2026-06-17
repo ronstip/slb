@@ -53,6 +53,12 @@ export function parseError(err: unknown): ParsedError {
     } catch {
       // non-JSON body - fall through to the raw text
     }
+    // FastAPI request-validation errors put an ARRAY of per-field errors on
+    // `detail`. Don't stringify it into the message (a wall of raw Pydantic
+    // JSON) - keep it on `detail` for debugging and surface a concise line.
+    if (Array.isArray(detail)) {
+      return { status: err.status, message: 'Some values are invalid.', detail };
+    }
     if (detail && typeof detail === 'object') {
       const parsed = fromDetailObject(detail as Record<string, unknown>, err.status);
       if (!parsed.message) parsed.message = err.body || `Request failed (${err.status})`;

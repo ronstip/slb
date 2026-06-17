@@ -14,7 +14,7 @@ import {
   TimeAgoCell,
   ContentPreview,
 } from '../../../components/DataTable/cells.tsx';
-import { aggregateCustom, aggregateTable, aggregateTableBreakdown, getDimensionKeys, BREAKDOWN_DIM_ID, type TableRow } from './dashboard-aggregations.ts';
+import { aggregateCustom, aggregateHeatmap, aggregateTable, aggregateTableBreakdown, getDimensionKeys, BREAKDOWN_DIM_ID, type TableRow } from './dashboard-aggregations.ts';
 import {
   aggregateSentiment,
   aggregateEmotions,
@@ -37,6 +37,7 @@ import { BrandIcon } from '../../../components/BrandIcon.tsx';
 import { formatNumber } from '../../../lib/format.ts';
 import { mediaServeUrl } from '../../../api/client.ts';
 import { SocialChartWidget } from './SocialChartWidget.tsx';
+import { SocialHeatmapWidget } from './SocialHeatmapWidget.tsx';
 import { SocialKpiCard } from './SocialKpiCard.tsx';
 import { SocialProgressListWidget } from './SocialProgressListWidget.tsx';
 import { SocialWordCloudWidget } from './SocialWordCloudWidget.tsx';
@@ -47,6 +48,9 @@ import { ExpandedPostRow } from '../../../components/DataTable/ExpandedPostRow.t
 import { Markdown } from '../../../components/Markdown.tsx';
 import { PostEmbed } from './PostEmbed.tsx';
 import { EmbedCarousel } from './EmbedCarousel.tsx';
+import { EmbedPostGallery } from './EmbedPostGallery.tsx';
+import { resolveEmbedPosts } from './embed-posts.ts';
+import { DEFAULT_EMBED_RANK } from './types-social-dashboard.ts';
 import { Button } from '../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -57,7 +61,7 @@ import {
 import {
   Copy, MoreVertical, Settings2, Trash2,
   Heart, Globe, Tag, Smile, Layers, Users, Activity, Hash,
-  PieChart, BarChart3, Table2, Cloud, ListFilter, Share2,
+  PieChart, BarChart3, Table2, Cloud, ListFilter, Share2, CalendarDays,
 } from 'lucide-react';
 import { cn } from '../../../lib/utils.ts';
 
@@ -87,6 +91,7 @@ function widgetHeaderIcon(widget: SocialDashboardWidget): React.ReactNode {
     case 'table': return <Table2 strokeWidth={sw} />;
     case 'word-cloud': return <Cloud strokeWidth={sw} />;
     case 'progress-list': return <ListFilter strokeWidth={sw} />;
+    case 'heatmap': return <CalendarDays strokeWidth={sw} />;
     case 'number-card': return <Hash strokeWidth={sw} />;
     default: return <Share2 strokeWidth={sw} />;
   }
@@ -1157,10 +1162,15 @@ function CustomWidget({
     // before the topics branch since object tokens live inside `dataSource:posts`.
     const objField = objectFieldOf(effectiveConfig);
     if (objField) return aggregateObjectList(aggPosts, objField, effectiveConfig);
+    // Heatmap renders a 2D pivot grid with cyclical-aware ordering - it has its
+    // own aggregator (posts source only; topics has no breakdown/time axis).
+    if (widget.chartType === 'heatmap' && !isTopicsSource) {
+      return aggregateHeatmap(aggPosts, effectiveConfig, computedFields);
+    }
     return isTopicsSource
       ? aggregateTopicsCustom(topics ?? [], effectiveConfig)
       : aggregateCustom(aggPosts, effectiveConfig, computedFields, basePosts);
-  }, [isTopicsSource, aggPosts, topics, effectiveConfig, computedFields, basePosts]);
+  }, [isTopicsSource, aggPosts, topics, effectiveConfig, computedFields, basePosts, widget.chartType]);
 
   const cloudData = useMemo(() => {
     if (!data?.labels || !data.values) return [];
@@ -1317,6 +1327,18 @@ function CustomWidget({
     return (
       <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
         <GenericTableView data={data ?? undefined} labelOverrides={widget.styleOverrides?.seriesLabels} />
+      </SocialWidgetFrame>
+    );
+  }
+
+  if (widget.chartType === 'heatmap') {
+    return (
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+        <SocialHeatmapWidget
+          data={data ?? undefined}
+          accent={widget.styleOverrides?.accent ?? widget.accent}
+          seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
+        />
       </SocialWidgetFrame>
     );
   }
@@ -1628,12 +1650,22 @@ function MediaWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, o
 // Single URL → one embed; 2+ URLs → carousel. Mode is auto-derived, the user
 // never picks. Uses SocialWidgetFrame for chrome and auto-size like TextWidget.
 
-function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize }: FrameProps) {
+function EmbedsWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize }: FrameProps & { posts: DashboardPost[] }) {
+  const cfg = widget.embedConfig;
+  const isCollection = cfg?.source === 'collection';
   const urls = (widget.embedUrls ?? []).filter((u) => typeof u === 'string' && u.trim().length > 0);
+  // Collection mode resolves the live top-N selection from the widget's posts.
+  const collectionPosts = useMemo(
+    () => (isCollection ? resolveEmbedPosts(posts, cfg) : []),
+    [isCollection, posts, cfg],
+  );
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!onAutoSize || !shouldAutoSizeWidget(widget) || !contentRef.current) return;
+    // URL mode auto-fits the card height to the embedded post(s). Collection
+    // mode fills the user-sized frame (the gallery scrolls/marquees), so it
+    // never auto-sizes.
+    if (isCollection || !onAutoSize || !shouldAutoSizeWidget(widget) || !contentRef.current) return;
     const ROW_HEIGHT_PX = 48;
     const MARGIN_Y_PX = 14; // keep in sync with SocialDashboardGrid MARGIN
     const BOTTOM_PAD_PX = 24;
@@ -1662,20 +1694,47 @@ function EmbedsWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, 
       observer.disconnect();
       clearTimeout(timer);
     };
-  }, [widget.i, widget.h, widget.manualHeight, urls.length, onAutoSize]);
+  }, [widget.i, widget.h, widget.manualHeight, urls.length, onAutoSize, isCollection]);
 
+  const frameProps = {
+    title: widget.title,
+    description: widget.description,
+    figureText: widget.figureText,
+    isEditMode,
+    onConfigure,
+    onRemove,
+    onDuplicate,
+    icon: widgetHeaderIcon(widget),
+    containerHidden: !widgetContainerVisible(widget),
+  };
+
+  // Collection mode: a visual card gallery (grid or marquee) filling the frame.
+  if (isCollection) {
+    return (
+      <SocialWidgetFrame {...frameProps}>
+        <div className="flex-1 min-h-0 w-full">
+          {collectionPosts.length === 0 ? (
+            <div className="flex h-full items-center justify-center py-12 text-xs text-muted-foreground italic">
+              {posts.length === 0
+                ? 'No posts in scope - adjust the filters or global date range'
+                : 'No posts match this selection - click the gear to adjust'}
+            </div>
+          ) : (
+            <EmbedPostGallery
+              posts={collectionPosts}
+              display={cfg?.display ?? 'grid'}
+              rankBy={cfg?.rankBy ?? DEFAULT_EMBED_RANK}
+              speed={cfg?.speed}
+            />
+          )}
+        </div>
+      </SocialWidgetFrame>
+    );
+  }
+
+  // URL mode: single embed, or 2+ → carousel. Auto-sizes to content.
   return (
-    <SocialWidgetFrame
-      title={widget.title}
-      description={widget.description}
-      figureText={widget.figureText}
-      isEditMode={isEditMode}
-      onConfigure={onConfigure}
-      onRemove={onRemove}
-      onDuplicate={onDuplicate}
-      icon={widgetHeaderIcon(widget)}
-      containerHidden={!widgetContainerVisible(widget)}
-    >
+    <SocialWidgetFrame {...frameProps}>
       <div ref={contentRef} className="w-full" data-embed-widget="1">
         {urls.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-xs text-muted-foreground italic">
@@ -1874,7 +1933,7 @@ function SocialWidgetRendererImpl({
     return <TextWidget {...frameProps} />;
   }
   if (widget.aggregation === 'embeds') {
-    return <EmbedsWidget {...frameProps} />;
+    return <EmbedsWidget {...frameProps} posts={widgetPosts} />;
   }
   if (widget.aggregation === 'media') {
     return <MediaWidget {...frameProps} />;

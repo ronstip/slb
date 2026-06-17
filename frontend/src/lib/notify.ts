@@ -69,6 +69,10 @@ export function mapError(p: ParsedError, fallback?: string): ToastPlan {
   switch (p.status) {
     case 403:
       return plan("You don't have access to that.");
+    case 422:
+      // Request validation - the raw body is a Pydantic error array, useless to
+      // a user. Show a friendly line instead of the JSON wall.
+      return plan("Some of those settings aren't valid and couldn't be saved.");
     case 429:
       return plan("You're going a bit fast - try again in a moment.");
     case 501:

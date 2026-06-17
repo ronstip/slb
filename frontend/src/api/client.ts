@@ -3,11 +3,11 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api';
 /** Key used by the impersonation Zustand store in sessionStorage. */
 const IMPERSONATION_STORAGE_KEY = 'slb-impersonation';
 
-let tokenGetter: (() => Promise<string | null>) | null = null;
+let tokenGetter: ((forceRefresh?: boolean) => Promise<string | null>) | null = null;
 let signOutHandler: (() => Promise<void>) | null = null;
 let navigateHandler: ((path: string) => void) | null = null;
 
-export function setTokenGetter(getter: () => Promise<string | null>) {
+export function setTokenGetter(getter: (forceRefresh?: boolean) => Promise<string | null>) {
   tokenGetter = getter;
 }
 
@@ -127,10 +127,11 @@ function getImpersonationUid(): string | null {
  */
 export async function buildAuthHeaders(
   extra: Record<string, string> = {},
+  forceRefresh = false,
 ): Promise<Record<string, string>> {
   const headers: Record<string, string> = { ...extra };
   if (tokenGetter) {
-    const token = await tokenGetter();
+    const token = await tokenGetter(forceRefresh);
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -142,8 +143,33 @@ export async function buildAuthHeaders(
   return headers;
 }
 
-async function getHeaders(): Promise<HeadersInit> {
-  return buildAuthHeaders({ 'Content-Type': 'application/json' });
+const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
+
+/**
+ * Fetch with auth headers + a single forced-refresh retry on 401.
+ *
+ * Firebase ID tokens last ~1h and the SDK refreshes them on a timer the browser
+ * SUSPENDS while the tab is backgrounded / the machine sleeps. Returning to an
+ * idle tab, the first request can carry a just-expired token and the backend
+ * 401s. Without this retry that single 401 reached `handleResponse`, which
+ * signed the user out and bounced them to the landing page - and the sibling
+ * requests queued behind it (agents, artifacts, logs) cascaded the same way.
+ *
+ * `getIdToken(true)` mints a fresh token from the still-valid refresh token, so
+ * we rebuild the headers and retry once. Only a genuinely dead session (revoked
+ * or expired refresh token) 401s twice and legitimately falls through to the
+ * sign-out path. `extraHeaders` (e.g. Content-Type) are re-merged with the
+ * refreshed auth header on the retry. Skipped when there's no `tokenGetter`
+ * (dev mode), where token-expiry 401s can't occur.
+ */
+async function authedFetch(
+  url: string,
+  init: RequestInit = {},
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
+  const res = await fetch(url, { ...init, headers: await buildAuthHeaders(extraHeaders) });
+  if (res.status !== 401 || !tokenGetter) return res;
+  return fetch(url, { ...init, headers: await buildAuthHeaders(extraHeaders, true) });
 }
 
 export async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
@@ -151,19 +177,17 @@ export async function apiGet<T>(path: string, params?: Record<string, string>): 
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   }
-  const res = await handleResponse(
-    await fetch(url.toString(), { headers: await getHeaders() }),
-  );
+  const res = await handleResponse(await authedFetch(url.toString(), {}, JSON_HEADERS));
   return res.json();
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const res = await handleResponse(
-    await fetch(`${API_BASE}${path}`, {
-      method: 'POST',
-      headers: await getHeaders(),
-      body: JSON.stringify(body),
-    }),
+    await authedFetch(
+      `${API_BASE}${path}`,
+      { method: 'POST', body: JSON.stringify(body) },
+      JSON_HEADERS,
+    ),
   );
   // 204 No Content - no body to parse
   if (res.status === 204) return undefined as T;
@@ -172,55 +196,45 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
 export async function apiGetBlob(path: string): Promise<Blob> {
   const url = new URL(`${API_BASE}${path}`, window.location.origin);
-  const res = await handleResponse(
-    await fetch(url.toString(), { headers: await getHeaders() }),
-  );
+  const res = await handleResponse(await authedFetch(url.toString(), {}, JSON_HEADERS));
   return res.blob();
 }
 
 export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   const res = await handleResponse(
-    await fetch(`${API_BASE}${path}`, {
-      method: 'PATCH',
-      headers: await getHeaders(),
-      body: JSON.stringify(body),
-    }),
+    await authedFetch(
+      `${API_BASE}${path}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+      JSON_HEADERS,
+    ),
   );
   return res.json();
 }
 
 export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   const res = await handleResponse(
-    await fetch(`${API_BASE}${path}`, {
-      method: 'PUT',
-      headers: await getHeaders(),
-      body: JSON.stringify(body),
-    }),
+    await authedFetch(
+      `${API_BASE}${path}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+      JSON_HEADERS,
+    ),
   );
   return res.json();
 }
 
 export async function apiUploadFile<T>(path: string, file: File): Promise<T> {
   // multipart/form-data - browser sets Content-Type with boundary, so omit it.
-  const headers = await buildAuthHeaders();
   const formData = new FormData();
   formData.append('file', file);
   const res = await handleResponse(
-    await fetch(`${API_BASE}${path}`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    }),
+    await authedFetch(`${API_BASE}${path}`, { method: 'POST', body: formData }),
   );
   return res.json();
 }
 
 export async function apiDelete<T = void>(path: string): Promise<T> {
   const res = await handleResponse(
-    await fetch(`${API_BASE}${path}`, {
-      method: 'DELETE',
-      headers: await getHeaders(),
-    }),
+    await authedFetch(`${API_BASE}${path}`, { method: 'DELETE' }, JSON_HEADERS),
   );
   return res.json();
 }
