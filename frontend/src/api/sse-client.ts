@@ -45,19 +45,26 @@ export async function* streamChat(
   activeStreamControllers.add(controller);
 
   try {
-    const headers = await buildAuthHeaders({
+    const sseHeaders = {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
-    });
-
-    const response = await handleResponse(
-      await fetch(`${API_BASE}/chat`, {
+    };
+    const payload = JSON.stringify(body);
+    const doFetch = async (forceRefresh: boolean) =>
+      fetch(`${API_BASE}/chat`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify(body),
+        headers: await buildAuthHeaders(sseHeaders, forceRefresh),
+        body: payload,
         signal: controller.signal,
-      }),
-    );
+      });
+
+    // Mirror the REST client's idle-token recovery: a stale Firebase token (tab
+    // was backgrounded long enough for it to expire) 401s on the first try;
+    // force-refresh and retry once before handleResponse signs the user out
+    // mid-conversation.
+    let raw = await doFetch(false);
+    if (raw.status === 401) raw = await doFetch(true);
+    const response = await handleResponse(raw);
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error('No response body');

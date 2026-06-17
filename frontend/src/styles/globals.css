@@ -517,6 +517,32 @@
   50% { opacity: 0; }
 }
 
+/* Embed Posts marquee: the track holds two identical copies of the card row
+   side by side; translating by -50% scrolls one full copy past, then loops
+   seamlessly. Duration is set inline per widget (animation-duration). */
+@keyframes embed-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.embed-marquee-track {
+  display: flex;
+  width: max-content;
+  animation-name: embed-marquee;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.embed-marquee-viewport:hover .embed-marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .embed-marquee-track {
+    animation: none;
+    /* Reduced-motion users get a static, manually-scrollable row instead. */
+    width: 100%;
+    overflow-x: auto;
+  }
+}
+
 /* Custom scrollbar - thin, rounded thumb, no arrow buttons (design idiom:
    9px rail, warm thumb on a transparent track). */
 ::-webkit-scrollbar {

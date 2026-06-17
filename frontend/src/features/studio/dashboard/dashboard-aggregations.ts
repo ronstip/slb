@@ -1,7 +1,7 @@
 import type { DashboardKpis, DashboardPost } from '../../../api/types.ts';
 import type { CustomChartConfig, CustomDimension, CustomMetric, CustomTableConfig, PostField, TableColumn, WidgetData, ComputedField } from './types-social-dashboard.ts';
 import { evaluateExpr, exprLeafRefs } from './report-expr.ts';
-import { isCustomFieldDimension, customFieldName, isCustomPostField, isDimensionColumn, isPostFieldColumn, normalizeTableConfig, isComputedRef, computedFieldId } from './types-social-dashboard.ts';
+import { isCustomFieldDimension, customFieldName, isCustomPostField, isDimensionColumn, isPostFieldColumn, normalizeTableConfig, isComputedRef, computedFieldId, WEEKDAY_BY_GETDAY, cyclicalDimensionOrder } from './types-social-dashboard.ts';
 import { toCumulativeSeries } from './sparkline-visibility.ts';
 
 // ─── Sentiment ───────────────────────────────────────────────────────
@@ -561,6 +561,16 @@ export function getDimensionKeys(p: DashboardPost, dim: CustomDimension, timeBuc
   if (dim === 'entities') return p.entities?.length ? p.entities : [];
   if (dim === 'brands') return p.detected_brands?.length ? p.detected_brands : [];
   if (dim === 'posted_at') return [bucketDate(p.posted_at ?? '', timeBucket as NonNullable<CustomChartConfig['timeBucket']>)];
+  // Cyclical time-of-week dims collapse the timestamp onto a fixed cycle. Local
+  // hours mirror bucketDate('hour'); weekday is Mon-first via WEEKDAY_BY_GETDAY.
+  if (dim === 'hour_of_day') {
+    if (!p.posted_at) return [];
+    return [String(new Date(p.posted_at).getHours()).padStart(2, '0')];
+  }
+  if (dim === 'day_of_week') {
+    if (!p.posted_at) return [];
+    return [WEEKDAY_BY_GETDAY[new Date(p.posted_at).getDay()]];
+  }
   if (isCustomFieldDimension(dim)) {
     const raw = p.custom_fields?.[customFieldName(dim)];
     if (raw == null) return [];
@@ -963,6 +973,99 @@ export function aggregateCustom(
 
   const total = values.reduce((s, v) => s + v, 0);
   return { value: total, labels, values };
+}
+
+// ─── Heatmap (2D pivot → grid of intensity cells) ───────────────────────────
+
+/** Default cap on each heatmap axis when topN is unset, mirroring the bar
+ *  chart's 2D-pivot limits. Cyclical axes (hour/weekday) ignore this - they
+ *  always render their full fixed cycle. */
+const DEFAULT_HEATMAP_AXIS_LIMIT = 24;
+
+/** Resolve a heatmap axis to its ordered label set. Cyclical dims keep their
+ *  canonical full order (every slot, even empty); other dims rank by total
+ *  value descending and cap at `limit`. */
+function resolveHeatmapAxis(
+  dim: CustomDimension | undefined,
+  totals: Map<string, number>,
+  limit: number,
+): string[] {
+  const canonical = cyclicalDimensionOrder(dim);
+  if (canonical) return [...canonical];
+  return [...totals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([k]) => k);
+}
+
+/**
+ * Aggregate a 2D pivot for the heatmap chart type: `dimension` is the X axis
+ * (columns), `breakdownDimension` the Y axis (rows / datasets), and `metric` +
+ * `metricAgg` fill each cell. Returns the `groupedCategorical` shape the
+ * heatmap renderer consumes (labels = X columns, datasets = Y rows aligned to
+ * those columns).
+ *
+ * Differs from `aggregateCustom`'s 2D path in two ways tuned for a grid:
+ * cyclical axes (hour_of_day / day_of_week) render in their natural cycle and
+ * keep every slot (so the grid is full, never gappy); a single-axis config
+ * (no breakdown) degrades to a one-row grid.
+ */
+export function aggregateHeatmap(
+  posts: DashboardPost[],
+  config: CustomChartConfig,
+  computedFields?: ComputedField[],
+): WidgetData {
+  // An `expr` computed metric is aggregate-then-evaluate and can't fill a
+  // per-cell grid - fall back to the standard aggregator (no cell shading, but
+  // never crashes). if/else computed metrics are per-post and flow normally.
+  if (config.metric && isComputedRef(config.metric)) {
+    const cf = computedFields?.find((f) => f.id === computedFieldId(config.metric as `computed:${string}`));
+    if (cf?.kind === 'expr') return aggregateCustom(posts, config, computedFields);
+  }
+
+  const xDim = config.dimension as CustomDimension | undefined;
+  const yDim = config.breakdownDimension as CustomDimension | undefined;
+  const metric = config.metric as CustomMetric;
+  const { metricAgg = 'sum', timeBucket = 'day', topN } = config;
+
+  // X-only row sentinel when no breakdown is chosen (single-row heatmap strip).
+  const SINGLE_ROW = '';
+
+  const acc = new Map<string, Map<string, Stats>>(); // xKey → yKey → Stats
+  const xTotals = new Map<string, number>();
+  const yTotals = new Map<string, number>();
+
+  for (const p of posts) {
+    const val = getMetricValue(p, metric);
+    const xKeys = xDim ? getDimensionKeys(p, xDim, timeBucket) : [SINGLE_ROW];
+    const yKeys = yDim ? getDimensionKeys(p, yDim, timeBucket) : [SINGLE_ROW];
+    for (const xk of xKeys) {
+      if (!acc.has(xk)) acc.set(xk, new Map());
+      const inner = acc.get(xk)!;
+      for (const yk of yKeys) {
+        addToStats(inner, yk, val);
+        xTotals.set(xk, (xTotals.get(xk) ?? 0) + val);
+        yTotals.set(yk, (yTotals.get(yk) ?? 0) + val);
+      }
+    }
+  }
+
+  const xLabels = resolveHeatmapAxis(xDim, xTotals, topN ?? DEFAULT_HEATMAP_AXIS_LIMIT);
+  const yLabels = yDim
+    ? resolveHeatmapAxis(yDim, yTotals, DEFAULT_HEATMAP_AXIS_LIMIT)
+    : [SINGLE_ROW];
+
+  const datasets = yLabels.map((yk) => ({
+    label: yk,
+    values: xLabels.map((xk) => {
+      const s = acc.get(xk)?.get(yk);
+      return s ? resolveAgg(s, metricAgg) : 0;
+    }),
+  }));
+
+  const value = datasets.reduce((sum, ds) => sum + ds.values.reduce((a, b) => a + b, 0), 0);
+
+  return { value, groupedCategorical: { labels: xLabels, datasets } };
 }
 
 // ─── Post-field value extraction (post-mode tables) ─────────────────────────

@@ -124,6 +124,10 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
   const isCircular = chartType === 'pie' || chartType === 'doughnut';
   const activeSliceDisplay: SliceLabelContent = value.sliceLabelDisplay ?? 'none';
 
+  // Heatmaps shade cells along a single accent ramp (no per-series colors), so
+  // their per-series section is rename-only.
+  const showSeriesColors = chartType !== 'heatmap';
+
   // Cartesian charts (bar/line) expose per-axis show/hide + title controls.
   const showAxes = AXIS_CHART_TYPES.includes(chartType);
   const AXES: Array<{ key: 'xAxis' | 'yAxis'; label: string; def?: string }> = [
@@ -373,14 +377,17 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
         </div>
       )}
 
-      {/* Per-series overrides */}
+      {/* Per-series overrides. Heatmap shades cells by intensity (one accent
+          ramp), so per-series colors don't apply there - only the rename. */}
       {seriesLabels.length > 0 && (
         <div className="space-y-2">
           <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Series
+            {showSeriesColors ? 'Series' : 'Labels'}
           </Label>
           <p className="text-xs text-muted-foreground/80">
-            Change the color and display name for each value. Renames apply to legends, axes, tooltips, and tables.
+            {showSeriesColors
+              ? 'Change the color and display name for each value. Renames apply to legends, axes, tooltips, and tables.'
+              : 'Rename each row / column label. Applies to the axes and tooltips.'}
           </p>
           <div className="space-y-1.5">
             {seriesLabels.map((label, i) => {
@@ -388,15 +395,18 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
               const fallback = computeDefaultColor(label, i, palette);
               const currentColor = colorOverride ?? fallback;
               const nameOverride = value.seriesLabels?.[label] ?? '';
-              const hasOverride = colorOverride !== undefined || nameOverride !== '';
+              const hasOverride =
+                (showSeriesColors && colorOverride !== undefined) || nameOverride !== '';
               return (
                 <div key={label} className="flex items-center gap-2">
-                  <Input
-                    type="color"
-                    className="h-7 w-10 shrink-0 cursor-pointer p-0.5"
-                    value={currentColor}
-                    onChange={(e) => setSeriesColor(label, e.target.value)}
-                  />
+                  {showSeriesColors && (
+                    <Input
+                      type="color"
+                      className="h-7 w-10 shrink-0 cursor-pointer p-0.5"
+                      value={currentColor}
+                      onChange={(e) => setSeriesColor(label, e.target.value)}
+                    />
+                  )}
                   <Input
                     type="text"
                     value={nameOverride}
@@ -409,7 +419,7 @@ export function ChartStyleEditor({ seriesLabels, chartType, value, onChange, cen
                     <button
                       type="button"
                       onClick={() => {
-                        setSeriesColor(label, undefined);
+                        if (showSeriesColors) setSeriesColor(label, undefined);
                         setSeriesLabel(label, undefined);
                       }}
                       className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
