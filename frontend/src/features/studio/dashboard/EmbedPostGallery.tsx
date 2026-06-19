@@ -7,6 +7,7 @@ import { formatNumber } from '../../../lib/format.ts';
 import { cn } from '../../../lib/utils.ts';
 import type { EmbedDisplay, EmbedRankMetric, EmbedSpeed } from './types-social-dashboard.ts';
 import { embedPostThumbnail, embedPostMetricValue, marqueeDurationSeconds, embedHandle } from './embed-posts.ts';
+import { usePostDetails } from './use-post-details.tsx';
 
 // ── Visual gallery for the collection-mode Embed Posts widget ─────────────────
 // A row of portrait post cards (thumbnail · platform badge · headline metric ·
@@ -58,8 +59,12 @@ function formatPostDate(raw: string | undefined): string {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function PostTile({ post, rankBy }: { post: DashboardPost; rankBy: EmbedRankMetric }) {
-  const thumb = embedPostThumbnail(post);
+function PostTile({ post, rankBy, mediaRefs, className }: { post: DashboardPost; rankBy: EmbedRankMetric; mediaRefs?: string | null; className?: string }) {
+  // `media_refs` is omitted from the slim payload and lazy-fetched; use the
+  // resolved value when supplied (even loading -> null), else the post's own.
+  const thumb = embedPostThumbnail(
+    mediaRefs !== undefined ? { ...post, media_refs: mediaRefs ?? undefined } : post,
+  );
   const headline = headlineFor(post, rankBy);
   const accent = PLATFORM_COLORS[post.platform] ?? '#6B7294';
   const date = formatPostDate(post.posted_at);
@@ -70,7 +75,10 @@ function PostTile({ post, rankBy }: { post: DashboardPost; rankBy: EmbedRankMetr
       target="_blank"
       rel="noopener noreferrer"
       title={post.title || post.content || post.post_url}
-      className="group @container relative block h-full aspect-[9/16] min-w-[6.5rem] shrink-0 overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-white/10 shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:ring-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className={cn(
+        'group @container relative block overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-white/10 shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:ring-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+        className,
+      )}
     >
       {/* Thumbnail */}
       {thumb ? (
@@ -142,6 +150,11 @@ export function EmbedPostGallery({ posts, display, rankBy, speed }: EmbedPostGal
   // Marquee needs two back-to-back copies so the -50% translate loops seamlessly.
   const duration = useMemo(() => marqueeDurationSeconds(speed, posts.length), [speed, posts.length]);
 
+  // Lazy-fetch media_refs for the visible posts (omitted from the slim payload);
+  // re-renders when they land so thumbnails fill in. No-op when not slim.
+  const postIds = useMemo(() => posts.map((p) => p.post_id), [posts]);
+  const { get: getDetails } = usePostDetails(postIds);
+
   if (posts.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-xs italic text-muted-foreground">
@@ -160,7 +173,8 @@ export function EmbedPostGallery({ posts, display, rankBy, speed }: EmbedPostGal
         <div className="embed-marquee-track h-full" style={{ animationDuration: `${duration}s` }}>
           {loop.map((post, i) => (
             <div key={`${i}-${post.post_id}`} className="h-full shrink-0 pr-3" aria-hidden={i >= posts.length}>
-              <PostTile post={post} rankBy={rankBy} />
+              {/* Marquee cards are height-driven: fill the row height, width from aspect. */}
+              <PostTile post={post} rankBy={rankBy} mediaRefs={getDetails(post.post_id)?.media_refs ?? post.media_refs} className="h-full aspect-[9/16] min-w-[6.5rem] shrink-0" />
             </div>
           ))}
         </div>
@@ -168,18 +182,23 @@ export function EmbedPostGallery({ posts, display, rankBy, speed }: EmbedPostGal
     );
   }
 
-  // Grid: a single horizontally-scrollable, snap-aligned row of cards.
+  // Grid: a wrapping, vertically-scrollable grid that fills the container.
+  //  - Columns: auto-fit + 1fr → as many ≥9.5rem tracks as fit, stretched to use
+  //    the FULL width (no right-edge gap); a wider widget shows more per row.
+  //  - Rows: min(15rem, 100%) → a comfortable ~240px tall, but never taller than
+  //    the widget, so at least one full row always fits (cards shrink instead of
+  //    being clipped when the widget is short). Overflow scrolls down.
+  // Each card fills its cell (no aspect-ratio track sizing → no collapse/overlap).
   return (
     <div
-      className={cn(
-        'flex h-full w-full items-stretch gap-3 overflow-x-auto pb-1',
-        'snap-x snap-mandatory scroll-smooth',
-      )}
+      className="grid h-full w-full content-start gap-3 overflow-y-auto overflow-x-hidden pb-1"
+      style={{
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr))',
+        gridAutoRows: 'min(15rem, 100%)',
+      }}
     >
       {posts.map((post) => (
-        <div key={post.post_id} className="h-full shrink-0 snap-start">
-          <PostTile post={post} rankBy={rankBy} />
-        </div>
+        <PostTile key={post.post_id} post={post} rankBy={rankBy} mediaRefs={getDetails(post.post_id)?.media_refs ?? post.media_refs} className="h-full w-full" />
       ))}
     </div>
   );

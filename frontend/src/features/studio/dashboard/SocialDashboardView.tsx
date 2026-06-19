@@ -1,11 +1,15 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useStore } from 'zustand';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import type { CustomFieldDef, DashboardKpis, DashboardPost, TopicMetric } from '../../../api/types.ts';
-import type { SocialDashboardWidget, DashboardOrientation, ReportConfig } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, DashboardOrientation, ReportConfig, WidgetData } from './types-social-dashboard.ts';
 import { AGGREGATION_META, DEFAULT_DASHBOARD_ORIENTATION } from './types-social-dashboard.ts';
 import type { DashboardFilters, FilterOptions } from './use-dashboard-filters.ts';
+import { INITIAL_FILTERS } from './use-dashboard-filters.ts';
+import { getDashboardAggregate } from '../../../api/endpoints/dashboard.ts';
+import { DashboardDetailsProvider, type FetchPostDetails } from './use-post-details.tsx';
 import { useSocialDashboardStore } from './social-dashboard-store.ts';
 import {
   getReportHistoryStore,
@@ -111,6 +115,18 @@ interface SocialDashboardViewProps {
    *  already baked into `allPosts`, this drives value colors + computed-field
    *  rendering. Ignored in edit mode (the layout doc is the source there). */
   reportConfig?: ReportConfig | null;
+  /** Lazy-fetch the heavy display-only post fields (ai_summary/context/
+   *  media_refs) the slim payload omits. Provided by the host (studio: scoped by
+   *  collections/agent; share: by token). Undefined => full payload, no fetch. */
+  fetchPostDetails?: FetchPostDetails;
+  /** Collection IDs for server-side aggregation (studio path). Must be provided
+   *  together with `effectiveFilters` to enable server aggregation. */
+  collectionIds?: string[];
+  /** Effective filter state (viewer selection already intersected with
+   *  reportScope on the FE) for server-side widget aggregation. When provided in
+   *  view mode, the server pre-aggregates widgets and the browser skips client-
+   *  side aggregation. Disabled automatically in edit mode. */
+  effectiveFilters?: DashboardFilters | null;
 }
 
 export function SocialDashboardView({
@@ -138,6 +154,9 @@ export function SocialDashboardView({
   attachedWidgetIds,
   onToggleAttachWidget,
   reportConfig: reportConfigProp = null,
+  fetchPostDetails,
+  collectionIds,
+  effectiveFilters,
 }: SocialDashboardViewProps) {
   const { isEditMode, setEditMode } = useSocialDashboardStore();
   const navigate = useNavigate();
@@ -198,6 +217,63 @@ export function SocialDashboardView({
   const reportConfigRef = useRef<ReportConfig | null>(null);
   useEffect(() => { reportConfigRef.current = reportConfig; }, [reportConfig]);
   const [reportConfigOpen, setReportConfigOpen] = useState(false);
+
+  // Studio server-side aggregation: pre-compute widget data on the server so
+  // the browser skips O(posts × widgets) client-side aggregation. Disabled in
+  // edit mode (immediate feedback from client-side agg during config changes).
+  // Query key encodes the effective filters + widget configs (not positions) so
+  // any data-changing config edit busts the cache; drag-resizes don't.
+  const serverAggEnabled = !isEditMode && !readOnly && !!collectionIds?.length && !!effectiveFilters;
+  const widgetAggKey = useMemo(
+    () => widgets.map((w) => ({
+      i: w.i,
+      a: w.aggregation,
+      cc: (w as { customConfig?: unknown }).customConfig,
+      tc: (w as { tableConfig?: unknown }).tableConfig,
+      ec: (w as { embedConfig?: unknown }).embedConfig,
+      f: w.filters,
+    })),
+    [widgets],
+  );
+  const { data: serverAggData } = useQuery({
+    queryKey: [
+      'dashboard-agg',
+      agentId ?? '',
+      JSON.stringify(collectionIds ?? []),
+      JSON.stringify(reportConfig),
+      JSON.stringify(effectiveFilters ?? {}),
+      JSON.stringify(widgetAggKey),
+    ],
+    queryFn: () => getDashboardAggregate(
+      collectionIds!,
+      agentId,
+      reportConfig,
+      effectiveFilters ?? INITIAL_FILTERS,
+      widgets,
+    ),
+    enabled: serverAggEnabled,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+
+  // Merge server-agg data onto the visible widgets. Memoized so widgets ref is
+  // stable across re-renders when nothing changed. This is the studio's
+  // equivalent of SharedDashboardPage's `layoutWithServerData`.
+  const widgetsForGrid = useMemo(() => {
+    const visible = visibleWidgets(widgets, isEditMode && !readOnly);
+    if (!serverAggData || isEditMode) return visible;
+    const wd = serverAggData.widgetData as Record<string, WidgetData> | undefined;
+    const td = serverAggData.tableData as Record<string, SocialDashboardWidget['serverTableRows']> | undefined;
+    const fd = serverAggData.feedData as Record<string, string[]> | undefined;
+    if (!wd && !td && !fd) return visible;
+    return visible.map((w) => {
+      const extra: Partial<SocialDashboardWidget> = {};
+      if (wd?.[w.i]) extra.serverData = wd[w.i];
+      if (td?.[w.i]) extra.serverTableRows = td[w.i];
+      if (fd?.[w.i]) extra.serverPostIds = fd[w.i];
+      return Object.keys(extra).length ? { ...w, ...extra } : w;
+    });
+  }, [widgets, serverAggData, isEditMode, readOnly]);
 
   // Load persisted layout. Skipped in readOnly (shared) mode - the layout is
   // already inlined in the public share response and the authed endpoint 401s
@@ -319,53 +395,100 @@ export function SocialDashboardView({
     [historyStore, isEditMode, scheduleAutoSave],
   );
 
+  // Pending auto-size updates, flushed once per animation frame.
+  // Multiple ResizeObserver debounces that fire within the same frame are
+  // coalesced into a single setWidgets call so Zustand's useSyncExternalStore
+  // subscriber never triggers a synchronous re-render mid-frame (which would
+  // cascade into "Maximum update depth exceeded" on fast-rendering paths such
+  // as the bounded-posts ?agg=server share where all 16 widgets mount at once).
+  const pendingAutoSizes = useRef<Map<string, number>>(new Map());
+  const autoSizeRaf = useRef<number>(0);
+  // Dev-only oscillation detector. Even with the rAF coalescing below, a
+  // sustained width<->relayout feedback loop (e.g. a flickering scrollbar, see
+  // globals.css `scrollbar-gutter`) would keep producing fresh auto-size
+  // commits frame after frame. The cold-load "Maximum update depth" cascade
+  // couldn't be reproduced on demand, so this names the symptom the next time
+  // it appears: >20 height-changing flushes inside 2s. Stripped from prod.
+  const autoSizeFlushTimes = useRef<number[]>([]);
+
   // Auto-size handler for text widgets: when a widget reports its measured
   // height, update its `h` and repack the y-positions of all widgets below it
   // in the same column. Vertical layouts (full-width widgets) collapse cleanly;
   // multi-column rows fall back to a stable minimum y advancement.
   const handleAutoSize = useCallback(
     (widgetId: string, newH: number) => {
-      historyStore.getState().setWidgets((prev) => {
-        const idx = prev.findIndex((w) => w.i === widgetId);
-        if (idx === -1) return prev;
-        if (prev[idx].h === newH) return prev;
-        const next = prev.slice();
-        next[idx] = { ...prev[idx], h: newH };
-        // Repack rows below the changed widget. Build a fresh y-layout by
-        // sweeping the list, preserving each widget's relative order and
-        // packing it just below the previous row's bottom.
-        const sorted = next
-          .map((w, i) => ({ ...w, _origIdx: i }))
-          .sort((a, b) => a.y - b.y || a.x - b.x);
-        let cursorY = 0;
-        let rowMaxBottom = 0;
-        let rowStartY = sorted.length > 0 ? sorted[0].y : 0;
-        const yMap = new Map<number, number>();
-        for (const w of sorted) {
-          if (w.y !== rowStartY) {
-            cursorY = rowMaxBottom;
-            rowStartY = w.y;
-            rowMaxBottom = cursorY + w.h;
-          } else {
-            rowMaxBottom = Math.max(rowMaxBottom, cursorY + w.h);
+      pendingAutoSizes.current.set(widgetId, newH);
+      cancelAnimationFrame(autoSizeRaf.current);
+      autoSizeRaf.current = requestAnimationFrame(() => {
+        const pending = new Map(pendingAutoSizes.current);
+        pendingAutoSizes.current.clear();
+        let committed = false;
+        historyStore.getState().setWidgets((prev) => {
+          // Apply all batched height updates in one pass.
+          let next = prev;
+          let changed = false;
+          for (const [id, h] of pending) {
+            const idx = next.findIndex((w) => w.i === id);
+            if (idx === -1 || next[idx].h === h) continue;
+            if (!changed) { next = prev.slice(); changed = true; }
+            next[idx] = { ...next[idx], h };
           }
-          yMap.set(w._origIdx, cursorY);
-        }
-        // Preserve each widget's object reference when its y is unchanged.
-        // The memoized SocialWidgetRenderer compares props by reference, so
-        // spreading every widget here (even untouched ones) would re-render and
-        // re-draw every chart on each text/embed auto-size — a real storm on
-        // first load while cards settle. Only the rows that actually moved get
-        // a new reference.
-        const repacked = next.map((w, i) => {
-          const ny = yMap.get(i) ?? w.y;
-          return ny === w.y ? w : { ...w, y: ny };
+          if (!changed) return prev;
+          committed = true;
+          // Repack y-positions once for all updated heights. Build a fresh
+          // y-layout by sweeping the list, preserving relative order and
+          // packing each widget just below the previous row's bottom.
+          const sorted = next
+            .map((w, i) => ({ ...w, _origIdx: i }))
+            .sort((a, b) => a.y - b.y || a.x - b.x);
+          let cursorY = 0;
+          let rowMaxBottom = 0;
+          let rowStartY = sorted.length > 0 ? sorted[0].y : 0;
+          const yMap = new Map<number, number>();
+          for (const w of sorted) {
+            if (w.y !== rowStartY) {
+              cursorY = rowMaxBottom;
+              rowStartY = w.y;
+              rowMaxBottom = cursorY + w.h;
+            } else {
+              rowMaxBottom = Math.max(rowMaxBottom, cursorY + w.h);
+            }
+            yMap.set(w._origIdx, cursorY);
+          }
+          // Preserve each widget's object reference when its y is unchanged.
+          // The memoized SocialWidgetRenderer compares props by reference, so
+          // spreading every widget here (even untouched ones) would re-render and
+          // re-draw every chart on each text/embed auto-size — a real storm on
+          // first load while cards settle. Only the rows that actually moved get
+          // a new reference.
+          const repacked = next.map((w, i) => {
+            const ny = yMap.get(i) ?? w.y;
+            return ny === w.y ? w : { ...w, y: ny };
+          });
+          return repacked;
         });
-        return repacked;
+        if (import.meta.env.DEV && committed) {
+          const now = performance.now();
+          const recent = autoSizeFlushTimes.current.filter((t) => now - t < 2000);
+          recent.push(now);
+          autoSizeFlushTimes.current = recent;
+          if (recent.length > 20) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[dashboard] auto-size still oscillating: ${recent.length} height-changing ` +
+                `flushes in 2s. Suspect a scrollbar/width relayout feedback loop ` +
+                `(see globals.css scrollbar-gutter). Last widgets: ${[...pending.keys()].join(', ')}`,
+            );
+            autoSizeFlushTimes.current = []; // throttle the warning
+          }
+        }
       });
     },
     [historyStore],
   );
+
+  // Cancel any pending rAF on unmount to avoid stale store updates.
+  useEffect(() => () => { cancelAnimationFrame(autoSizeRaf.current); }, []);
 
   const handleDone = useCallback(async () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -625,10 +748,13 @@ export function SocialDashboardView({
     <div className="flex flex-col">
       {/* Grid - keyed on orientation so a landscape/portrait switch remounts
           and re-measures the container width (RGL scales its 12 cols to the
-          measured width; a stale measure leaves panels at the old width). */}
+          measured width; a stale measure leaves panels at the old width).
+          Wrapped in the details provider so embed/table widgets can lazy-fetch
+          the display-only fields the slim payload omits. */}
+      <DashboardDetailsProvider fetch={fetchPostDetails}>
       <SocialDashboardGrid
         key={orientation}
-        widgets={visibleWidgets(widgets, isEditMode && !readOnly)}
+        widgets={widgetsForGrid}
         filteredPosts={filteredPosts}
         topics={topics}
         isEditMode={isEditMode && !readOnly}
@@ -648,6 +774,7 @@ export function SocialDashboardView({
         reportValueColors={reportConfig?.valueColors}
         reportComputedFields={reportConfig?.computedFields}
       />
+      </DashboardDetailsProvider>
 
       {/* Single config dialog - used for both add and edit */}
       <SocialWidgetConfigDialog

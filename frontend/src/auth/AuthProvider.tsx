@@ -75,6 +75,15 @@ function reportSignInError(error: unknown): void {
   toast.error('Sign-in failed. Please try again.');
 }
 
+// Anonymous Firebase auth is disabled at the project level (the provider
+// returns `auth/admin-restricted-operation`). Attempting `signInAnonymously`
+// therefore only produces a guaranteed 400 to identitytoolkit + console/Sentry
+// noise on every public page load (e.g. /shared/... links), and never yields a
+// usable session. We skip it and settle as signed-out: public surfaces fetch
+// without a token, gated surfaces show the sign-in CTA. Flip this to `true` only
+// if the Anonymous provider is ever enabled in the Firebase console.
+const ANONYMOUS_AUTH_ENABLED = false;
+
 // True while the build-time Puppeteer prerender is capturing static HTML.
 // vite.config.ts injects window.__PRERENDER_INJECTED before scripts evaluate.
 const isPrerender =
@@ -167,8 +176,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!u) {
         setUser(null);
-        // No user - sign in anonymously (once)
-        if (!anonSignInAttempted.current) {
+        // No signed-in user. Anonymous auth is disabled project-wide (see
+        // ANONYMOUS_AUTH_ENABLED) so we don't attempt the futile signInAnonymously
+        // call - just settle as signed-out so getToken() unblocks (returns null).
+        if (ANONYMOUS_AUTH_ENABLED && !anonSignInAttempted.current) {
           anonSignInAttempted.current = true;
           try {
             await signInAnonymously(auth!);

@@ -118,8 +118,11 @@ app.add_middleware(SlowAPIMiddleware)
 
 # Compress large JSON responses. The dashboard/share payload is ~8MB of post
 # JSON sent uncompressed; gzip cuts that several-fold over the wire. minimum_size
-# skips tiny responses where compression overhead isn't worth it.
-app.add_middleware(GZipMiddleware, minimum_size=1024)
+# skips tiny responses where compression overhead isn't worth it. compresslevel=6
+# (not Starlette's default 9) ~matches level 9's ratio on JSON at ~40% less CPU -
+# level 9 of an 11.5MB payload is ~366ms of blocking gzip per uncached hit. The
+# dashboard endpoints additionally cache the compressed bytes (dashboard_response).
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 # Global safety net for unhandled exceptions - keep AFTER more specific
 # handlers (e.g. RateLimitExceeded). FastAPI runs `HTTPException` through

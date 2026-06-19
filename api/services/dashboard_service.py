@@ -13,8 +13,11 @@ builders return ``(None, None)`` - callers should skip BigQuery and serve an
 empty result.
 """
 
+import asyncio
 import json
 import logging
+import time
+from collections.abc import Iterable
 
 from api.schemas.responses import (
     DashboardPostResponse,
@@ -22,10 +25,96 @@ from api.schemas.responses import (
     TopicMetricsResponse,
     TopicPlatformEntry,
 )
+from api.services.dashboard_cache import get_core, set_core
 
 logger = logging.getLogger(__name__)
 
 MAX_ROWS = 10000
+
+# Display-only post fields read ONLY for the bounded set of posts actually on
+# screen - the embed-gallery thumbnail (`media_refs`), a table's expanded row
+# (`context`, `media_refs`, `ai_summary`), and the post-mode table `ai_summary`
+# COLUMN (bounded to the displayed rowLimit) - never in aggregation or filtering.
+# The bulk payload omits them (when `slim`) and the FE lazy-fetches them per
+# visible post via the post-details endpoint (~60% of post bytes measured on an
+# 8.5K-post dashboard: media_refs ~38%, ai_summary ~14%, context ~8%).
+#
+# `content` is deliberately NOT stripped: it is filterable via the `text`
+# condition (matchesCondition), so the FE needs it for every post.
+# See docs/handoff-dashboard-payload-scalability.md.
+DETAIL_FIELDS = ("ai_summary", "context", "media_refs")
+_DETAIL_FIELD_SET = frozenset(DETAIL_FIELDS)
+
+
+def strip_detail_fields(posts: list[dict]) -> list[dict]:
+    """Return new post dicts with the lazy-loaded DETAIL_FIELDS removed.
+
+    Never mutates the input: the cached core keeps the full posts so the
+    post-details endpoint can serve the stripped fields from the same cache.
+    """
+    return [
+        {k: v for k, v in post.items() if k not in _DETAIL_FIELD_SET}
+        for post in posts
+    ]
+
+
+def build_post_details(posts: list[dict], post_ids: Iterable[str]) -> dict[str, dict]:
+    """Map requested post_ids to just their DETAIL_FIELDS, pulled from the core.
+
+    Ids absent from the core are omitted, so a caller can never read posts
+    outside this dashboard's scope. The core is already scoped to the agent's
+    collections, so this is the access boundary for the lazy detail fetch.
+    """
+    wanted = set(post_ids)
+    out: dict[str, dict] = {}
+    for post in posts:
+        pid = post.get("post_id")
+        if pid in wanted:
+            out[pid] = {f: post.get(f) for f in DETAIL_FIELDS}
+    return out
+
+
+async def get_or_build_core(
+    bq, agent_id: str, collection_ids: list[str], stamp: str
+) -> tuple[dict, bool, float, float]:
+    """Return ``(core, cache_hit, gather_ms, serialize_ms)`` for a dashboard.
+
+    The single place that resolves an assembled dashboard core, shared by the
+    dashboard data endpoint AND the post-details endpoint on both the authed and
+    public-share paths - so all four hit the SAME cache entry (the details
+    endpoint serves exactly the fat fields the data endpoint stripped). On a
+    cache hit no BigQuery runs; on a miss it fires the four parallel queries,
+    assembles the jsonable core, caches it, and reports the timing splits the
+    routers log.
+    """
+    t0 = time.perf_counter()
+    core = get_core(agent_id, collection_ids, stamp)
+    if core is not None:
+        return core, True, 0.0, 0.0
+
+    posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
+    kpis_sql, kpis_params = build_dashboard_kpis_sql(collection_ids, agent_id)
+    topics_sql, topics_params = build_topics_sql(agent_id)
+
+    rows, kpi_rows, topic_rows, name_rows = await asyncio.gather(
+        asyncio.to_thread(bq.query, posts_sql, posts_params),
+        asyncio.to_thread(bq.query, kpis_sql, kpis_params),
+        asyncio.to_thread(bq.query, topics_sql, topics_params),
+        asyncio.to_thread(
+            bq.query, COLLECTION_NAMES_SQL, {"collection_ids": collection_ids}
+        ),
+    )
+    gather_ms = (time.perf_counter() - t0) * 1000
+
+    truncated = len(rows) > MAX_ROWS
+    if truncated:
+        rows = rows[:MAX_ROWS]
+
+    ts = time.perf_counter()
+    core = assemble_dashboard_core(rows, topic_rows, kpi_rows, name_rows, truncated)
+    serialize_ms = (time.perf_counter() - ts) * 1000
+    set_core(agent_id, collection_ids, stamp, core)
+    return core, False, gather_ms, serialize_ms
 
 
 def derive_agent_id_for_collections(fs, collection_ids: list[str]) -> str | None:

@@ -1,0 +1,184 @@
+{
+  "_doc": "Shared cross-language parity fixtures for the server-side aggregation engine (P2). Authored by hand; consumed by both the TS recorder (parity.record.test.ts) and the Python parity test (api/tests/test_dashboard_aggregate_parity.py). Posts are ALREADY-FINAL (post-canonicalization) — the engine only mirrors aggregateCustom, not the report transform. Only the TZ-independent categorical + number-card primitive is covered here; time-series / breakdown / object-list / heatmap are deferred to later parity-gated slices.",
+  "posts": [
+    {
+      "post_id": "p1", "platform": "twitter", "sentiment": "positive", "emotion": "joy",
+      "language": "en", "content_type": "text", "channel_type": "ugc", "channel_handle": "alice",
+      "themes": ["ai", "ml"], "entities": ["openai"], "detected_brands": ["acme"],
+      "custom_fields": {"region": "north", "tags": ["x", "y"], "score": 5, "flag": true, "mentions": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 40}]},
+      "like_count": 10, "view_count": 100, "comment_count": 2, "share_count": 1,
+      "posted_at": "2026-01-01T08:00:00Z"
+    },
+    {
+      "post_id": "p2", "platform": "twitter", "sentiment": "negative", "emotion": "anger",
+      "language": "en", "content_type": "video", "channel_type": "media", "channel_handle": "bob",
+      "themes": ["ai"], "entities": ["openai", "google"], "detected_brands": ["acme", "globex"],
+      "custom_fields": {"region": "south", "tags": ["x"], "score": 5, "flag": false, "mentions": [{"name": "Alice", "age": 25}]},
+      "like_count": 5, "view_count": 50, "comment_count": 1, "share_count": 0,
+      "posted_at": "2026-01-01T09:00:00Z"
+    },
+    {
+      "post_id": "p3", "platform": "youtube", "sentiment": "positive", "emotion": "joy",
+      "language": "es", "content_type": "video", "channel_type": "official", "channel_handle": "alice",
+      "themes": ["ml"], "entities": ["google"], "detected_brands": ["globex"],
+      "custom_fields": {"region": "north", "score": 10, "mentions": [{"name": "Carol", "age": 50}]},
+      "like_count": 20, "view_count": 200, "comment_count": 4, "share_count": 2,
+      "posted_at": "2026-01-02T10:00:00Z"
+    },
+    {
+      "post_id": "p4", "platform": "youtube", "sentiment": null, "emotion": null,
+      "language": "en", "content_type": "text", "channel_type": "ugc", "channel_handle": "carol",
+      "themes": [], "entities": [], "detected_brands": [],
+      "custom_fields": {"tags": ["y", "z"]},
+      "like_count": 0, "view_count": 0, "comment_count": 0, "share_count": 0,
+      "posted_at": "2026-01-02T11:00:00Z"
+    },
+    {
+      "post_id": "p5", "platform": "tiktok", "sentiment": "neutral", "emotion": "joy",
+      "language": "en", "content_type": "video", "channel_type": "ugc", "channel_handle": "alice",
+      "themes": ["ai", "ml", "nlp"], "entities": ["meta"], "detected_brands": ["acme"],
+      "custom_fields": {"region": "north", "score": 5.0, "flag": true, "mentions": [{"name": "Bob", "age": 35}, {"name": "Alice", "age": 45}]},
+      "like_count": 7, "view_count": 70, "comment_count": 3, "share_count": 1,
+      "posted_at": "2026-01-03T12:00:00Z"
+    },
+    {
+      "post_id": "p6", "platform": "tiktok", "sentiment": "positive", "emotion": "anger",
+      "language": "fr", "content_type": "image", "channel_type": "influencer", "channel_handle": "dave",
+      "themes": ["nlp"], "entities": ["meta", "google"], "detected_brands": ["globex", "initech"],
+      "custom_fields": {"region": "east", "tags": ["z"], "score": 7.5},
+      "like_count": 3, "view_count": 30, "comment_count": 0, "share_count": 0,
+      "posted_at": "2026-01-03T13:00:00Z"
+    },
+    {
+      "post_id": "p7", "platform": "twitter", "sentiment": "neutral", "emotion": "joy",
+      "language": "en", "content_type": "text", "channel_type": "ugc", "channel_handle": "alice",
+      "themes": ["ai"], "entities": ["openai"], "detected_brands": ["acme"],
+      "custom_fields": {"region": "north", "score": 5},
+      "like_count": 8, "view_count": 80, "comment_count": 1, "share_count": 0,
+      "posted_at": "2026-01-04T14:00:00Z"
+    },
+    {
+      "post_id": "p8", "platform": "youtube", "sentiment": "negative", "emotion": "sadness",
+      "language": "es", "content_type": "video", "channel_type": "media", "channel_handle": "eve",
+      "themes": ["ml", "ai"], "entities": ["google"], "detected_brands": ["globex"],
+      "custom_fields": {"region": "south", "tags": ["x", "y", "z"], "score": 10},
+      "like_count": 12, "view_count": 120, "comment_count": 5, "share_count": 3,
+      "posted_at": "2026-01-05T15:00:00Z"
+    },
+    {
+      "post_id": "p9", "platform": "tiktok", "sentiment": "positive", "emotion": "joy",
+      "language": "en", "content_type": "image", "channel_type": "ugc", "channel_handle": "bob",
+      "themes": ["nlp", "ml"], "entities": ["meta"], "detected_brands": ["acme", "initech"],
+      "custom_fields": {"region": "east", "score": 7.5, "flag": false},
+      "like_count": 6, "view_count": 60, "comment_count": 2, "share_count": 1,
+      "posted_at": "2026-01-06T16:00:00Z"
+    },
+    {
+      "post_id": "p10", "platform": "twitter", "sentiment": "positive", "emotion": "joy",
+      "language": "en", "content_type": "text", "channel_type": "official", "channel_handle": "alice",
+      "themes": ["ai", "ml"], "entities": ["openai", "meta"], "detected_brands": ["acme"],
+      "custom_fields": {"region": "north", "score": 10},
+      "like_count": 9, "view_count": 90, "comment_count": 1, "share_count": 0,
+      "posted_at": "2026-01-07T17:00:00Z"
+    }
+  ],
+  "cases": [
+    {"name": "nc_sum_views", "config": {"metric": "view_count"}},
+    {"name": "nc_avg_likes", "config": {"metric": "like_count", "metricAgg": "avg"}},
+    {"name": "nc_min_comments", "config": {"metric": "comment_count", "metricAgg": "min"}},
+    {"name": "nc_max_shares", "config": {"metric": "share_count", "metricAgg": "max"}},
+    {"name": "nc_median_views", "config": {"metric": "view_count", "metricAgg": "median"}},
+    {"name": "nc_count", "config": {"metric": "post_count", "metricAgg": "count"}},
+    {"name": "nc_percent_views", "config": {"metric": "view_count", "metricAgg": "percent"}},
+    {"name": "nc_distinct_brands", "config": {"metric": "post_count", "metricAgg": "distinct", "categoricalField": "brands"}},
+    {"name": "nc_mode_platform", "config": {"metric": "post_count", "metricAgg": "mode", "categoricalField": "platform"}},
+    {"name": "nc_mode_region", "config": {"metric": "post_count", "metricAgg": "mode", "categoricalField": "custom:region"}},
+    {"name": "cat_platform_views", "config": {"dimension": "platform", "metric": "view_count"}},
+    {"name": "cat_sentiment_count", "config": {"dimension": "sentiment", "metric": "post_count"}},
+    {"name": "cat_emotion_count", "config": {"dimension": "emotion", "metric": "post_count"}},
+    {"name": "cat_themes_count", "config": {"dimension": "themes", "metric": "post_count"}},
+    {"name": "cat_entities_views", "config": {"dimension": "entities", "metric": "view_count"}},
+    {"name": "cat_brands_count", "config": {"dimension": "brands", "metric": "post_count"}},
+    {"name": "cat_content_type_avg", "config": {"dimension": "content_type", "metric": "view_count", "metricAgg": "avg"}},
+    {"name": "cat_channel_engagement", "config": {"dimension": "channel_handle", "metric": "engagement_total"}},
+    {"name": "cat_customscalar_count", "config": {"dimension": "custom:region", "metric": "post_count"}},
+    {"name": "cat_customarray_count", "config": {"dimension": "custom:tags", "metric": "post_count"}},
+    {"name": "cat_customnumeric_count", "config": {"dimension": "custom:score", "metric": "post_count"}},
+    {"name": "cat_custombool_count", "config": {"dimension": "custom:flag", "metric": "post_count"}},
+    {"name": "cat_topn_others", "config": {"dimension": "channel_handle", "metric": "post_count", "topN": 2, "includeOthers": true}},
+    {"name": "cat_topn_noothers", "config": {"dimension": "channel_handle", "metric": "post_count", "topN": 2}},
+    {"name": "cat_channel_views_max", "config": {"dimension": "channel_handle", "metric": "view_count", "metricAgg": "max"}},
+    {"name": "ts_day_views", "config": {"dimension": "posted_at", "metric": "view_count", "timeBucket": "day"}},
+    {"name": "ts_day_count_cumulative", "config": {"dimension": "posted_at", "metric": "post_count", "timeBucket": "day", "cumulative": true}},
+    {"name": "ts_week_views", "config": {"dimension": "posted_at", "metric": "view_count", "timeBucket": "week"}},
+    {"name": "ts_month_count", "config": {"dimension": "posted_at", "metric": "post_count", "timeBucket": "month"}},
+    {"name": "ts_grouped_platform_day", "config": {"dimension": "posted_at", "metric": "post_count", "timeBucket": "day", "breakdownDimension": "platform", "topN": 10}},
+    {"name": "ts_grouped_cumulative_others", "config": {"dimension": "posted_at", "metric": "view_count", "timeBucket": "day", "breakdownDimension": "platform", "topN": 1, "includeOthers": true, "cumulative": true}}
+  ],
+  "_widget_doc": "Slice-2 cases exercise the full per-widget pipeline: applyWidgetFilters (row) -> applyWidgetValueFilters (value-prune + post_count group filter) -> aggregateCustom. basePosts (percent denominator) is the unfiltered post set.",
+  "widget_cases": [
+    {"name": "wf_row_platform", "widget": {"filters": {"platform": ["twitter"]}, "customConfig": {"dimension": "sentiment", "metric": "post_count"}}},
+    {"name": "wf_row_theme_anyof", "widget": {"filters": {"themes": ["ai"]}, "customConfig": {"dimension": "platform", "metric": "post_count"}}},
+    {"name": "wf_value_prune_themes", "widget": {"filters": {"themes": ["ai", "ml"]}, "customConfig": {"dimension": "themes", "metric": "post_count"}}},
+    {"name": "wf_cond_numeric_gt", "widget": {"filters": {"conditions": [{"field": "view_count", "operator": "greaterThan", "value": 60}]}, "customConfig": {"dimension": "platform", "metric": "post_count"}}},
+    {"name": "wf_cond_isanyof", "widget": {"filters": {"conditions": [{"field": "sentiment", "operator": "isAnyOf", "values": ["positive", "neutral"]}]}, "customConfig": {"dimension": "sentiment", "metric": "post_count"}}},
+    {"name": "wf_custom_field_filter", "widget": {"filters": {"custom_fields": {"region": ["north"]}}, "customConfig": {"dimension": "platform", "metric": "view_count"}}},
+    {"name": "wf_postcount_min_group", "widget": {"filters": {"conditions": [{"field": "post_count", "operator": "greaterThan", "value": 1}]}, "customConfig": {"dimension": "channel_handle", "metric": "post_count"}}},
+    {"name": "wf_numbercard_cond_max", "widget": {"filters": {"conditions": [{"field": "view_count", "operator": "greaterThan", "value": 60}]}, "customConfig": {"metric": "like_count", "metricAgg": "max"}}},
+    {"name": "wf_cond_noneof", "widget": {"filters": {"conditions": [{"field": "platform", "operator": "isNoneOf", "values": ["twitter"]}]}, "customConfig": {"dimension": "platform", "metric": "post_count"}}},
+    {"name": "wf_value_prune_brands_count", "widget": {"filters": {"brands": ["acme", "globex"]}, "customConfig": {"dimension": "brands", "metric": "post_count"}}}
+  ],
+  "_table_doc": "Slice-4 group-table cases: row-filter -> value-filter (primaryDim = first dimension column) -> aggregateTable. Only NUMERIC sort columns (deterministic; JS localeCompare on string columns is locale-dependent).",
+  "table_cases": [
+    {"name": "tbl_channels_by_avglikes", "widget": {"tableConfig": {"columns": [{"id": "g", "kind": "dimension", "dimension": "channel_handle"}, {"id": "posts", "kind": "metric", "metric": "post_count"}, {"id": "avglikes", "kind": "metric", "metric": "like_count", "agg": "avg"}], "sortBy": "avglikes", "sortDir": "desc", "rowLimit": 3}}},
+    {"name": "tbl_filtered_platform", "widget": {"filters": {"platform": ["twitter"]}, "tableConfig": {"columns": [{"id": "g", "kind": "dimension", "dimension": "channel_handle"}, {"id": "views", "kind": "metric", "metric": "view_count"}], "sortBy": "views", "sortDir": "desc", "rowLimit": 25}}},
+    {"name": "tbl_postcount_min_group", "widget": {"filters": {"conditions": [{"field": "post_count", "operator": "greaterThan", "value": 1}]}, "tableConfig": {"columns": [{"id": "g", "kind": "dimension", "dimension": "channel_handle"}, {"id": "posts", "kind": "metric", "metric": "post_count"}, {"id": "avglikes", "kind": "metric", "metric": "like_count", "agg": "avg"}], "sortBy": "avglikes", "sortDir": "desc", "rowLimit": 25}}},
+    {"name": "tbl_two_dims", "widget": {"tableConfig": {"columns": [{"id": "p", "kind": "dimension", "dimension": "platform"}, {"id": "s", "kind": "dimension", "dimension": "sentiment"}, {"id": "n", "kind": "metric", "metric": "post_count"}], "sortBy": "n", "sortDir": "desc", "rowLimit": 25}}}
+  ],
+  "_object_doc": "Slice-5 list[object] (element-as-unit) cases over the `mentions` field. count/distinctPosts/own(UNROUNDED avg)/inherited; grouped by an object leaf OR an inherited post field.",
+  "object_cases": [
+    {"name": "obj_count", "widget": {"customConfig": {"metric": "customobj:mentions.__count"}}},
+    {"name": "obj_distinct_posts", "widget": {"customConfig": {"metric": "customobj:mentions.__posts"}}},
+    {"name": "obj_own_avg_age", "widget": {"customConfig": {"metric": "customobj:mentions.age", "metricAgg": "avg"}}},
+    {"name": "obj_inherited_views", "widget": {"customConfig": {"metric": "customobj:mentions.post.view_count"}}},
+    {"name": "obj_groupby_leaf_count", "widget": {"customConfig": {"dimension": "custom:mentions.name", "metric": "customobj:mentions.__count"}}},
+    {"name": "obj_groupby_postfield_count", "widget": {"customConfig": {"dimension": "platform", "metric": "customobj:mentions.__count"}}},
+    {"name": "obj_own_avg_by_name", "widget": {"customConfig": {"dimension": "custom:mentions.name", "metric": "customobj:mentions.age", "metricAgg": "avg"}}}
+  ],
+  "object_table_cases": [
+    {"name": "obj_tbl_by_name", "widget": {"tableConfig": {"columns": [{"id": "g", "kind": "dimension", "dimension": "custom:mentions.name"}, {"id": "cnt", "kind": "metric", "metric": "customobj:mentions.__count"}, {"id": "avgage", "kind": "metric", "metric": "customobj:mentions.age", "agg": "avg"}], "sortBy": "cnt", "sortDir": "desc", "rowLimit": 25}}}
+  ],
+  "_heatmap_doc": "Heatmap (#3): chartType heatmap, CATEGORICAL axes only. Recorder runs aggregateHeatmap over the per-widget pipeline (row+value filter). Python compute_heatmap (dashboard_aggregate.py) must reproduce the groupedCategorical shape. Time/cyclical axes (posted_at/hour_of_day/day_of_week) are out of slice (viewer-local / order-by-date) and kept client-side.",
+  "heatmap_cases": [
+    {"name": "heat_platform_x_sentiment_y_count", "widget": {"customConfig": {"dimension": "platform", "breakdownDimension": "sentiment", "metric": "post_count"}}},
+    {"name": "heat_platform_x_no_breakdown_views", "widget": {"customConfig": {"dimension": "platform", "metric": "view_count", "metricAgg": "sum"}}},
+    {"name": "heat_sentiment_x_language_y_avg_likes", "widget": {"customConfig": {"dimension": "sentiment", "breakdownDimension": "language", "metric": "like_count", "metricAgg": "avg"}}},
+    {"name": "heat_themes_x_platform_y_count", "widget": {"customConfig": {"dimension": "themes", "breakdownDimension": "platform", "metric": "post_count"}}},
+    {"name": "heat_channel_x_sentiment_y_topn", "widget": {"customConfig": {"dimension": "channel_handle", "breakdownDimension": "sentiment", "metric": "post_count", "topN": 2}}},
+    {"name": "heat_with_row_filter", "widget": {"filters": {"platform": ["twitter", "youtube"]}, "customConfig": {"dimension": "platform", "breakdownDimension": "sentiment", "metric": "view_count", "metricAgg": "max"}}}
+  ],
+  "_post_table_feed_doc": "Post-mode table feed (#5): a post-mode table ships as a bounded post-id feed when sorted by a NUMERIC post-field (localeCompare on string columns is not server-reproducible). Recorder runs aggregateTable (post-mode -> aggregateTablePostMode) over the row-filtered posts and records the ordered __key (post_id) selection. Python compute_post_table_feed must reproduce it.",
+  "post_table_feed_cases": [
+    {"name": "posttbl_view_desc_top3", "widget": {"tableConfig": {"mode": "post", "columns": [{"id": "u", "kind": "post-field", "postField": "post_url"}, {"id": "v", "kind": "post-field", "postField": "view_count"}], "sortBy": "v", "sortDir": "desc", "rowLimit": 3}}},
+    {"name": "posttbl_like_asc_top4", "widget": {"tableConfig": {"mode": "post", "columns": [{"id": "l", "kind": "post-field", "postField": "like_count"}], "sortBy": "l", "sortDir": "asc", "rowLimit": 4}}},
+    {"name": "posttbl_engagement_desc_all", "widget": {"tableConfig": {"mode": "post", "columns": [{"id": "e", "kind": "post-field", "postField": "engagement_total"}], "sortBy": "e", "sortDir": "desc", "rowLimit": 50}}},
+    {"name": "posttbl_comment_desc_rowfilter", "widget": {"filters": {"platform": ["twitter"]}, "tableConfig": {"mode": "post", "columns": [{"id": "c", "kind": "post-field", "postField": "comment_count"}], "sortBy": "c", "sortDir": "desc", "rowLimit": 10}}},
+    {"name": "posttbl_default_sort_numeric_first_col", "widget": {"tableConfig": {"mode": "post", "columns": [{"id": "s", "kind": "post-field", "postField": "share_count"}, {"id": "u", "kind": "post-field", "postField": "post_url"}], "rowLimit": 5}}}
+  ],
+  "_scope_doc": "reportScope narrowing (#2): the recorder runs applyFilters(posts, intersectWithScope(INITIAL_FILTERS, scope)) and records the kept post_ids. The Python apply_report_scope (dashboard_scope.py) must reproduce the same set. Mirrors the read-only share where the filter bar is hidden (empty viewer selection -> scope promoted to active filters).",
+  "scope_cases": [
+    {"name": "scope_empty_identity", "scope": {}},
+    {"name": "scope_sentiment_positive", "scope": {"sentiment": ["positive"]}},
+    {"name": "scope_platform_twitter_youtube", "scope": {"platform": ["twitter", "youtube"]}},
+    {"name": "scope_language_en", "scope": {"language": ["en"]}},
+    {"name": "scope_content_type_video", "scope": {"content_type": ["video"]}},
+    {"name": "scope_emotion_joy", "scope": {"emotion": ["joy"]}},
+    {"name": "scope_themes_anyof_nlp", "scope": {"themes": ["nlp"]}},
+    {"name": "scope_entities_anyof_google", "scope": {"entities": ["google"]}},
+    {"name": "scope_channels_alice", "scope": {"channels": ["alice"]}},
+    {"name": "scope_date_range_both", "scope": {"date_range": {"from": "2026-01-03", "to": "2026-01-05"}}},
+    {"name": "scope_date_from_only", "scope": {"date_range": {"from": "2026-01-06", "to": null}}},
+    {"name": "scope_compound_platform_sentiment", "scope": {"platform": ["twitter"], "sentiment": ["positive"]}},
+    {"name": "scope_no_match", "scope": {"sentiment": ["nonexistent"]}}
+  ]
+}

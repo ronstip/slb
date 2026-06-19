@@ -1,16 +1,58 @@
 import { apiDelete, apiGet, apiPost } from '../client.ts';
-import type { DashboardDataResponse, DashboardShareInfo, SharedDashboardDataResponse } from '../types.ts';
-import type { ReportConfig } from '../../features/studio/dashboard/types-social-dashboard.ts';
+import type { DashboardAggregateResponse, DashboardDataResponse, DashboardShareInfo, SharedDashboardDataResponse } from '../types.ts';
+import type { ReportConfig, SocialDashboardWidget } from '../../features/studio/dashboard/types-social-dashboard.ts';
+import type { DashboardFilters } from '../../features/studio/dashboard/use-dashboard-filters.ts';
+import type { PostDetails } from '../../features/studio/dashboard/use-post-details.tsx';
 
 export async function getDashboardData(
   collectionIds: string[],
   agentId?: string,
   reportConfig?: ReportConfig | null,
+  // Opt-in: omit the heavy display-only fields (lazy-fetched per visible post via
+  // getDashboardPostDetails). Only callers that render inside a
+  // DashboardDetailsProvider may set this; others get the full payload.
+  slim = false,
 ): Promise<DashboardDataResponse> {
   return apiPost('/dashboard/data', {
     collection_ids: collectionIds,
     agent_id: agentId,
     report_config: reportConfig ?? undefined,
+    slim,
+  });
+}
+
+/** Lazy-fetch the display-only fields (ai_summary/context/media_refs) for the
+ *  bounded set of posts currently on screen. Served from the same cached core
+ *  as getDashboardData, so a warm dashboard answers without hitting BigQuery. */
+export async function getDashboardPostDetails(
+  collectionIds: string[],
+  postIds: string[],
+  agentId?: string,
+): Promise<Record<string, PostDetails>> {
+  const res = await apiPost<{ details: Record<string, PostDetails> }>(
+    '/dashboard/post-details',
+    { collection_ids: collectionIds, agent_id: agentId, post_ids: postIds },
+  );
+  return res.details ?? {};
+}
+
+/** Studio (interactive) server-side widget aggregation.
+ *  Send the effective filter state (already scope-intersected on the FE) and
+ *  the current layout; receive compact widget data the widgets use in place of
+ *  client-side aggregation. Absent widget ids keep client-side aggregation. */
+export async function getDashboardAggregate(
+  collectionIds: string[],
+  agentId: string | undefined,
+  reportConfig: ReportConfig | null | undefined,
+  filters: DashboardFilters,
+  layout: SocialDashboardWidget[],
+): Promise<DashboardAggregateResponse> {
+  return apiPost('/dashboard/aggregate', {
+    collection_ids: collectionIds,
+    agent_id: agentId,
+    report_config: reportConfig ?? undefined,
+    filters,
+    layout,
   });
 }
 
@@ -55,13 +97,41 @@ export async function createCustomSlugShare(payload: {
 
 export async function getSharedDashboardData(
   token: string,
+  opts: { serverAgg?: boolean } = {},
 ): Promise<SharedDashboardDataResponse> {
   const API_BASE = import.meta.env.VITE_API_URL || '/api';
-  const res = await fetch(`${API_BASE}/dashboard/shares/public/${token}`);
+  // slim=1: heavy display-only fields are lazy-fetched per visible post via
+  // getSharedPostDetails. The share's filter bar is hidden, so the visible set
+  // is static and each widget fetches once.
+  // agg (P2, default-on): the server returns pre-aggregated widgetData/tableData/
+  // feedData for the widgets it can reproduce and, when the whole layout is
+  // covered, omits the raw posts. We send `agg=server` to opt in and `agg=client`
+  // to force the legacy full-posts path (the `?agg=client` debug escape hatch);
+  // the backend `DASHBOARD_SERVER_AGG` setting is the authoritative kill switch.
+  const params = opts.serverAgg ? '?slim=1&agg=server' : '?slim=1&agg=client';
+  const res = await fetch(`${API_BASE}/dashboard/shares/public/${token}${params}`);
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }
   return res.json();
+}
+
+/** Public (tokenless) lazy-fetch of display-only fields for visible posts. */
+export async function getSharedPostDetails(
+  token: string,
+  postIds: string[],
+): Promise<Record<string, PostDetails>> {
+  const API_BASE = import.meta.env.VITE_API_URL || '/api';
+  const res = await fetch(`${API_BASE}/dashboard/shares/public/${token}/post-details`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ post_ids: postIds }),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const data = (await res.json()) as { details?: Record<string, PostDetails> };
+  return data.details ?? {};
 }
 
 // --- Widget annotation compose (AI-drafted header / figure text) ---
