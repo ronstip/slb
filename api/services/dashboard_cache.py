@@ -137,3 +137,22 @@ def set_feed_kpis(
     agent_id: str, collection_ids: list[str], stamp: str, filter_sig: str, core: dict
 ) -> None:
     _feed_kpis.set(agent_id, collection_ids, f"{stamp}|{filter_sig}", core)
+
+
+# Cache for studio (interactive) server-side widget aggregation results.
+# Keyed by (agent_id, collection_ids, stamp|agg_sig) where agg_sig is a hash
+# of the effective filter state + widget layout configs. Larger maxsize because
+# each entry is compact (KB/widget, not MB) and there are many filter combos.
+_studio_agg = DashboardCache(maxsize=512)
+
+
+def get_studio_agg(
+    agent_id: str, collection_ids: list[str], stamp: str, agg_sig: str
+) -> dict | None:
+    return _studio_agg.get(agent_id, collection_ids, f"{stamp}|{agg_sig}")
+
+
+def set_studio_agg(
+    agent_id: str, collection_ids: list[str], stamp: str, agg_sig: str, data: dict
+) -> None:
+    _studio_agg.set(agent_id, collection_ids, f"{stamp}|{agg_sig}", data)

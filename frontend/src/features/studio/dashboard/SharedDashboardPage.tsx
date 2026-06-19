@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useHead } from '@unhead/react';
@@ -10,13 +10,13 @@ import { SharePageHeaderActions } from '../../../components/SharePageHeaderActio
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
 import { useSharePageActions } from '../../../lib/share-actions.ts';
-import { getSharedDashboardData } from '../../../api/endpoints/dashboard.ts';
+import { getSharedDashboardData, getSharedPostDetails } from '../../../api/endpoints/dashboard.ts';
 import { trackEvent } from '../../../lib/analytics.ts';
 import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
 import { useDashboardFilters } from './use-dashboard-filters.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
-import type { SocialDashboardWidget, ReportScope, ReportConfig } from './types-social-dashboard.ts';
+import type { SocialDashboardWidget, ReportScope, ReportConfig, WidgetData } from './types-social-dashboard.ts';
 
 export function SharedDashboardPage() {
   // Token-gated; must never be indexed.
@@ -35,13 +35,42 @@ export function SharedDashboardPage() {
   const [filterBarFilters, setFilterBarFilters] = useState<FilterBarFilterId[]>(DEFAULT_FILTER_BAR_FILTERS);
   const gridRef = useRef<HTMLElement | null>(null);
 
+  // P2 server-side aggregation: the API returns pre-aggregated widget series
+  // (and, when the whole layout is covered, omits the raw posts) so the client
+  // skips aggregation for the widgets it covers. ON by default; `?agg=client`
+  // (or `?agg=off`) forces the legacy full-posts path for debugging. The backend
+  // `DASHBOARD_SERVER_AGG` setting is the authoritative kill switch — when it's
+  // off the API ignores the request and the client falls back to local agg.
+  const serverAgg =
+    typeof window === 'undefined' ||
+    !['client', 'off'].includes(new URLSearchParams(window.location.search).get('agg') ?? '');
+
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['shared-dashboard', token],
-    queryFn: () => getSharedDashboardData(token!),
+    queryKey: ['shared-dashboard', token, serverAgg],
+    queryFn: () => getSharedDashboardData(token!, { serverAgg }),
     enabled: !!token,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
+
+  // Merge any server-computed results onto the layout widgets: charts →
+  // `serverData`, tables → `serverTableRows`, feeds (embeds) → `serverPostIds`.
+  // Widgets the server didn't cover are left untouched and aggregate locally.
+  const layoutWithServerData = useMemo<SocialDashboardWidget[] | undefined>(() => {
+    const layout = response?.layout as SocialDashboardWidget[] | undefined;
+    if (!layout) return undefined;
+    const wd = response?.widgetData as Record<string, WidgetData> | null | undefined;
+    const td = response?.tableData as Record<string, SocialDashboardWidget['serverTableRows']> | null | undefined;
+    const fd = response?.feedData as Record<string, string[]> | null | undefined;
+    if (!wd && !td && !fd) return layout;
+    return layout.map((w) => {
+      const extra: Partial<SocialDashboardWidget> = {};
+      if (wd?.[w.i]) extra.serverData = wd[w.i];
+      if (td?.[w.i]) extra.serverTableRows = td[w.i];
+      if (fd?.[w.i]) extra.serverPostIds = fd[w.i];
+      return Object.keys(extra).length ? { ...w, ...extra } : w;
+    });
+  }, [response?.layout, response?.widgetData, response?.tableData, response?.feedData]);
 
   // Fire a viral-reach event once the shared dashboard actually resolves (not
   // on a revoked/404 link). The page_view already covers the visit; this adds
@@ -83,6 +112,13 @@ export function SharedDashboardPage() {
   const handleLayoutLoaded = useCallback((persisted: string[]) => {
     setFilterBarFilters(persisted as FilterBarFilterId[]);
   }, []);
+
+  // Lazy-fetch the display-only fields the slim share payload omits, scoped to
+  // this share token (tokenless public endpoint).
+  const fetchPostDetails = useCallback(
+    (postIds: string[]) => getSharedPostDetails(token!, postIds),
+    [token],
+  );
 
   // Seed filter-bar pills from the owner's saved choice once the shared
   // response arrives. Inside SocialDashboardView, the authed layout fetch 401s
@@ -212,10 +248,11 @@ export function SharedDashboardPage() {
               toggleFilterValue={toggleFilterValue}
               filterBarFilters={filterBarFilters}
               onLayoutLoaded={handleLayoutLoaded}
-              defaultLayout={response.layout as SocialDashboardWidget[] | undefined ?? undefined}
+              defaultLayout={layoutWithServerData}
               defaultOrientation={response.orientation ?? undefined}
               reportConfig={(response.reportConfig as ReportConfig | null) ?? null}
               gridRef={gridRef}
+              fetchPostDetails={fetchPostDetails}
               readOnly
             />
           </main>

@@ -629,6 +629,16 @@ export interface DashboardDataResponse {
   kpis?: DashboardKpis;
 }
 
+/** Studio (interactive) server-side aggregation response.
+ *  POST /dashboard/aggregate returns compact widget data for all server-
+ *  aggregatable widgets. Typed loosely here (same reason as SharedDashboard's
+ *  widgetData/tableData). Absent → widget keeps client-side aggregation. */
+export interface DashboardAggregateResponse {
+  widgetData: Record<string, unknown>;
+  tableData: Record<string, unknown>;
+  feedData: Record<string, string[]>;
+}
+
 export interface DashboardShareInfo {
   token: string;
   dashboard_id: string;
@@ -689,6 +699,18 @@ export interface SharedDashboardDataResponse {
    *  server-side; value colors + computed-field defs are forwarded for
    *  client-side render. Typed loosely here (cast to `ReportConfig`). */
   reportConfig?: Record<string, unknown> | null;
+  /** P2 server-side aggregation (present only with `?agg=server`): widget id →
+   *  pre-computed `WidgetData`. The consumer merges these onto the layout
+   *  widgets as `serverData`; widgets absent here keep client-side aggregation.
+   *  Typed loosely to keep api/types.ts free of feature-layer imports. */
+  widgetData?: Record<string, unknown> | null;
+  /** P2: widget id → server-computed table rows (`chartType: 'table'`). */
+  tableData?: Record<string, unknown> | null;
+  /** P2: widget id → ordered post_ids a feed (embeds) widget displays. */
+  feedData?: Record<string, string[]> | null;
+  /** P2: true when EVERY widget is server-satisfied, so `posts` is only the
+   *  bounded feed union (not the full post set). */
+  serverComplete?: boolean | null;
 }
 
 // ─── Tool result types ───────────────────────────────────────────────

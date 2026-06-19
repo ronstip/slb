@@ -170,6 +170,19 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Reserve the vertical scrollbar gutter permanently. Without this, a page
+     whose height hovers near the viewport height toggles the scrollbar on/off
+     as content settles, which changes the document content width by the
+     scrollbar width (~17px on Windows). The dashboard grid measures that width
+     (react-grid-layout `useContainerWidth`) and rebuilds its `layouts` on every
+     change, so a flickering scrollbar drives a width->relayout->height->scrollbar
+     feedback loop that React aborts with "Maximum update depth exceeded" (most
+     visible on a short server-aggregated share where the page barely scrolls).
+     `stable` makes the gutter presence constant so the width never oscillates.
+     No-op on overlay-scrollbar platforms (macOS). */
+  html {
+    scrollbar-gutter: stable;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);

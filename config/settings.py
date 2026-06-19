@@ -249,6 +249,15 @@ class Settings(BaseSettings):
     agent_engine_id: str = ""  # Vertex AI Agent Engine ID for Memory Bank (prod only)
     google_genai_use_vertexai: bool = True
 
+    # P2 server-side dashboard aggregation (public shares). ON by default: the
+    # share endpoint computes each eligible widget server-side and, when the whole
+    # layout is covered, drops the raw posts array (payload becomes KB/widget,
+    # post-count-independent). A per-request `?agg=client`/`?agg=off` still forces
+    # the legacy full-posts path for debugging; this flag is the global kill
+    # switch. Any widget the engine can't reproduce keeps client-side aggregation,
+    # so turning this on is safe for every dashboard.
+    dashboard_server_agg: bool = True
+
     frontend_url: str = "http://localhost:5174"
 
     # CORS - comma-separated allowed origins

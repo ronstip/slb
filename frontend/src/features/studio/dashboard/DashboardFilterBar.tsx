@@ -75,6 +75,29 @@ interface DashboardFilterBarProps {
   reportScope?: ReportScope | null;
 }
 
+/** Cap on option rows a *searchable* pill builds at once. High-cardinality dims
+ *  (entities/themes/channels routinely run into the thousands) would otherwise
+ *  create a `<label><Checkbox/>` React tree per distinct value on every render -
+ *  ~18K elements for a real agent, a ~3s main-thread block on dashboard load.
+ *  Users narrow these via the search box, so rendering the full list is wasted
+ *  work. Non-searchable dims are inherently low-cardinality and never capped. */
+export const MAX_VISIBLE_FILTER_OPTIONS = 100;
+
+/** The option rows a pill should actually render, plus how many were withheld.
+ *  Pure so it can be unit-tested without a DOM harness. */
+export function visibleFilterOptions(
+  filtered: string[],
+  searchable: boolean,
+): { visible: string[]; hidden: number } {
+  if (!searchable || filtered.length <= MAX_VISIBLE_FILTER_OPTIONS) {
+    return { visible: filtered, hidden: 0 };
+  }
+  return {
+    visible: filtered.slice(0, MAX_VISIBLE_FILTER_OPTIONS),
+    hidden: filtered.length - MAX_VISIBLE_FILTER_OPTIONS,
+  };
+}
+
 type OptionCounts = Record<string, Record<string, number>>;
 
 function computeOptionCounts(posts: DashboardPost[]): OptionCounts {
@@ -129,6 +152,12 @@ function FilterPill({
   formatLabel, colorDot, searchable, optionCounts, lockedValues,
 }: FilterPillProps) {
   const [search, setSearch] = useState('');
+  // Track open state so the (potentially huge) option list is built only while
+  // the popover is open. Radix discards a closed popover's content, but the
+  // children JSX is evaluated eagerly during *this* component's render
+  // regardless - so an un-gated `filtered.map(...)` over thousands of options
+  // burns the main thread on mount for a list nobody is looking at.
+  const [open, setOpen] = useState(false);
   // When the dimension is locked by reportScope, restrict the option list to
   // the scope's values. The viewer can still toggle inside the scope to narrow.
   const lockedSet = useMemo(
@@ -141,12 +170,13 @@ function FilterPill({
   const filtered = searchable && search
     ? effectiveOptions.filter((o) => o.toLowerCase().includes(search.toLowerCase()))
     : effectiveOptions;
+  const { visible, hidden } = visibleFilterOptions(filtered, !!searchable);
 
   const allSelected = effectiveOptions.length > 0 && effectiveOptions.every((o) => selected.includes(o));
   const isLocked = lockedValues != null;
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           className={cn(
@@ -207,11 +237,13 @@ function FilterPill({
             )}
           </div>
         )}
+        {/* Built only while open: a closed pill must not materialize a React
+            tree per option (thousands, for entities/themes/channels). */}
         <div className="max-h-56 overflow-y-auto p-1.5">
-          {filtered.length === 0 && (
+          {open && filtered.length === 0 && (
             <p className="px-2 py-3 text-center text-xs text-muted-foreground">No options</p>
           )}
-          {filtered.map((value) => {
+          {open && visible.map((value) => {
             const dot = colorDot?.(value);
             return (
               <label
@@ -233,6 +265,11 @@ function FilterPill({
               </label>
             );
           })}
+          {open && hidden > 0 && (
+            <p className="px-2 py-2 text-center text-[10px] text-muted-foreground">
+              +{hidden.toLocaleString()} more — type to search
+            </p>
+          )}
         </div>
       </PopoverContent>
     </Popover>

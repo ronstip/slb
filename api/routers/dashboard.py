@@ -2,10 +2,9 @@
 
 import asyncio
 import logging
-import time
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import ORJSONResponse
 from google import genai
 from google.genai import types
@@ -13,22 +12,27 @@ from pydantic import BaseModel, Field
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_bq, get_fs
-from api.schemas.requests import DashboardDataRequest
+from api.schemas.requests import DashboardAggregateRequest, DashboardDataRequest, PostDetailsRequest
 from api.schemas.responses import DashboardDataResponse, DashboardKpis
+from api.services.dashboard_aggregate import (
+    build_feed_data_map,
+    build_table_data_map,
+    build_widget_data_map,
+)
 from api.services.dashboard_cache import (
-    get_core,
+    get_studio_agg,
     make_freshness_stamp,
     perf_logger,
-    set_core,
+    set_studio_agg,
 )
+from api.services.dashboard_scope import apply_filters, intersect_with_scope
+from api.services.dashboard_response import data_cache_key, gzipped_json_response
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
-    MAX_ROWS,
-    assemble_dashboard_core,
-    build_dashboard_kpis_sql,
-    build_dashboard_sql,
-    build_topics_sql,
+    build_post_details,
     derive_agent_id_for_collections,
+    get_or_build_core,
+    strip_detail_fields,
 )
 from api.services.report_transform import transform_posts, validate_report_config
 from config.settings import get_settings
@@ -53,6 +57,7 @@ def _can_access_collection(user: CurrentUser, status: dict) -> bool:
 @router.post("/data", response_model=DashboardDataResponse)
 async def get_dashboard_data(
     request: DashboardDataRequest,
+    http_request: Request,
     user: CurrentUser = Depends(get_current_user),
 ):
     """Fetch all posts (denormalized) for client-side dashboard filtering."""
@@ -108,37 +113,9 @@ async def get_dashboard_data(
     # when this agent's data changes and otherwise serves the assembled payload
     # without touching BigQuery. See api/services/dashboard_cache.py.
     stamp = make_freshness_stamp(statuses)
-    t0 = time.perf_counter()
-    core = get_core(agent_id, request.collection_ids, stamp)
-    cache_hit = core is not None
-    gather_ms = serialize_ms = 0.0
-
-    if core is None:
-        # +1 to detect truncation
-        posts_sql, posts_params = build_dashboard_sql(
-            request.collection_ids, agent_id, MAX_ROWS + 1
-        )
-        kpis_sql, kpis_params = build_dashboard_kpis_sql(
-            request.collection_ids, agent_id
-        )
-        topics_sql, topics_params = build_topics_sql(agent_id)
-
-        rows, kpi_rows, topic_rows, name_rows = await asyncio.gather(
-            asyncio.to_thread(bq.query, posts_sql, posts_params),
-            asyncio.to_thread(bq.query, kpis_sql, kpis_params),
-            asyncio.to_thread(bq.query, topics_sql, topics_params),
-            asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, {"collection_ids": request.collection_ids}),
-        )
-        gather_ms = (time.perf_counter() - t0) * 1000
-
-        truncated = len(rows) > MAX_ROWS
-        if truncated:
-            rows = rows[:MAX_ROWS]
-
-        ts = time.perf_counter()
-        core = assemble_dashboard_core(rows, topic_rows, kpi_rows, name_rows, truncated)
-        serialize_ms = (time.perf_counter() - ts) * 1000
-        set_core(agent_id, request.collection_ids, stamp, core)
+    core, cache_hit, gather_ms, serialize_ms = await get_or_build_core(
+        bq, agent_id, request.collection_ids, stamp
+    )
 
     perf_logger.info(
         "dashboard.data agent=%s cols=%d cache=%s posts=%d gather_ms=%.0f serialize_ms=%.0f",
@@ -151,16 +128,187 @@ async def get_dashboard_data(
     # so a live-edit recompute with a new report_config reuses it without
     # re-querying BigQuery. Canonicalization only moves value-level counts, so
     # the post-level KPIs are unaffected and need no recompute.
+    config: dict | None = None
+    posts = core["posts"]
     if request.report_config is not None:
         config = request.report_config.model_dump(exclude_none=True, by_alias=True)
         errors = validate_report_config(config)
         if errors:
             raise HTTPException(status_code=422, detail="; ".join(errors))
-        core = {**core, "posts": transform_posts(core["posts"], config)}
+        posts = transform_posts(posts, config)
+
+    # Slim mode drops the heavy display-only fields; the client lazy-fetches them
+    # per visible post via /dashboard/post-details (served from the same cache).
+    if request.slim:
+        posts = strip_detail_fields(posts)
 
     # Return the cached/assembled core directly (already matches
     # DashboardDataResponse) via orjson, skipping a second per-row validation.
-    return ORJSONResponse(core)
+    # Gzip-capable clients are served the compressed body from the
+    # response-bytes cache (keyed by data freshness + config + slim), so a warm
+    # hit skips both orjson and gzip - the bulk of warm CPU on a large payload.
+    body = {**core, "posts": posts}
+    cache_key = data_cache_key(
+        agent_id, request.collection_ids, stamp, config, request.slim
+    )
+    return gzipped_json_response(
+        body, cache_key, http_request.headers.get("accept-encoding", "")
+    )
+
+
+@router.post("/post-details")
+async def get_dashboard_post_details(
+    request: PostDetailsRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Lazy-load the display-only fields (ai_summary/context/media_refs) for the
+    bounded set of posts currently on screen. Served from the same cached core
+    as /dashboard/data, so a warm dashboard answers without touching BigQuery.
+    """
+    if not request.collection_ids:
+        raise HTTPException(status_code=400, detail="collection_ids is required")
+    if not request.post_ids:
+        return ORJSONResponse({"details": {}})
+    if len(request.post_ids) > 2000:
+        raise HTTPException(status_code=400, detail="too many post_ids (max 2000)")
+
+    fs = get_fs()
+    statuses = await asyncio.gather(
+        *(asyncio.to_thread(fs.get_collection_status, cid) for cid in request.collection_ids)
+    )
+    for cid, status in zip(request.collection_ids, statuses):
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Collection {cid} not found")
+        if not _can_access_collection(user, status):
+            raise HTTPException(status_code=403, detail=f"Access denied for collection {cid}")
+
+    agent_id = request.agent_id or derive_agent_id_for_collections(
+        fs, request.collection_ids
+    )
+    if not agent_id:
+        return ORJSONResponse({"details": {}})
+
+    stamp = make_freshness_stamp(statuses)
+    bq = get_bq()
+    core, *_ = await get_or_build_core(bq, agent_id, request.collection_ids, stamp)
+    return ORJSONResponse({"details": build_post_details(core["posts"], request.post_ids)})
+
+
+@router.post("/aggregate")
+async def get_dashboard_aggregate(
+    request: DashboardAggregateRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Server-side widget aggregation for the studio (interactive) path.
+
+    The client sends the *effective* filter state (viewer filters already
+    intersected with reportScope on the FE) and the current widget layout.
+    The server applies those filters to the cached posts, aggregates every
+    eligible widget, and returns compact widget data — the same shapes the FE
+    widgets already consume (`serverData`/`serverTableRows`/`serverPostIds`).
+    Widgets the engine can't reproduce are absent from the response and keep
+    client-side aggregation, so the response is always a strict superset.
+
+    Results are cached per (agent, collections, freshness stamp, agg signature)
+    where the signature is a hash of the effective filters + layout widget
+    configs. Cache misses are fast: the post set lives in the dashboard core
+    cache (no BQ round-trip on a warm dashboard).
+    """
+    import hashlib
+    import json
+
+    if not request.collection_ids:
+        raise HTTPException(status_code=400, detail="collection_ids is required")
+
+    fs = get_fs()
+    statuses = await asyncio.gather(
+        *(asyncio.to_thread(fs.get_collection_status, cid) for cid in request.collection_ids)
+    )
+    for cid, status in zip(request.collection_ids, statuses):
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Collection {cid} not found")
+        if not _can_access_collection(user, status):
+            raise HTTPException(status_code=403, detail=f"Access denied for collection {cid}")
+
+    bq = get_bq()
+    agent_id = request.agent_id or derive_agent_id_for_collections(
+        fs, request.collection_ids
+    )
+    if not agent_id:
+        return ORJSONResponse({"widgetData": {}, "tableData": {}, "feedData": {}})
+
+    stamp = make_freshness_stamp(statuses)
+    core, cache_hit, gather_ms, _serialize_ms = await get_or_build_core(
+        bq, agent_id, request.collection_ids, stamp
+    )
+
+    config: dict | None = None
+    if request.report_config is not None:
+        config = request.report_config.model_dump(exclude_none=True, by_alias=True)
+        errors = validate_report_config(config)
+        if errors:
+            raise HTTPException(status_code=422, detail="; ".join(errors))
+
+    # Build the agg signature so repeated filter combos are served from cache.
+    # Include filter state, per-widget configs (not layout positions), and
+    # report_config. Exclude x/y/w/h/layout-only fields to avoid cache busting
+    # on mere drag-resizes with no data change.
+    _LAYOUT_ONLY = frozenset({"x", "y", "w", "h", "minW", "maxW", "minH", "maxH", "moved", "static", "isDraggable", "isResizable"})
+    slim_layout = [
+        {k: v for k, v in w.items() if k not in _LAYOUT_ONLY}
+        for w in request.layout
+    ]
+    sig_payload = {
+        "f": request.filters,
+        "lw": slim_layout,
+        "rc": config or {},
+    }
+    agg_sig = hashlib.md5(
+        json.dumps(sig_payload, sort_keys=True, default=str).encode()
+    ).hexdigest()
+
+    cached = await asyncio.to_thread(
+        get_studio_agg, agent_id, request.collection_ids, stamp, agg_sig
+    )
+    if cached is not None:
+        perf_logger.info(
+            "dashboard.aggregate agent=%s cache=HIT gather_ms=%.0f",
+            agent_id, gather_ms,
+        )
+        return ORJSONResponse(cached)
+
+    # Apply report-level transform (canonicalization + computed fields).
+    posts = core["posts"]
+    if config:
+        posts = transform_posts(posts, config)
+
+    # Apply the effective filters (viewer selection already intersected with
+    # reportScope on the FE) to reproduce `filteredPosts` on the server.
+    # `filtered_posts` is also the percent baseline (`basePosts` in the FE),
+    # matching `basePosts={filteredPosts}` in SocialDashboardGrid.
+    filtered_posts = await asyncio.to_thread(apply_filters, posts, request.filters or None)
+
+    # Build per-widget aggregates over the filtered set.
+    def _build():
+        wd = build_widget_data_map(filtered_posts, request.layout)
+        td = build_table_data_map(filtered_posts, request.layout)
+        fd_full = build_feed_data_map(filtered_posts, request.layout)
+        # Return post-id lists (not full post dicts) for feed widgets, matching
+        # the share path's `feedData` shape.
+        fd = {wid: [p["post_id"] for p in plist] for wid, plist in fd_full.items()}
+        return {"widgetData": wd, "tableData": td, "feedData": fd}
+
+    result = await asyncio.to_thread(_build)
+
+    perf_logger.info(
+        "dashboard.aggregate agent=%s cache=MISS core_hit=%s posts=%d filtered=%d gather_ms=%.0f widgets=%d",
+        agent_id, cache_hit, len(posts), len(filtered_posts), gather_ms, len(request.layout),
+    )
+
+    await asyncio.to_thread(
+        set_studio_agg, agent_id, request.collection_ids, stamp, agg_sig, result
+    )
+    return ORJSONResponse(result)
 
 
 # ---------------------------------------------------------------------------

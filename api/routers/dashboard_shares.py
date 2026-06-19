@@ -4,7 +4,6 @@ import asyncio
 import logging
 import re
 import secrets
-import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -17,6 +16,7 @@ from api.rate_limiting import limiter
 from api.schemas.requests import (
     CreateCustomSlugShareRequest,
     CreateDashboardShareRequest,
+    SharePostDetailsRequest,
 )
 from api.schemas.responses import (
     DashboardShareResponse,
@@ -24,19 +24,23 @@ from api.schemas.responses import (
     SharedDashboardMetaResponse,
 )
 from api.services.dashboard_cache import (
-    get_core,
     make_freshness_stamp,
     perf_logger,
-    set_core,
 )
+from api.services.dashboard_aggregate import (
+    build_feed_data_map,
+    build_table_data_map,
+    build_widget_data_map,
+    layout_fully_covered,
+)
+from api.services.dashboard_response import gzipped_json_response, share_cache_key
+from api.services.dashboard_scope import apply_report_scope
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
-    MAX_ROWS,
-    assemble_dashboard_core,
-    build_dashboard_kpis_sql,
-    build_dashboard_sql,
-    build_topics_sql,
+    build_post_details,
     derive_agent_id_for_collections,
+    get_or_build_core,
+    strip_detail_fields,
 )
 from api.services.report_transform import transform_posts, validate_report_config
 from config.settings import get_settings
@@ -309,8 +313,24 @@ def strip_hidden_widgets(layout: list | None) -> list | None:
 async def get_shared_dashboard(
     request: Request,  # required by slowapi
     token: str,
+    slim: bool = False,
+    agg: str | None = None,
 ):
-    """Public endpoint - serves shared dashboard data without authentication."""
+    """Public endpoint - serves shared dashboard data without authentication.
+
+    With `?slim=1` the heavy display-only fields are omitted from each post and
+    the read-only client lazy-fetches them per visible post via
+    `/dashboard/shares/public/{token}/post-details`. Default keeps the full
+    payload so existing/cached clients are unaffected.
+
+    Server-side aggregation (P2) computes the `WidgetData`/`tableData`/`feedData`
+    for every server-aggregatable widget in the layout and, when the whole layout
+    is covered, drops the raw posts array (payload becomes KB/widget). It is ON by
+    default (gated by the `DASHBOARD_SERVER_AGG` setting — the global kill switch);
+    a per-request `?agg=client` (or `?agg=off`) forces the legacy full-posts path
+    for debugging. Any widget the engine can't reproduce keeps client-side
+    aggregation, so the response is always a strict superset.
+    """
     fs = get_fs()
     share = fs.get_dashboard_share(token)
 
@@ -413,37 +433,16 @@ async def get_shared_dashboard(
     # collections, which the pipeline bumps when post counts change - so a new
     # run's data busts the cache while static data serves without any BigQuery.
     # The share path reads the statuses itself (the authed path gets them from
-    # its access check); these Firestore reads are cheap vs the ~8s posts query.
-    statuses = await asyncio.gather(
-        *(asyncio.to_thread(fs.get_collection_status, cid) for cid in collection_ids)
+    # its access check). These reads run on EVERY request (before the cache
+    # check), so they're batched into a single Firestore round-trip - one
+    # `get_all` instead of one read per collection (36+ on a large share).
+    statuses_map = await asyncio.to_thread(
+        fs.get_collection_statuses, collection_ids
     )
-    stamp = make_freshness_stamp(statuses)
-    t0 = time.perf_counter()
-    core = get_core(agent_id, collection_ids, stamp)
-    cache_hit = core is not None
-    gather_ms = serialize_ms = 0.0
-
-    if core is None:
-        posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
-        kpis_sql, kpis_params = build_dashboard_kpis_sql(collection_ids, agent_id)
-        topics_sql, topics_params = build_topics_sql(agent_id)
-
-        rows, kpi_rows, topic_rows, name_rows = await asyncio.gather(
-            asyncio.to_thread(bq.query, posts_sql, posts_params),
-            asyncio.to_thread(bq.query, kpis_sql, kpis_params),
-            asyncio.to_thread(bq.query, topics_sql, topics_params),
-            asyncio.to_thread(bq.query, COLLECTION_NAMES_SQL, {"collection_ids": collection_ids}),
-        )
-        gather_ms = (time.perf_counter() - t0) * 1000
-
-        truncated = len(rows) > MAX_ROWS
-        if truncated:
-            rows = rows[:MAX_ROWS]
-
-        ts = time.perf_counter()
-        core = assemble_dashboard_core(rows, topic_rows, kpi_rows, name_rows, truncated)
-        serialize_ms = (time.perf_counter() - ts) * 1000
-        set_core(agent_id, collection_ids, stamp, core)
+    stamp = make_freshness_stamp(statuses_map.values())
+    core, cache_hit, gather_ms, serialize_ms = await get_or_build_core(
+        bq, agent_id, collection_ids, stamp
+    )
 
     perf_logger.info(
         "dashboard.share token=%s agent=%s cache=%s posts=%d gather_ms=%.0f serialize_ms=%.0f",
@@ -458,30 +457,154 @@ async def get_shared_dashboard(
     # shared link shows the same canonical numbers as the owner's interactive
     # dashboard. Runs on the cached raw core; an invalid config is ignored here
     # (public view must not 422) - the owner's editor enforces validity on save.
-    share_posts = core["posts"]
+    canon_posts = core["posts"]
     if report_config and not validate_report_config(report_config):
-        share_posts = transform_posts(core["posts"], report_config)
+        canon_posts = transform_posts(core["posts"], report_config)
+
+    # P2 (opt-in): server-aggregate every eligible widget over the canonicalized
+    # posts (before slimming - slimming only drops display-only fields, which
+    # aggregation never reads). The share's filter bar is hidden, so each
+    # widget's input set is static and computable here. Widgets the engine can't
+    # reproduce exactly (object-list edge cases, computed-expr, runtime metric
+    # toggles) are skipped and keep client-side aggregation.
+    # Default-on (gated by the kill-switch setting); a per-request `agg=client`/
+    # `agg=off` forces the legacy full-posts path. The resolved bool is folded
+    # into the share cache key, so flagged/unflagged bodies never collide.
+    settings = get_settings()
+    server_agg_enabled = settings.dashboard_server_agg and agg not in ("client", "off")
+    # A committed reportScope is the floor for every widget aggregation. The
+    # read-only client narrows its displayed set to the scope (filter bar hidden →
+    # empty viewer selection → scope promoted to active filters); reproduce that
+    # here so the engine aggregates over the SAME posts (and same percent
+    # baseline). When NOT fully covered we still ship the FULL posts below so any
+    # uncovered widget re-applies the scope client-side (unchanged behaviour).
+    agg_input = apply_report_scope(canon_posts, report_scope) if server_agg_enabled else canon_posts
+    widget_data = build_widget_data_map(agg_input, layout) if server_agg_enabled else {}
+    table_data = build_table_data_map(agg_input, layout) if server_agg_enabled else {}
+    feed_data = build_feed_data_map(agg_input, layout) if server_agg_enabled else {}
+
+    # When EVERY widget is server-satisfied (aggregated series/table, bounded
+    # feed, or static), drop the full posts array and ship only the bounded union
+    # of feed (embed) posts — the payload becomes KB/widget, independent of post
+    # count. Otherwise keep the full posts so any uncovered widget still
+    # aggregates client-side (unchanged behaviour).
+    fully_covered = server_agg_enabled and layout_fully_covered(
+        layout, widget_data, table_data, feed_data
+    )
+    if fully_covered:
+        union: dict[str, dict] = {}
+        for plist in feed_data.values():
+            for p in plist:
+                union.setdefault(p["post_id"], p)
+        body_posts = list(union.values())
+    else:
+        body_posts = canon_posts
+    # Feed widgets reference their posts by id (bodies live once in `posts`),
+    # preserving each widget's ranked display order.
+    feed_ids = {wid: [p["post_id"] for p in plist] for wid, plist in feed_data.items()}
+
+    # Slim mode drops the heavy display-only fields; the read-only client
+    # lazy-fetches them per visible post via the share post-details endpoint
+    # (same cached core). The share's filter bar is hidden, so the displayed set
+    # is static and the fetch happens once per visible widget.
+    share_posts = strip_detail_fields(body_posts) if slim else body_posts
 
     # Wrap the cached core (posts/topics/collection_names/truncated) with this
-    # share's per-request metadata; kpis in the core are unused here. Returned
-    # raw via orjson - shape matches SharedDashboardDataResponse.
-    return ORJSONResponse(
+    # share's per-request metadata; kpis in the core are unused here. Shape
+    # matches SharedDashboardDataResponse.
+    body = {
+        "posts": share_posts,
+        "topics": core["topics"],
+        "collection_names": core["collection_names"],
+        "truncated": core["truncated"],
+        "meta": meta.model_dump(),
+        "layout": layout,
+        "filterBarFilters": filter_bar_filters,
+        "orientation": orientation,
+        "reportScope": report_scope,
+        "filterBarHidden": filter_bar_hidden,
+        # Forwarded so the read-only client applies value colors + evaluates
+        # expr computed metrics (canonicalization + if/else are already baked
+        # into `share_posts` above).
+        "reportConfig": report_config,
+    }
+    # Only present when opted in, so an unflagged response is byte-identical to
+    # the pre-P2 body (and shares no cache entry with the flagged one).
+    if server_agg_enabled:
+        body["widgetData"] = widget_data
+        body["tableData"] = table_data
+        body["feedData"] = feed_ids
+        # True → `posts` is only the bounded feed union; the read-only client
+        # must render every widget from widgetData/tableData/feedData (it does).
+        body["serverComplete"] = fully_covered
+
+    # Gzip-capable clients are served the compressed body from the
+    # response-bytes cache. The key folds in the share metadata (title/layout/
+    # filter config/reportConfig) ON TOP OF the data freshness stamp + slim,
+    # because those change the body but NOT the stamp - keying only on the stamp
+    # would serve a stale layout after an owner edit.
+    cache_key = share_cache_key(
+        token,
+        stamp,
+        slim,
         {
-            "posts": share_posts,
-            "topics": core["topics"],
-            "collection_names": core["collection_names"],
-            "truncated": core["truncated"],
-            "meta": meta.model_dump(),
+            "title": current_title,
             "layout": layout,
             "filterBarFilters": filter_bar_filters,
             "orientation": orientation,
             "reportScope": report_scope,
             "filterBarHidden": filter_bar_hidden,
-            # Forwarded so the read-only client applies value colors + evaluates
-            # expr computed metrics (canonicalization + if/else are already baked
-            # into `share_posts` above).
             "reportConfig": report_config,
-        }
+        },
+        server_agg_enabled,
+    )
+    return gzipped_json_response(
+        body, cache_key, request.headers.get("accept-encoding", "")
+    )
+
+
+@router.post("/public/{token}/post-details")
+@limiter.limit("60/minute")
+async def get_shared_post_details(
+    request: Request,  # required by slowapi
+    token: str,
+    body: SharePostDetailsRequest,
+):
+    """Public lazy-load of the display-only fields (ai_summary/context/
+    media_refs) for the bounded set of posts a shared dashboard currently shows.
+    Served from the same cached core as the share data endpoint, so a warm share
+    answers without touching BigQuery. Scope is the share's own collections, so
+    a caller can never read posts outside the link.
+    """
+    fs = get_fs()
+    share = fs.get_dashboard_share(token)
+    if not share or share.get("revoked"):
+        raise HTTPException(
+            status_code=404, detail="Dashboard not found or link has been revoked"
+        )
+    if not body.post_ids:
+        return ORJSONResponse({"details": {}})
+    if len(body.post_ids) > 2000:
+        raise HTTPException(status_code=400, detail="too many post_ids (max 2000)")
+
+    collection_ids = share["collection_ids"]
+    agent_id = share.get("agent_id")
+    if not agent_id:
+        agent_id = await asyncio.to_thread(
+            derive_agent_id_for_collections, fs, collection_ids
+        )
+    if not agent_id:
+        return ORJSONResponse({"details": {}})
+
+    collection_ids = await asyncio.to_thread(
+        resolve_share_collection_ids, fs, collection_ids, agent_id
+    )
+    statuses_map = await asyncio.to_thread(fs.get_collection_statuses, collection_ids)
+    stamp = make_freshness_stamp(statuses_map.values())
+    bq = get_bq()
+    core, *_ = await get_or_build_core(bq, agent_id, collection_ids, stamp)
+    return ORJSONResponse(
+        {"details": build_post_details(core["posts"], body.post_ids)}
     )
 
 

@@ -108,6 +108,45 @@ class DashboardDataRequest(BaseModel):
     # posts after the cached BigQuery core, so live-edit recompute reuses the
     # cache without re-querying. See api/services/report_transform.py.
     report_config: ReportConfig | None = None
+    # When true, omit the heavy display-only fields (ai_summary/context/
+    # media_refs ~60% of payload) from each post; the client lazy-fetches them
+    # per visible post via /dashboard/post-details. Defaults False so existing
+    # clients keep the full payload. See dashboard_service.DETAIL_FIELDS.
+    slim: bool = False
+
+
+class DashboardAggregateRequest(BaseModel):
+    """Server-side widget aggregation for the studio (interactive) path.
+
+    The client sends the *effective* filter state (viewer filters already
+    intersected with the committed reportScope on the FE) and the current
+    widget layout. The server applies those filters to the cached posts and
+    returns compact pre-aggregated widget data — same shapes the FE widgets
+    already consume, so they fall back to client-side aggregation when absent.
+    """
+    collection_ids: list[str]
+    agent_id: str | None = None
+    report_config: ReportConfig | None = None
+    # effectiveFilters from the FE (DashboardFilters shape, already
+    # scope-intersected). Keys match the FE type: sentiment, emotion, entities,
+    # language, collection, content_type, platform, themes, channels, topics,
+    # date_range. Absent keys mean "no filter on that dimension".
+    filters: dict = Field(default_factory=dict)
+    # Current widget layout. The server aggregates only the widgets in this
+    # list; unsupported widget types keep client-side aggregation.
+    layout: list[dict] = Field(default_factory=list)
+
+
+class PostDetailsRequest(BaseModel):
+    """Lazy-fetch the display-only fields for a bounded set of visible posts."""
+    collection_ids: list[str]
+    agent_id: str | None = None
+    post_ids: list[str]
+
+
+class SharePostDetailsRequest(BaseModel):
+    """Public-share variant: scope comes from the share token in the path."""
+    post_ids: list[str]
 
 
 class CreateDashboardShareRequest(BaseModel):
