@@ -9,7 +9,7 @@ import { updateExplorerLayout } from '../../../api/endpoints/explorer-layouts.ts
 import { Input } from '../../../components/ui/input.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Skeleton } from '../../../components/ui/skeleton.tsx';
-import { getDashboardData } from '../../../api/endpoints/dashboard.ts';
+import { getDashboardData, getDashboardPostDetails } from '../../../api/endpoints/dashboard.ts';
 import { getAgent } from '../../../api/endpoints/agents.ts';
 import { exportDashboardPdf } from './exportDashboardPdf.ts';
 import { ShareDashboardDialog } from './ShareDashboardDialog.tsx';
@@ -118,7 +118,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
       reportConfig ? JSON.stringify(reportConfig) : '',
       ...artifact.collectionIds,
     ],
-    queryFn: () => getDashboardData(artifact.collectionIds, artifact.agentId, reportConfig),
+    queryFn: () => getDashboardData(artifact.collectionIds, artifact.agentId, reportConfig, true),
     staleTime: 5 * 60 * 1000,
     // A report-config edit changes the query key (it encodes the config). Keep
     // showing the current data while the new key refetches instead of dropping
@@ -153,6 +153,7 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     toggleFilterValue,
     setFilter,
     filteredPosts,
+    effectiveFilters,
     availableOptions,
     activeFilterCount,
     clearAll,
@@ -184,6 +185,14 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
       setDownloading(false);
     }
   };
+
+  // Lazy-fetch the display-only fields the slim payload omits, scoped to this
+  // dashboard's collections/agent (served from the same cached core).
+  const fetchPostDetails = useCallback(
+    (postIds: string[]) =>
+      getDashboardPostDetails(artifact.collectionIds, postIds, artifact.agentId),
+    [artifact.collectionIds, artifact.agentId],
+  );
 
   const handleLayoutLoaded = useCallback((persisted: string[]) => {
     setFilterBarFilters(persisted as FilterBarFilterId[]);
@@ -396,6 +405,9 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             coAuthorActive={coAuthorOpen}
             attachedWidgetIds={attachedWidgets.map((w) => w.i)}
             onToggleAttachWidget={handleToggleAttachWidget}
+            fetchPostDetails={fetchPostDetails}
+            collectionIds={artifact.collectionIds}
+            effectiveFilters={effectiveFilters}
           />
         )}
       </div>

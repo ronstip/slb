@@ -39,7 +39,7 @@ export interface FilterOptions {
   dateMax: string | null;
 }
 
-const INITIAL_FILTERS: DashboardFilters = {
+export const INITIAL_FILTERS: DashboardFilters = {
   sentiment: [],
   emotion: [],
   entities: [],
@@ -180,7 +180,7 @@ function intersectDateRange(
  *  selections. The scope is the floor - viewer filters can narrow each
  *  dimension further but never widen past the scope. When no scope is set
  *  (standalone mode), this is the identity function. */
-function intersectWithScope(
+export function intersectWithScope(
   viewer: DashboardFilters,
   scope: ReportScope | null | undefined,
 ): DashboardFilters {
@@ -200,7 +200,7 @@ function intersectWithScope(
   };
 }
 
-function applyFilters(posts: DashboardPost[], filters: DashboardFilters): DashboardPost[] {
+export function applyFilters(posts: DashboardPost[], filters: DashboardFilters): DashboardPost[] {
   return posts.filter((p) => {
     if (filters.sentiment.length > 0 && !filters.sentiment.includes(p.sentiment || '')) return false;
     if (filters.emotion.length > 0 && !filters.emotion.includes(p.emotion || '')) return false;

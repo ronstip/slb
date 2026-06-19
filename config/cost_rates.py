@@ -696,9 +696,13 @@ def compute_cost_micros(
         return _usd_to_micros(units * per_ds["per_record_usd"])
 
     if provider == "x_api":
-        # Matrix override (typically only `x` platform set) wins over
-        # endpoint-keyed legacy entries.
-        matrix_rate = get_scraper_rate("x_api", platform, kind)
+        # Matrix override wins over endpoint-keyed legacy entries, BUT only
+        # when a platform is known. Without a platform the lookup can match a
+        # "*" wildcard in the Firestore pricing doc and would shadow cheaper
+        # sub_kind rates (e.g. "owned_read"). The comment in the seed block
+        # documents the same intent: only platform-specific cells are seeded,
+        # NOT "*", for exactly this reason.
+        matrix_rate = get_scraper_rate("x_api", platform, kind) if platform else None
         if matrix_rate is not None:
             return _usd_to_micros(units * matrix_rate)
         per_ep, _ = _get_or_fallback(rate, sub_kind)

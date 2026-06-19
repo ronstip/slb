@@ -1519,6 +1519,19 @@ export interface SocialDashboardWidget {
    *  badge. Undefined → visible (legacy widgets have no key). Mirrors the
    *  Pydantic field in api/routers/dashboard_schema.py. */
   hidden?: boolean;
+  /** P2 server-side aggregation: pre-computed `WidgetData` injected by the
+   *  public-share host (from the `?agg=server` response's `widgetData` map) for
+   *  widgets the server can reproduce exactly. When present, read-only render
+   *  uses it verbatim instead of aggregating posts client-side. Never persisted
+   *  (transient, view-only); absent for studio and for unflagged shares. */
+  serverData?: WidgetData;
+  /** P2: server-computed table rows (group / object tables), same role as
+   *  serverData but for `chartType: 'table'`. Structurally a `TableRow[]`; typed
+   *  loosely here to avoid importing from dashboard-aggregations (cycle). */
+  serverTableRows?: Array<Record<string, string | number | string[] | undefined>>;
+  /** P2: ordered post_ids a feed (embeds collection) widget displays, resolved
+   *  server-side. The post bodies arrive in the (bounded) `posts` array. */
+  serverPostIds?: string[];
 }
 
 // ─── WidgetData (Chart.js data format) ────────────────────────────────────────

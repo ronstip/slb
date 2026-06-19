@@ -45,6 +45,7 @@ import { SocialWidgetFrame } from './SocialWidgetFrame.tsx';
 import { DataTable } from '../../../components/DataTable/DataTable.tsx';
 import { postColumns } from '../../../components/DataTable/columns.tsx';
 import { ExpandedPostRow } from '../../../components/DataTable/ExpandedPostRow.tsx';
+import { usePostDetails } from './use-post-details.tsx';
 import { Markdown } from '../../../components/Markdown.tsx';
 import { PostEmbed } from './PostEmbed.tsx';
 import { EmbedCarousel } from './EmbedCarousel.tsx';
@@ -451,6 +452,8 @@ function ConfigurableTableWidget({
   onFilterToggle,
   onTopicNavigate,
   labelOverrides,
+  serverRows,
+  serverPostIds,
 }: {
   posts: DashboardPost[];
   filters?: SocialDashboardWidget['filters'];
@@ -460,18 +463,34 @@ function ConfigurableTableWidget({
   onFilterToggle?: (key: string, value: string) => void;
   onTopicNavigate?: (clusterId: string) => void;
   labelOverrides?: Record<string, string>;
+  /** P2: server-computed rows (public share). Used verbatim when present,
+   *  skipping client aggregation. */
+  serverRows?: TableRow[];
+  /** P2: for a POST-mode table, the server-selected bounded post ids (numeric
+   *  sort). When the omit-gate drops the global posts to the feed union, this
+   *  picks THIS table's posts out of that union before re-rendering rows. */
+  serverPostIds?: string[];
 }) {
   const tableConfig = useMemo(() => normalizeTableConfig(rawTableConfig), [rawTableConfig]);
   const isTopicsSource = dataSource === 'topics';
+  // Post-mode + server feed: restrict to this widget's bounded post set (the
+  // global `posts` is the combined feed union across all widgets, so we must
+  // pick out ours by id before aggregateTablePostMode re-renders its rows).
+  const postModePosts = useMemo(() => {
+    if (!serverPostIds || tableConfig.mode !== 'post') return posts;
+    const byId = new Map(posts.map((p) => [p.post_id, p]));
+    return serverPostIds.map((id) => byId.get(id)).filter((p): p is DashboardPost => !!p);
+  }, [serverPostIds, tableConfig.mode, posts]);
   const rows = useMemo(
     () => {
+      if (serverRows) return serverRows;
       // Grouped tables aggregate by dimension, so prune multi-valued fields to
       // the selected values (value-level filter). Post-mode tables show raw
       // posts as rows - leave their values intact.
       const isGrouped = !isTopicsSource && tableConfig.mode !== 'post';
       const aggPosts = isGrouped
-        ? applyWidgetValueFilters(posts, filters, tablePrimaryDimension(tableConfig))
-        : posts;
+        ? applyWidgetValueFilters(postModePosts, filters, tablePrimaryDimension(tableConfig))
+        : postModePosts;
       // Element-as-unit object table when columns reference a list[object] field.
       const objField = !isTopicsSource ? objectFieldOfTable(tableConfig) : null;
       if (objField) return aggregateObjectTable(aggPosts, objField, tableConfig);
@@ -479,7 +498,7 @@ function ConfigurableTableWidget({
         ? aggregateTopicsTable(topics ?? [], tableConfig)
         : aggregateTable(aggPosts, tableConfig);
     },
-    [isTopicsSource, posts, filters, topics, tableConfig],
+    [isTopicsSource, postModePosts, filters, topics, tableConfig, serverRows],
   );
   const columnStats = useMemo(() => computeColumnStats(tableConfig, rows), [tableConfig, rows]);
   const isPostMode = tableConfig.mode === 'post';
@@ -489,6 +508,38 @@ function ConfigurableTableWidget({
       : buildTableColumns(tableConfig, columnStats, labelOverrides),
     [isPostMode, tableConfig, columnStats, labelOverrides],
   );
+  // Lazy-merge the `ai_summary` post-field column: it's stripped from the slim
+  // payload, so for a post-mode table fetch it for the displayed (bounded) rows
+  // and fill those cells in once it arrives. No-op when there's no such column
+  // (or when the value is already present, e.g. the full/non-slim payload).
+  const aiSummaryColIds = useMemo(
+    () =>
+      isPostMode
+        ? tableConfig.columns
+            .filter((c) => isPostFieldColumn(c) && c.postField === 'ai_summary')
+            .map((c) => c.id)
+        : [],
+    [isPostMode, tableConfig.columns],
+  );
+  const detailPostIds = useMemo(
+    () => (aiSummaryColIds.length > 0 ? rows.map((r) => r.__key) : []),
+    [aiSummaryColIds.length, rows],
+  );
+  const { get: getPostDetail, version: detailVersion } = usePostDetails(detailPostIds);
+  const displayRows = useMemo(() => {
+    if (aiSummaryColIds.length === 0) return rows;
+    return rows.map((r) => {
+      const d = getPostDetail(r.__key);
+      if (!d || d.ai_summary == null) return r;
+      const next = { ...r };
+      for (const colId of aiSummaryColIds) {
+        if (next[colId] == null) next[colId] = d.ai_summary;
+      }
+      return next;
+    });
+    // detailVersion drives re-resolution as fetched details land.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, aiSummaryColIds, getPostDetail, detailVersion]);
   // Optional per-group breakdown (opt-in via tableConfig.breakdownDimension).
   // Grouped post tables only - not topics or element-as-unit object tables.
   const breakdownDim = tableConfig.breakdownDimension;
@@ -560,7 +611,7 @@ function ConfigurableTableWidget({
 
   return (
     <DataTable<TableRow>
-      data={rows}
+      data={displayRows}
       columns={columns}
       getRowKey={(r) => r.__key}
       defaultSortKey={defaultSortKey}
@@ -1158,6 +1209,14 @@ function CustomWidget({
 
   const data = useMemo<WidgetData | null>(() => {
     if (!effectiveConfig) return null;
+    // P2 server-side aggregation: a read-only host (public share with
+    // `?agg=server`) injects the server-computed series for widgets the engine
+    // reproduces exactly. Use it verbatim and skip the client recompute. Guarded
+    // by !isEditMode (the editor must always reflect live edits) and an
+    // unchanged active metric (a viewer metric-toggle recomputes locally).
+    if (widget.serverData && !isEditMode && activeMetric === config?.metric) {
+      return widget.serverData;
+    }
     // list[object] fields aggregate element-as-unit on the posts source - check
     // before the topics branch since object tokens live inside `dataSource:posts`.
     const objField = objectFieldOf(effectiveConfig);
@@ -1170,7 +1229,7 @@ function CustomWidget({
     return isTopicsSource
       ? aggregateTopicsCustom(topics ?? [], effectiveConfig)
       : aggregateCustom(aggPosts, effectiveConfig, computedFields, basePosts);
-  }, [isTopicsSource, aggPosts, topics, effectiveConfig, computedFields, basePosts, widget.chartType]);
+  }, [isTopicsSource, aggPosts, topics, effectiveConfig, computedFields, basePosts, widget.chartType, widget.serverData, isEditMode, activeMetric, config?.metric]);
 
   const cloudData = useMemo(() => {
     if (!data?.labels || !data.values) return [];
@@ -1320,6 +1379,8 @@ function CustomWidget({
             onFilterToggle={onFilterToggle}
             onTopicNavigate={onTopicNavigate}
             labelOverrides={widget.styleOverrides?.seriesLabels}
+            serverRows={!isEditMode ? (widget.serverTableRows as TableRow[] | undefined) : undefined}
+            serverPostIds={!isEditMode ? widget.serverPostIds : undefined}
           />
         </SocialWidgetFrame>
       );
@@ -1655,10 +1716,17 @@ function EmbedsWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
   const isCollection = cfg?.source === 'collection';
   const urls = (widget.embedUrls ?? []).filter((u) => typeof u === 'string' && u.trim().length > 0);
   // Collection mode resolves the live top-N selection from the widget's posts.
-  const collectionPosts = useMemo(
-    () => (isCollection ? resolveEmbedPosts(posts, cfg) : []),
-    [isCollection, posts, cfg],
-  );
+  // P2 (public share): when the server pre-resolved the ranked ids, render those
+  // posts in the given order (the bounded `posts` array holds their bodies) and
+  // skip the client ranking entirely.
+  const collectionPosts = useMemo(() => {
+    if (!isCollection) return [];
+    if (widget.serverPostIds && !isEditMode) {
+      const byId = new Map(posts.map((p) => [p.post_id, p]));
+      return widget.serverPostIds.map((id) => byId.get(id)).filter((p): p is DashboardPost => !!p);
+    }
+    return resolveEmbedPosts(posts, cfg);
+  }, [isCollection, posts, cfg, widget.serverPostIds, isEditMode]);
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1806,6 +1874,23 @@ function toPostTableRows(posts: DashboardPost[]): PostTableRow[] {
   }));
 }
 
+/** Expanded post row that lazy-fetches the display-only fields (ai_summary/
+ *  context/media_refs) the slim payload omits, on expand. Falls back to the
+ *  row's own values when present (full payload / non-slim). */
+function LazyExpandedPostRow({ row }: { row: PostTableRow }) {
+  const { get } = usePostDetails(row.post_id ? [row.post_id] : []);
+  const d = row.post_id ? get(row.post_id) : undefined;
+  const merged = d
+    ? {
+        ...row,
+        ai_summary: row.ai_summary ?? d.ai_summary,
+        context: row.context ?? d.context,
+        media_refs: row.media_refs ?? d.media_refs ?? undefined,
+      }
+    : row;
+  return <ExpandedPostRow row={merged} />;
+}
+
 const POST_TABLE_COLUMNS = postColumns<PostTableRow>({ summaryField: 'content', summaryLabel: 'Content', showEntities: false });
 
 function PostsTableWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
@@ -1819,7 +1904,7 @@ function PostsTableWidget({ widget, posts, isEditMode, onConfigure, onRemove, on
         defaultSortKey="views"
         defaultSortDir="desc"
         pageSize={25}
-        renderExpandedRow={(row) => <ExpandedPostRow row={row} />}
+        renderExpandedRow={(row) => <LazyExpandedPostRow row={row} />}
         emptyMessage="No posts to display"
       />
     </SocialWidgetFrame>

@@ -51,21 +51,51 @@ class FirestoreClient:
         "failed": "failed", "cancelled": "failed", "monitoring": "running",
     }
 
+    def _normalize_status(self, data: dict | None) -> dict | None:
+        """Map legacy status values to the 3-state model and ISO-ify timestamps.
+
+        Shared by the single- and batched-read paths so both return an identical
+        shape (the freshness stamp and access checks read the same fields).
+        """
+        if data is None:
+            return None
+        raw = data.get("status")
+        if raw in self._COLLECTION_STATUS_MAP:
+            data["status"] = self._COLLECTION_STATUS_MAP[raw]
+        for key in ("created_at", "updated_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
     def get_collection_status(self, collection_id: str) -> dict | None:
         doc_ref = self._db.collection("collection_status").document(collection_id)
         doc = doc_ref.get()
         if not doc.exists:
             return None
-        data = doc.to_dict()
-        # Normalize legacy status values
-        raw = data.get("status")
-        if raw in self._COLLECTION_STATUS_MAP:
-            data["status"] = self._COLLECTION_STATUS_MAP[raw]
-        # Convert Firestore timestamps to ISO strings
-        for key in ("created_at", "updated_at"):
-            if key in data and hasattr(data[key], "isoformat"):
-                data[key] = data[key].isoformat()
-        return data
+        return self._normalize_status(doc.to_dict())
+
+    def get_collection_statuses(
+        self, collection_ids: list[str]
+    ) -> dict[str, dict | None]:
+        """Batched ``get_collection_status``: ONE Firestore round-trip for many
+        collections via ``get_all`` instead of N sequential document reads.
+
+        Returns ``{collection_id: normalized status | None}`` for every requested
+        id (missing docs map to ``None``). The dashboard freshness stamp fired one
+        read per collection (36+ on a large share, all before the response-cache
+        check); this collapses them into a single batched read.
+        """
+        if not collection_ids:
+            return {}
+        col = self._db.collection("collection_status")
+        # Dedupe refs but keep a result entry for every requested id.
+        unique_ids = list(dict.fromkeys(collection_ids))
+        refs = [col.document(cid) for cid in unique_ids]
+        out: dict[str, dict | None] = {cid: None for cid in collection_ids}
+        for doc in self._db.get_all(refs):
+            if doc.exists:
+                out[doc.id] = self._normalize_status(doc.to_dict())
+        return out
 
     # --- Statistical Signature methods ---
 
