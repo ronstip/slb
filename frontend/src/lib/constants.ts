@@ -176,6 +176,46 @@ export function formatSchedule(schedule?: string | null): string {
   return `Every ${interval === 1 ? 'day' : `${interval} days`} at ${formatTime12(local)}${suffix}`;
 }
 
+/** Compute the next run time for a schedule string, mirroring the backend
+ *  `workers/pipeline/schedule_utils.compute_next_run_at`. All hour/day math is
+ *  done in UTC (the backend's clock) so the returned Date — rendered in the
+ *  viewer's local zone — matches what the scheduler will actually do.
+ *  Hour schedules align to the top of the hour; day/week schedules land on the
+ *  stored UTC time, at least one interval ahead of `from`. */
+export function computeNextRunAt(frequency?: string | null, from: Date = new Date()): Date | null {
+  if (!frequency) return null;
+  const { unit, interval, time } = parseScheduleString(frequency);
+  const d = new Date(from);
+  if (unit === 'minute') {
+    d.setMinutes(d.getMinutes() + interval, 0, 0);
+    return d;
+  }
+  if (unit === 'hour') {
+    d.setUTCMinutes(0, 0, 0);
+    d.setUTCHours(d.getUTCHours() + interval);
+    return d;
+  }
+  // day / week: `time` is stored UTC "HH:MM"
+  const [hh, mm] = time.split(':').map(Number);
+  d.setUTCHours(hh, mm, 0, 0);
+  d.setUTCDate(d.getUTCDate() + interval);
+  while (d.getTime() <= from.getTime()) d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+
+/** Human-readable absolute time for a next-run indicator, in the viewer's local
+ *  zone (e.g. "Sun, Jun 21, 3:00 PM IDT"). Accepts an ISO string or Date. */
+export function formatNextRun(when?: string | Date | null): string | null {
+  if (!when) return null;
+  const d = typeof when === 'string' ? new Date(when) : when;
+  if (Number.isNaN(d.getTime())) return null;
+  const text = new Intl.DateTimeFormat(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(d);
+  const tz = getLocalTzAbbrev();
+  return tz ? `${text} ${tz}` : text;
+}
+
 export type SchedulePreset = 'hourly' | 'daily' | 'weekly';
 
 /** Build a schedule string from a preset frequency. `localTime` is local "HH:MM". */

@@ -514,7 +514,14 @@ class FirestoreClient:
         return results
 
     def get_due_recurring_agents(self) -> list[dict]:
-        """Return recurring agents whose next_run_at is in the past (not paused, not currently running/archived/failed)."""
+        """Return recurring agents that are due for their next scheduled run.
+
+        Eligibility (recurring, not paused/archived, not mid-run, next_run_at in
+        the past) is decided by the pure predicate ``is_recurring_agent_due`` so
+        it can be unit-tested without Firestore.
+        """
+        from workers.pipeline.schedule_utils import is_recurring_agent_due
+
         now = datetime.now(timezone.utc)
         try:
             docs = (
@@ -525,21 +532,9 @@ class FirestoreClient:
             due = []
             for doc in docs:
                 data = doc.to_dict()
-                # Allow null (never-run) and "success"; skip running/archived/failed.
-                if data.get("status") not in (None, "success"):
-                    continue
-                next_run_at = data.get("next_run_at")
-                if next_run_at is None:
-                    continue
-                # Skip paused agents
-                if data.get("paused"):
-                    continue
-                if hasattr(next_run_at, "isoformat"):
-                    if getattr(next_run_at, "tzinfo", None) is None:
-                        next_run_at = next_run_at.replace(tzinfo=timezone.utc)
-                    if next_run_at <= now:
-                        data["agent_id"] = doc.id
-                        due.append(data)
+                if is_recurring_agent_due(data, now):
+                    data["agent_id"] = doc.id
+                    due.append(data)
             return due
         except Exception as e:
             logger.warning("Failed to query due recurring agents: %s", e)
