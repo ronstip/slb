@@ -59,16 +59,17 @@ def test_due_when_status_none_never_run():
     assert is_recurring_agent_due(_agent(status=None), NOW) is True
 
 
-def test_due_when_status_completed():
-    # Regression: a recurring agent that finished a run as "completed" was
-    # permanently excluded by the old (None, "success") allowlist.
-    assert is_recurring_agent_due(_agent(status="completed"), NOW) is True
+def test_not_due_when_status_completed():
+    # Only "success"/None are schedulable. "completed" is not a status current
+    # code assigns to a recurring agent; including it just resurrects dormant
+    # legacy agents.
+    assert is_recurring_agent_due(_agent(status="completed"), NOW) is False
 
 
-def test_due_when_status_failed_retries_next_cycle():
-    # A recurring monitor should keep trying on schedule after a failure,
-    # not die forever on the first transient error.
-    assert is_recurring_agent_due(_agent(status="failed"), NOW) is True
+def test_not_due_when_status_failed():
+    # A failed agent is not auto-retried on schedule (avoids hourly-retrying a
+    # genuinely broken agent). Resume is a manual action.
+    assert is_recurring_agent_due(_agent(status="failed"), NOW) is False
 
 
 def test_not_due_when_paused():

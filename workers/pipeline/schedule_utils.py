@@ -7,22 +7,13 @@ where this logic was duplicated.
 import re
 from datetime import datetime, timedelta, timezone
 
-# Agent statuses that mean a run is actively in flight. A recurring agent in
-# any of these must NOT be dispatched again — that would start a second
-# concurrent run on top of the live one.
-ACTIVE_STATUSES = frozenset(
-    {
-        "running",
-        "executing",
-        "analyzing",
-        "collecting",
-        "enriching",
-        "processing",
-        "building",
-        "queued",
-        "in_progress",
-    }
-)
+# A recurring agent rests at "success" after a normal run (set by
+# agent_continuation); "None" covers never-run agents. Every other status means
+# the agent is mid-run, archived, or failed — none of which should auto-start a
+# new run. (Deliberately an allowlist: broadening it to also reschedule
+# "failed"/legacy "completed" agents resurrects dormant agents and hourly-
+# retries genuinely-broken ones — see docs/bugs/api-recurring-schedule-never-fires.md.)
+SCHEDULABLE_STATUSES = frozenset({None, "success"})
 
 
 def parse_schedule(schedule: str | None) -> tuple[str, int, int | None, int | None]:
@@ -77,25 +68,16 @@ def compute_next_run_at(schedule: str | None, from_time: datetime) -> datetime:
 def is_recurring_agent_due(agent: dict, now: datetime) -> bool:
     """Return True if this recurring agent should be dispatched at ``now``.
 
-    Eligible when the agent is recurring, not paused, not archived, not
-    currently mid-run, and its ``next_run_at`` is in the past.
+    Eligible when the agent is recurring, not paused, rests at a schedulable
+    status (``success`` or never-run), and its ``next_run_at`` is in the past.
 
     This is the gate for the schedule mechanism (``get_due_recurring_agents``).
-    It deliberately uses a *denylist* of in-flight / disabled statuses rather
-    than an allowlist: a recurring agent rests in a variety of terminal
-    statuses ("success", "completed") and can be stranded in "failed" by a
-    transient error. An allowlist of only ("success",) silently excluded all
-    of those, so schedules never fired again after the first run. A recurring
-    monitor is expected to keep trying on schedule, including a retry after a
-    failed run.
     """
     if agent.get("agent_type") != "recurring":
         return False
     if agent.get("paused"):
         return False
-
-    status = agent.get("status")
-    if status in ACTIVE_STATUSES or status == "archived":
+    if agent.get("status") not in SCHEDULABLE_STATUSES:
         return False
 
     next_run_at = agent.get("next_run_at")
