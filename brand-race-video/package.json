@@ -1,0 +1,25 @@
+{
+  "name": "brand-race-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated Remotion project: animated brand share-of-voice race for Scolto marketing. Standalone — no dependency on frontend/ or api/.",
+  "type": "module",
+  "scripts": {
+    "dev": "remotion studio",
+    "render": "remotion render BrandRace out/brand-race.mp4 --codec=h264",
+    "render-hq": "remotion render BrandRace out/brand-race.mp4 --codec=h264 --crf=16",
+    "fetch": "node scripts/fetch-real-data.mjs",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/google-fonts": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.5.0"
+  }
+}
