@@ -84,23 +84,15 @@ export const SENTIMENT_COLORS: Record<string, string> = {
 export const PLATFORMS = ['instagram', 'tiktok', 'facebook', 'twitter', 'reddit', 'youtube'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
-// Picker options shown to the user. Values are interpreted as the user's
-// LOCAL time. They are converted to UTC before being stored, and converted
-// back to local for display.
-export const SCHEDULE_LOCAL_TIMES = [
-  { label: '12:00 AM', value: '00:00' },
-  { label: '02:00 AM', value: '02:00' },
-  { label: '04:00 AM', value: '04:00' },
-  { label: '06:00 AM', value: '06:00' },
-  { label: '08:00 AM', value: '08:00' },
-  { label: '09:00 AM', value: '09:00' },
-  { label: '10:00 AM', value: '10:00' },
-  { label: '12:00 PM', value: '12:00' },
-  { label: '02:00 PM', value: '14:00' },
-  { label: '04:00 PM', value: '16:00' },
-  { label: '06:00 PM', value: '18:00' },
-  { label: '09:00 PM', value: '21:00' },
-] as const;
+// Picker options shown to the user — every hour, on the hour. Values are
+// interpreted as the user's LOCAL time, converted to UTC before being stored,
+// and converted back to local for display.
+export const SCHEDULE_LOCAL_TIMES = Array.from({ length: 24 }, (_, h) => {
+  const value = `${String(h).padStart(2, '0')}:00`;
+  const period = h < 12 ? 'AM' : 'PM';
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return { label: `${String(hour12).padStart(2, '0')}:00 ${period}`, value };
+});
 
 /** Convert local "HH:MM" (browser's TZ) to UTC "HH:MM". */
 export function localTimeToUtc(local: string): string {
