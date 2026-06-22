@@ -4,9 +4,9 @@ Isolated [Remotion](https://remotion.dev) project that renders an animated
 **brand share-of-voice race** as an MP4 for social marketing. It is a 1:1
 animated port of the **"The Race"** marketing board
 (`Marketing/checkpoints/wc-brand-leaderboard-v1/board-race.jsx`) — same tokens,
-type, logos, and primitives — driven across the four real cumulative checkpoints
-(pre-tournament → days 1–4 → 1–7 → 1–11), so brands climb, surge, and drop out
-exactly as they did in the published boards.
+type, logos, and primitives — driven across the five real cumulative checkpoints
+(pre-tournament → days 1–4 → 1–7 → 1–11 → 1–12), so brands climb, surge, and
+drop out exactly as they did in the published boards.
 
 **Fully self-contained.** Own `package.json` / `node_modules` / bundler. It does
 **not** import from or affect `frontend/` or `api/`. Delete this folder and the
@@ -18,7 +18,7 @@ app is untouched.
 cd brand-race-video
 npm install
 npm run dev        # Remotion Studio — live preview + scrubbing
-npm run render     # → out/brand-race.mp4  (1080×1350, 4:5, ~13s)
+npm run render     # → out/brand-race.mp4  (1080×1350, 4:5, ~16s)
 npm run render-hq  # higher quality (crf 16)
 ```
 
@@ -49,7 +49,17 @@ the `social_listening.daily_metrics` TVF gives per-day `top_brands` counts.
 
 ## Tuning
 
-- Pace / hold / morph length: `HOLD`, `TRANS`, `END_HOLD` in `src/engine.ts`.
-- Rows shown: `VISIBLE` in `src/engine.ts`.
+All in `src/engine.ts`:
+
+- `FRAMES_PER_ROW` — the speed cap. Each checkpoint-to-checkpoint transition lasts
+  `maxRankMove × FRAMES_PER_ROW`, so the fastest-moving row travels at one
+  constant rate across the whole video (a big reshuffle gets more time instead of
+  zipping). Higher = slower/more relaxed.
+- `INTRO` / `HOLD` / `END_HOLD` — dwell on the opening, each intermediate
+  checkpoint, and the final standings.
+- `SWAP_W` — how smoothly two rows cross when they swap (rank units). Higher =
+  softer/longer overlap; lower = crisper/quicker pass. Keep < 1 so settled
+  standings stay clean integers.
+- `VISIBLE` — rows shown.
 - Aspect ratio: `width`/`height` in `src/Root.tsx` (1080×1350 = 4:5 feed;
   1080×1080 = square). Layout constants live at the top of `src/BrandRace.tsx`.

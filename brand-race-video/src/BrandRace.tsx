@@ -15,8 +15,8 @@ import {
   ScopeStrip,
   type MoveKind,
 } from './parts';
-import { platforms, footer, url, type Brand } from './checkpoints';
-import { dayAt, dayToKp, brandsAt, maxSovAt, nearestCheckpoint, ALL_BRANDS, VISIBLE } from './engine';
+import { platforms, footer, url, CHECKPOINTS, type Brand } from './checkpoints';
+import { stateAt, maxSovAt, ALL_BRANDS, VISIBLE } from './engine';
 
 const W = 1080;
 const H = 1350;
@@ -36,12 +36,10 @@ const SCOPE = { event: 'Opening run', segment: 'All brands' } as const;
 
 export const BrandRace: React.FC = () => {
   const frame = useCurrentFrame();
-  const day = dayAt(frame);
+  const { day, cpIndex, frames } = stateAt(frame);
   const dayInt = Math.round(day);
-  const kp = dayToKp(day);
-  const frames = brandsAt(day);
   const max = maxSovAt(frames);
-  const cp = nearestCheckpoint(kp); // drives only the live move/viral arrows
+  const cp = CHECKPOINTS[cpIndex]; // drives only the live move/viral arrows
   const { matchday, dateLabel } = datelineFor(dayInt);
 
   const live = new Map<string, Brand>();
@@ -98,7 +96,7 @@ export const BrandRace: React.FC = () => {
 
         {/* title band — day counter + title */}
         <div style={{ marginTop: 30, position: 'relative' }}>
-          <Dateline matchday={matchday} dateLabel={dateLabel} size={16} />
+          <Dateline matchday={matchday} dateLabel={dateLabel} size={30} />
           <div
             style={{
               fontFamily: F.display,
@@ -127,7 +125,7 @@ export const BrandRace: React.FC = () => {
           {ALL_BRANDS.map((name) => {
             const bf = frames.find((f) => f.brand.name === name)!;
             const b = bf.brand;
-            const leader = Math.round(bf.rank) === 0 && bf.visible;
+            const leader = Math.round(bf.rank) === 0 && bf.opacity > 0.5;
             const pct = (bf.sov / max) * 100;
             const fill = leader
               ? `linear-gradient(90deg, ${C.orangeDeep}, ${C.orange})`
@@ -145,7 +143,7 @@ export const BrandRace: React.FC = () => {
                   top: 0,
                   height: ROW_H,
                   transform: `translateY(${bf.rank * ROW_H}px)`,
-                  opacity: bf.visible ? 1 : 0,
+                  opacity: bf.opacity,
                   display: 'flex',
                   alignItems: 'center',
                   gap: 18,

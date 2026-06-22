@@ -80,32 +80,7 @@ export const BrandTile: React.FC<{ brand: Brand; size?: number; radius?: number 
     overflow: 'hidden',
     boxShadow: '0 1px 2px rgba(26,23,20,0.12)',
   };
-  const path = brand.icon ? WC_LOGOS[brand.icon] : undefined;
-  if (path) {
-    return (
-      <span style={chip}>
-        <svg
-          viewBox="0 0 24 24"
-          width={Math.round(size * 0.62)}
-          height={Math.round(size * 0.62)}
-          style={{ display: 'block' }}
-        >
-          <path d={path} fill={brand.color} />
-        </svg>
-      </span>
-    );
-  }
-  if (brand.logo) {
-    return (
-      <span style={chip}>
-        <Img
-          src={brand.logo}
-          style={{ width: '70%', height: '70%', objectFit: 'contain', display: 'block' }}
-        />
-      </span>
-    );
-  }
-  return (
+  const monogram = (
     <span
       style={{
         width: size,
@@ -126,6 +101,50 @@ export const BrandTile: React.FC<{ brand: Brand; size?: number; radius?: number 
       }}
     >
       {brand.mono}
+    </span>
+  );
+
+  const path = brand.icon ? WC_LOGOS[brand.icon] : undefined;
+  if (path) {
+    return (
+      <span style={chip}>
+        <svg
+          viewBox="0 0 24 24"
+          width={Math.round(size * 0.62)}
+          height={Math.round(size * 0.62)}
+          style={{ display: 'block' }}
+        >
+          <path d={path} fill={brand.color} />
+        </svg>
+      </span>
+    );
+  }
+  if (brand.logo) {
+    // Network logo (logo.dev). Render-safe: a flaky/slow fetch must never stall a
+    // frame past the deadline (which would freeze mid-shift and abort the render),
+    // so we give it a generous timeout + retries and fall back to the monogram
+    // on error instead of throwing.
+    return <LogoChip brand={brand} chip={chip} fallback={monogram} />;
+  }
+  return monogram;
+};
+
+const LogoChip: React.FC<{
+  brand: Brand;
+  chip: React.CSSProperties;
+  fallback: React.ReactNode;
+}> = ({ brand, chip, fallback }) => {
+  const [failed, setFailed] = React.useState(false);
+  if (failed) return <>{fallback}</>;
+  return (
+    <span style={chip}>
+      <Img
+        src={brand.logo!}
+        delayRenderTimeoutInMilliseconds={60000}
+        delayRenderRetries={3}
+        onError={() => setFailed(true)}
+        style={{ width: '70%', height: '70%', objectFit: 'contain', display: 'block' }}
+      />
     </span>
   );
 };
