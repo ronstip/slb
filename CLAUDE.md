@@ -21,6 +21,10 @@ Available: `diagnose`, `grill-with-docs`, `improve-codebase-architecture`, `prot
 
 To update: `npx skills@latest update mattpocock/skills`.
 
+**Project-local skills** (not from mattpocock, committed under `.claude/skills/`):
+
+- `slb-analyst` - operate the platform as an analyst: build/configure monitoring agents, design enrichment fields on the axis model, ground keywords with web search, run small enrichment side-tests, A/B variants, and apply changes safely through the service layer. Invoke when creating/refining an agent or its enrichment.
+
 ## Key rules
 
 - Never commit `.env`, credentials, or `*-key.json` files.

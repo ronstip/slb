@@ -123,4 +123,28 @@ export const CHECKPOINTS: Checkpoint[] = [
       { name: "McDonald's", mono: 'M', logo: LOGO('mcdonalds.com'), color: '#FFBC0D', fg: '#DA291C', sov: 3.4, move: 'up' },
     ],
   },
+  {
+    key: 'day12',
+    matchday: 'Days 1–12',
+    dateLabel: 'Mon 22 Jun 2026',
+    scope: { event: 'Opening twelve days', segment: 'All brands' },
+    totalMentions: '+3B',
+    unit: 'views',
+    moverNote:
+      "Betano is the breakout — 153.4K avg views per post on 4.1% share, the most efficient on the board. Hisense & McDonald's also punch above their footprint.",
+    brands: [
+      { name: 'adidas', icon: 'adidas', mono: 'a', color: '#0A0A0A', fg: '#FFFFFF', sov: 23.0, move: 'same' },
+      { name: 'Nike', icon: 'nike', mono: 'N', color: '#111111', fg: '#FFFFFF', sov: 18.0, move: 'same' },
+      { name: 'Visa', icon: 'visa', mono: 'V', color: '#1A1F71', fg: '#FFFFFF', sov: 9.6, move: 'same' },
+      { name: 'Coca-Cola', icon: 'cocacola', mono: 'C', color: '#E61A27', fg: '#FFFFFF', sov: 7.4, move: 'same' },
+      { name: 'Puma', icon: 'puma', mono: 'P', color: '#1B1B1B', fg: '#FFFFFF', sov: 7.1, move: 'up' },
+      { name: 'Hisense', mono: 'H', logo: LOGO('hisense.com'), color: '#006837', fg: '#FFFFFF', sov: 6.8, move: 'down', viral: true },
+      { name: 'Lenovo', mono: 'L', logo: LOGO('lenovo.com'), color: '#E2231A', fg: '#FFFFFF', sov: 6.1, move: 'up' },
+      { name: "McDonald's", mono: 'M', logo: LOGO('mcdonalds.com'), color: '#FFBC0D', fg: '#DA291C', sov: 5.1, move: 'up' },
+      { name: 'Aramco', mono: 'A', logo: LOGO('aramco.com'), color: '#00843D', fg: '#FFFFFF', sov: 5.0, move: 'down' },
+      { name: 'Verizon', mono: 'V', logo: LOGO('verizon.com'), color: '#000000', fg: '#FFFFFF', sov: 4.4, move: 'down' },
+      { name: 'Betano', mono: 'B', logo: LOGO('betano.com'), color: '#00A94F', fg: '#FFFFFF', sov: 4.1, move: 'new', viral: true },
+      { name: 'Qatar Airways', icon: 'qatarairways', mono: 'Q', color: '#5C0632', fg: '#FFFFFF', sov: 4.0, move: 'down' },
+    ],
+  },
 ];

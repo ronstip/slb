@@ -50,6 +50,20 @@ def _chunk_resp(media: list[dict], next_max_id) -> list:
     return [[{"media": m} for m in media], next_max_id]
 
 
+def _topsearch_resp(media: list[dict], next_max_id, has_more: bool) -> dict:
+    # /v2/fbsearch/topsearch envelope: media nested under media_grid.sections;
+    # _extract_media walks the tree. Pagination via media_grid.next_max_id.
+    return {
+        "rank_token": "rt",
+        "media_grid": {
+            "sections": [{"layout_content": {"medias": [{"media": m} for m in media]}}],
+            "next_max_id": next_max_id,
+            "has_more": has_more,
+        },
+        "status": "ok",
+    }
+
+
 class _FakeClient:
     """Returns canned pages per endpoint; records each call as
     (endpoint, term, cursor)."""
@@ -57,12 +71,12 @@ class _FakeClient:
     def __init__(
         self,
         reels: dict[str, list[dict]] | None = None,
-        top: dict[str, list[list]] | None = None,
+        topsearch: dict[str, list[dict]] | None = None,
         recent: dict[str, list[list]] | None = None,
         clips: dict[str, list[list]] | None = None,
     ):
         self._reels = reels or {}
-        self._top = top or {}
+        self._topsearch = topsearch or {}
         self._recent = recent or {}
         self._clips = clips or {}
         self.calls: list[tuple[str, str, object]] = []
@@ -75,12 +89,14 @@ class _FakeClient:
             return _reels_resp([], None, False)
         return pages[idx]
 
-    def hashtag_medias_top_chunk_v1(self, name, max_id=None):
-        self.calls.append(("top", name, max_id))
-        pages = self._top.get(name, [])
-        idx = 0 if max_id is None else int(max_id)
+    def fbsearch_topsearch_v2(self, query, next_max_id=None):
+        # Top-posts surface takes the RAW keyword (free-text). Recorded with the
+        # query verbatim so tests can assert no hashtagizing happens here.
+        self.calls.append(("topsearch", query, next_max_id))
+        pages = self._topsearch.get(query, [])
+        idx = 0 if next_max_id is None else int(next_max_id)
         if idx >= len(pages):
-            return _chunk_resp([], None)
+            return _topsearch_resp([], None, False)
         return pages[idx]
 
     def hashtag_medias_clips_chunk_v1(self, name, max_id=None):
@@ -176,33 +192,42 @@ def test_collect_respects_max_pages_cap():
 
 
 def test_collect_paginates_until_requested_count_reached():
-    # Each page yields 1 new unique reel, always has_more=True. With a target of
-    # 4 (max_posts_per_keyword) the adapter should page exactly 4 times and stop
-    # early - NOT run to the page ceiling, and NOT fall through to hashtags.
+    # Each reels page yields 1 new unique reel, always has_more=True. With a
+    # target of 4 the reels SERP is now capped at its 20% slice (1 post), then
+    # the adapter probes the (empty) topsearch/recent/clips surfaces - that is
+    # the budget split: reels no longer eats the whole target. With the weighted
+    # surfaces dry below target, the uncapped backfill sweep resumes reels and
+    # pages it the rest of the way to 4. It still stops as soon as 4 are reached.
     pages = {"x": [_reels_resp([_media(f"pk{i}", f"C{i}")], str(i + 1), True) for i in range(10)]}
     fake = _FakeClient(reels=pages)
     adapter = _build_adapter(fake, max_pages=15)
     with patch("api.services.cost_meter.log_cost") as mock_log:
         batches = adapter.collect({
-            "platforms": ["instagram"], "keywords": ["x"], "max_posts_per_keyword": 4,
+            "platforms": ["instagram"], "keywords": ["x"],
+            "max_posts_per_keyword": 4, "n_posts": 4,
         })
     posts = _posts(batches)
     assert len(posts) == 4
-    assert len(fake.calls) == 4  # stopped as soon as the target was met
-    assert mock_log.call_args.kwargs["units"] == 4
+    # reels: 1 slice page + 3 backfill pages = 4; one empty probe each on
+    # topsearch / recent / clips = 3. No page ceiling run (stopped at target).
+    assert len([c for c in fake.calls if c[0] == "reels"]) == 4
+    assert len([c for c in fake.calls if c[0] == "topsearch"]) == 1
+    assert len([c for c in fake.calls if c[0] == "recent"]) == 1
+    assert len([c for c in fake.calls if c[0] == "clips"]) == 1
+    assert mock_log.call_args.kwargs["units"] == len(fake.calls) == 7
 
 
-def test_reels_saturation_falls_through_to_hashtag_backfill():
+def test_reels_saturation_falls_through_to_topsearch_backfill():
     # The reels SERP repeats the same pk forever (the real broken-pagination
     # behaviour: cursor never advances). With a target of 5 the adapter must
     # stop burning SERP pages after the saturation streak and backfill the
-    # remaining 4 from the hashtag top chunk.
+    # remaining 4 from the free-text topsearch surface.
     reels = {"nike": [_reels_resp([_media("pk1", "C1")], str(i + 1), True) for i in range(20)]}
-    top = {"nike": [
-        _chunk_resp([_media("pk1", "dup"), _media("t1", "T1"), _media("t2", "T2")], "1"),
-        _chunk_resp([_media("t3", "T3"), _media("t4", "T4"), _media("t5", "T5")], None),
+    topsearch = {"nike": [
+        _topsearch_resp([_media("pk1", "dup"), _media("t1", "T1"), _media("t2", "T2")], "1", True),
+        _topsearch_resp([_media("t3", "T3"), _media("t4", "T4"), _media("t5", "T5")], None, False),
     ]}
-    fake = _FakeClient(reels=reels, top=top)
+    fake = _FakeClient(reels=reels, topsearch=topsearch)
     adapter = _build_adapter(fake, max_pages=15)
     with patch("api.services.cost_meter.log_cost") as mock_log:
         batches = adapter.collect({
@@ -213,28 +238,56 @@ def test_reels_saturation_falls_through_to_hashtag_backfill():
     assert len(posts) == 5
     assert {p.post_id for p in posts} == {"pk1", "t1", "t2", "t3", "t4"}
     assert all(p.search_keyword == "nike" for p in posts)
-    # reels: page0 adds pk1, pages 1-2 add nothing -> saturation; then top chunk.
+    # reels: page0 adds pk1, pages 1-2 add nothing -> saturation; then topsearch.
     reels_calls = [c for c in fake.calls if c[0] == "reels"]
-    top_calls = [c for c in fake.calls if c[0] == "top"]
+    topsearch_calls = [c for c in fake.calls if c[0] == "topsearch"]
     assert len(reels_calls) == 3
-    assert len(top_calls) == 2
+    assert len(topsearch_calls) == 2
     # cost = ALL requests across phases
     assert mock_log.call_args.kwargs["units"] == len(fake.calls)
 
 
-def test_keyword_is_hashtagized_for_chunk_phases():
-    # "rip the script" -> hashtag "ripthescript" (spaces/punctuation stripped).
+def test_budget_split_distributes_20_50_30_across_surfaces():
+    # The core distribution requirement: when every surface has plenty, the
+    # per-keyword target is split reels 20% / topsearch 50% / recent 30% (clips
+    # is backfill-only). With target 10 that is 2 / 5 / 3. Each surface tags its
+    # media with a distinct pk prefix so we can count contributions.
+    reels = {"x": [_reels_resp([_media(f"r{i}", f"R{i}") for i in range(5)], None, False)]}
+    topsearch = {"x": [_topsearch_resp([_media(f"t{i}", f"T{i}") for i in range(10)], None, False)]}
+    recent = {"x": [_chunk_resp([_media(f"h{i}", f"H{i}") for i in range(10)], None)]}
+    fake = _FakeClient(reels=reels, topsearch=topsearch, recent=recent)
+    adapter = _build_adapter(fake, max_pages=15)
+    with patch("api.services.cost_meter.log_cost"):
+        batches = adapter.collect({
+            "platforms": ["instagram"], "keywords": ["x"],
+            "max_posts_per_keyword": 10, "n_posts": 10,
+        })
+    ids = {p.post_id for p in _posts(batches)}
+    assert len(ids) == 10
+    assert sum(i.startswith("r") for i in ids) == 2   # reels 20%
+    assert sum(i.startswith("t") for i in ids) == 5   # topsearch 50%
+    assert sum(i.startswith("h") for i in ids) == 3   # recent 30%
+
+
+def test_topsearch_uses_raw_keyword_while_hashtag_phases_hashtagize():
+    # "rip the script": the topsearch (top-posts) phase must send the RAW
+    # keyword verbatim (free-text endpoint, spaces intact). The recent/clips
+    # hashtag phases still collapse it to the hashtag "ripthescript".
     reels = {"rip the script": [_reels_resp([_media("pk1", "C1")], None, False)]}
-    top = {"ripthescript": [_chunk_resp([_media("t1", "T1")], None)]}
-    fake = _FakeClient(reels=reels, top=top)
+    topsearch = {"rip the script": [_topsearch_resp([_media("t1", "T1")], None, False)]}
+    recent = {"ripthescript": [_chunk_resp([_media("t2", "T2")], None)]}
+    fake = _FakeClient(reels=reels, topsearch=topsearch, recent=recent)
     adapter = _build_adapter(fake)
     with patch("api.services.cost_meter.log_cost"):
         batches = adapter.collect({
             "platforms": ["instagram"], "keywords": ["rip the script"],
-            "max_posts_per_keyword": 2, "n_posts": 2,
+            "max_posts_per_keyword": 3, "n_posts": 3,
         })
-    assert {p.post_id for p in _posts(batches)} == {"pk1", "t1"}
-    assert ("top", "ripthescript", None) in fake.calls
+    assert {p.post_id for p in _posts(batches)} == {"pk1", "t1", "t2"}
+    # topsearch: RAW keyword (not hashtagized). recent: collapsed hashtag.
+    assert ("topsearch", "rip the script", None) in fake.calls
+    assert ("topsearch", "ripthescript", None) not in fake.calls
+    assert ("recent", "ripthescript", None) in fake.calls
 
 
 def test_global_pooling_backfills_underfilled_keywords():
@@ -356,7 +409,7 @@ def test_collect_returns_what_serp_has_when_below_target():
             "max_posts_per_keyword": 100, "n_posts": 100,
         })
     assert sum(len(b.posts) for b in batches) == 3
-    # reels dry (2 calls) + empty top/recent/clips chunks (1 each).
+    # reels dry (2 calls) + empty topsearch/recent/clips phases (1 each).
     assert len(fake.calls) == 5
 
 
@@ -373,7 +426,7 @@ def test_account_error_raises_when_nothing_collected():
             self.calls.append(("reels", query, reels_max_id))
             return err
 
-        def hashtag_medias_top_chunk_v1(self, name, max_id=None):
+        def fbsearch_topsearch_v2(self, query, next_max_id=None):
             return err
 
         def hashtag_medias_top_recent_chunk_v1(self, name, max_id=None):
@@ -409,7 +462,7 @@ def test_account_error_midrun_returns_partial():
                 return _reels_resp([_media("pk1", "C1")], "1", True)
             return err
 
-        def hashtag_medias_top_chunk_v1(self, name, max_id=None):
+        def fbsearch_topsearch_v2(self, query, next_max_id=None):
             return err
 
         def hashtag_medias_top_recent_chunk_v1(self, name, max_id=None):
@@ -475,8 +528,31 @@ def test_fetch_engagements_is_noop():
     assert adapter.fetch_engagements(["https://www.instagram.com/p/C1/"]) == []
 
 
-def test_collect_applies_per_keyword_cap_by_engagement():
-    # No n_posts (legacy direct config): per-keyword cap still trims by engagement.
+def test_global_trim_by_engagement_across_surfaces():
+    # n_posts trim is by engagement across everything collected. reels serves a
+    # full page of 5 (likes 0..400); with n_posts=2 the two most-engaging win.
+    # (The per-keyword budget split governs how much each SURFACE contributes;
+    # the final n_posts trim still ranks the pooled result by engagement.)
+    media = [_media(f"pk{i}", f"C{i}", likes=i * 100) for i in range(5)]
+    pages = {"x": [_reels_resp(media, None, False)]}
+    adapter = _build_adapter(_FakeClient(reels=pages))
+    with patch("api.services.cost_meter.log_cost"):
+        batches = adapter.collect({
+            "platforms": ["instagram"], "keywords": ["x"],
+            "max_posts_per_keyword": 5, "n_posts": 2,
+        })
+    posts = _posts(batches)
+    assert len(posts) == 2
+    # Highest-engagement kept (pk4=400, pk3=300 likes).
+    assert {p.post_id for p in posts} == {"pk4", "pk3"}
+
+
+def test_per_keyword_cap_fills_slice_then_backfills_in_order():
+    # Legacy cap-only path (no n_posts): the budget split caps reels at its 20%
+    # slice (1 of 2), then - with no other surface producing - the uncapped
+    # backfill sweep fills the remaining 1 from reels in API/collection order.
+    # Exactly `cap` posts are collected, so no engagement re-rank happens here
+    # (that applies on overshoot, via the n_posts global trim - see above).
     media = [_media(f"pk{i}", f"C{i}", likes=i * 100) for i in range(5)]
     pages = {"x": [_reels_resp(media, None, False)]}
     adapter = _build_adapter(_FakeClient(reels=pages))
@@ -484,5 +560,4 @@ def test_collect_applies_per_keyword_cap_by_engagement():
         batches = adapter.collect({"platforms": ["instagram"], "keywords": ["x"], "max_posts_per_keyword": 2})
     posts = _posts(batches)
     assert len(posts) == 2
-    # Highest-engagement kept (pk4=400, pk3=300 likes).
-    assert {p.post_id for p in posts} == {"pk4", "pk3"}
+    assert {p.post_id for p in posts} == {"pk0", "pk1"}
