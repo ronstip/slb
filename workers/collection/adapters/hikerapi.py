@@ -12,12 +12,27 @@ many pages are requested. The v1 hashtag chunk endpoints, by contrast,
 paginate properly (~150+ new media per page, verified in
 logs/runs/pilot_hiker_hashtag-top_*.json).
 
-So collection per keyword runs in PHASES, falling through while the target is
-unmet:
-  1. `fbsearch_reels_v2`        - viral keyword SERP (best content, low yield)
-  2. `hashtag_medias_top_chunk_v1`   - top posts for #keyword (real pagination)
-  3. `hashtag_medias_top_recent_chunk_v1` - recent posts for #keyword
-  4. `hashtag_medias_clips_chunk_v1` - reels for #keyword (real pagination)
+So collection per keyword runs in PHASES, each with a BUDGET SLICE of the
+per-keyword target (see `_KeywordStream._PHASE_BUDGET`):
+  1. `fbsearch_reels_v2`        - viral keyword SERP (best content, low yield) - 20%
+  2. `fbsearch_topsearch_v2`    - top posts for the RAW keyword (free-text
+       universal search; accepts spaces/phrases - NO hashtagizing) - 50%
+  3. `hashtag_medias_top_recent_chunk_v1` - recent posts for #keyword - 30%
+  4. `hashtag_medias_clips_chunk_v1` - reels for #keyword - backfill only
+
+Each phase hands off once it fills its slice, so reels (which saturates fast on
+old viral content) can't eat the whole budget and starve `hashtag_recent` - the
+only time-ordered surface, and the one that fills a narrow time window. A phase
+that comes up short rolls its deficit to the next; if the weighted surfaces all
+run dry below target, a final UNCAPPED backfill sweep resumes whatever surface
+still has pages (volume beats an exact split when the data isn't there).
+
+Why "top" is free-text but "recent"/"clips" are hashtag-keyed: HikerAPI's
+top-posts surface is `/v2/fbsearch/topsearch`, a universal keyword search that
+takes any query string verbatim (spaces and all). The recent/clips surfaces
+only exist as `/v1/hashtag/medias/...` endpoints, which are keyed by a hashtag
+`name` (no spaces possible) - so those two still collapse the keyword to a
+hashtag via `_hashtagize`.
 
 And collection across keywords POOLS to the run's total `n_posts` budget:
 after the per-keyword round, underfilled budget is redistributed to keywords
@@ -147,7 +162,23 @@ class _KeywordStream:
     underfill. ``pull()`` is only ever called by one thread at a time.
     """
 
-    _PHASES = ("reels_serp", "hashtag_top", "hashtag_recent", "hashtag_clips")
+    _PHASES = ("reels_serp", "topsearch", "hashtag_recent", "hashtag_clips")
+
+    # How the per-keyword target is split across the first three surfaces, as a
+    # CUMULATIVE fraction of `self.target` (reels 20% -> topsearch +50% -> recent
+    # +30% = 100%). A phase stops contributing once the stream reaches its
+    # cumulative ceiling, so each surface gets a guaranteed slice instead of
+    # reels (which saturates fast on old viral content) eating the whole budget
+    # and starving `hashtag_recent` - the only time-ordered surface. Deficits
+    # roll forward automatically: a phase that comes up short leaves a higher
+    # remaining share for the next phase. `hashtag_clips` carries the full
+    # target so it can backfill any residual gap.
+    _PHASE_BUDGET = {
+        "reels_serp": 0.20,
+        "topsearch": 0.70,
+        "hashtag_recent": 1.0,
+        "hashtag_clips": 1.0,
+    }
 
     def __init__(self, adapter: "HikerAPIAdapter", keyword: str):
         self._adapter = adapter
@@ -171,6 +202,20 @@ class _KeywordStream:
         self._empty_streak = 0
         self._pages_used = 0
         self._phase_funnel = {"pages": 0, "raw": 0, "new": 0}
+        # Per-phase resume state for the budget split (see _PHASE_BUDGET):
+        # `_phase_cursor` remembers where a phase left off when it handed off
+        # after filling its slice (so a later uncapped backfill sweep can pick
+        # it back up); `_phase_saturated` marks surfaces that ran dry/errored so
+        # the backfill sweep skips them. `_budget_mode` is dropped for the
+        # backfill sweep so a remaining-rich surface can exceed its slice when
+        # the weighted surfaces couldn't fill the target. `_phase_buffer` holds
+        # PAID media that a phase already fetched but couldn't append because it
+        # hit its budget slice mid-page - stashed (not discarded) so the backfill
+        # sweep / a raised-target re-pull can drain it with no extra request.
+        self._phase_cursor: list = [None] * len(self._PHASES)
+        self._phase_saturated: list[bool] = [False] * len(self._PHASES)
+        self._phase_buffer: list[list] = [[] for _ in self._PHASES]
+        self._budget_mode = True
 
     # -- phase plumbing -------------------------------------------------
 
@@ -189,9 +234,22 @@ class _KeywordStream:
             # The SERP re-serves the same cursor forever; treat a non-advancing
             # cursor as "may continue" and let the saturation streak stop us.
             return media, cursor, bool(resp.get("has_more") and cursor)
-        if phase == "hashtag_top":
-            resp = client.hashtag_medias_top_chunk_v1(self._hashtag, max_id=self._cursor)
-        elif phase == "hashtag_recent":
+        if phase == "topsearch":
+            # Top posts via IG's universal keyword search. Send the RAW keyword
+            # verbatim - this endpoint takes any query string (spaces/phrases),
+            # so there is NO hashtagizing here (that would mangle multi-word and
+            # non-Latin keywords). Media live under `media_grid`; it paginates
+            # via `media_grid.next_max_id`.
+            resp = client.fbsearch_topsearch_v2(self.keyword, next_max_id=self._cursor)
+            _raise_on_account_error(resp)
+            if not isinstance(resp, dict):
+                return [], None, False
+            media = []
+            _extract_media(resp, media)
+            grid = resp.get("media_grid") or {}
+            cursor = grid.get("next_max_id")
+            return media, cursor, bool(grid.get("has_more") and cursor)
+        if phase == "hashtag_recent":
             resp = client.hashtag_medias_top_recent_chunk_v1(self._hashtag, max_id=self._cursor)
         else:
             resp = client.hashtag_medias_clips_chunk_v1(self._hashtag, max_id=self._cursor)
@@ -207,7 +265,13 @@ class _KeywordStream:
             next_cursor = resp.get("next_max_id") or resp.get("max_id")
         return media, next_cursor, bool(media and next_cursor)
 
-    def _advance_phase(self) -> None:
+    def _advance_phase(self, *, resumable: bool = False, resume_cursor=None) -> None:
+        """Hand off the current phase. Pass ``resumable=True`` when the phase
+        only stopped because it filled its budget slice and can still produce -
+        either it has more pages (pass ``resume_cursor``) or it left PAID media
+        in ``_phase_buffer``. The surface is then remembered so a later uncapped
+        backfill sweep can resume it. ``resumable=False`` marks the surface
+        saturated (dry / errored / no more pages) and it won't be revisited."""
         f = self._phase_funnel
         if f["pages"]:
             logger.info(
@@ -215,15 +279,51 @@ class _KeywordStream:
                 self.keyword, self._PHASES[self._phase_idx],
                 f["pages"], f["raw"], f["new"], len(self.posts),
             )
+        idx = self._phase_idx
+        self._phase_cursor[idx] = resume_cursor
+        if not resumable:
+            self._phase_saturated[idx] = True
         self._phase_funnel = {"pages": 0, "raw": 0, "new": 0}
-        self._phase_idx += 1
-        self._cursor = None
-        self._empty_streak = 0
-        if self._phase_idx >= len(self._PHASES):
-            self.exhausted = True
-        # Skip hashtag phases when the keyword reduces to an empty hashtag.
-        elif self._PHASES[self._phase_idx].startswith("hashtag") and not self._hashtag:
-            self._advance_phase()
+        self._select_next_phase()
+
+    def _select_next_phase(self) -> None:
+        """Move to the next phase that can still produce. At the end of a
+        budget sweep that left the target unmet, drop the per-phase caps and
+        re-open any non-saturated surface so it can backfill the remainder."""
+        while True:
+            self._phase_idx += 1
+            if self._phase_idx >= len(self._PHASES):
+                if (
+                    self._budget_mode
+                    and len(self.posts) < self.target
+                    and any(not s for s in self._phase_saturated)
+                ):
+                    # Weighted surfaces ran dry below target -> uncapped backfill.
+                    self._budget_mode = False
+                    self._phase_idx = -1
+                    continue
+                self.exhausted = True
+                return
+            if self._phase_saturated[self._phase_idx]:
+                continue
+            # Skip hashtag phases when the keyword reduces to an empty hashtag.
+            if self._PHASES[self._phase_idx].startswith("hashtag") and not self._hashtag:
+                self._phase_saturated[self._phase_idx] = True
+                continue
+            self._cursor = self._phase_cursor[self._phase_idx]
+            self._empty_streak = 0
+            return
+
+    def _phase_ceiling(self) -> int:
+        """Cumulative post count at which the current phase hands off to the
+        next (see ``_PHASE_BUDGET``). Capped at ``self.target`` so the final
+        phase can fill the remainder. During the uncapped backfill sweep
+        (``_budget_mode`` off) there is no per-phase cap. Only meaningful when
+        ``self.target`` is set; the caller guards on that."""
+        if not self._budget_mode:
+            return self.target
+        frac = self._PHASE_BUDGET.get(self._PHASES[self._phase_idx], 1.0)
+        return min(self.target, max(1, round(self.target * frac)))
 
     # -- main loop -------------------------------------------------------
 
@@ -252,30 +352,50 @@ class _KeywordStream:
             # for an unmet target and shouldn't run on an unbounded request.
             if not self.target and self._phase_idx > 0:
                 break
-            try:
-                media, next_cursor, has_more = self._fetch_page()
-            except HikerAPIAccountError as e:
-                # Account-level: every endpoint/keyword will fail the same way.
-                logger.error("HikerAPI account error for '%s': %s", self.keyword, e)
-                self._adapter._account_error = str(e)
-                self.exhausted = True
-                break
-            except Exception:  # noqa: BLE001
-                logger.exception(
-                    "HikerAPI %s page failed for '%s'",
-                    self._PHASES[self._phase_idx], self.keyword,
-                )
-                self._advance_phase()
-                continue
-            self._pages_used += 1
-            with self._adapter._stats_lock:
-                self._adapter._requests_made += 1
+
+            # Drain any PAID leftover this phase stashed when it filled its slice
+            # mid-page, before spending another request - those media were
+            # already fetched, counted in the funnel, and billed once.
+            buffered = self._phase_buffer[self._phase_idx]
+            if buffered:
+                self._phase_buffer[self._phase_idx] = []
+                media = buffered
+                next_cursor = self._phase_cursor[self._phase_idx]
+                has_more = next_cursor is not None
+            else:
+                try:
+                    media, next_cursor, has_more = self._fetch_page()
+                except HikerAPIAccountError as e:
+                    # Account-level: every endpoint/keyword fails the same way.
+                    logger.error("HikerAPI account error for '%s': %s", self.keyword, e)
+                    self._adapter._account_error = str(e)
+                    self.exhausted = True
+                    break
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "HikerAPI %s page failed for '%s'",
+                        self._PHASES[self._phase_idx], self.keyword,
+                    )
+                    self._advance_phase()
+                    continue
+                self._pages_used += 1
+                with self._adapter._stats_lock:
+                    self._adapter._requests_made += 1
+                self.raw_media += len(media)
+                self._phase_funnel["pages"] += 1
+                self._phase_funnel["raw"] += len(media)
 
             new_unique = 0
-            self.raw_media += len(media)
-            self._phase_funnel["pages"] += 1
-            self._phase_funnel["raw"] += len(media)
-            for item in media:
+            # Per-phase budget: a phase contributes only up to its cumulative
+            # slice of the target (reels 20% / topsearch 70% / recent 100%; see
+            # _PHASE_BUDGET). Items past the slice are PAID, so they are stashed
+            # in _phase_buffer (not discarded) for a later uncapped backfill
+            # sweep. The slice caps are off during that sweep (_budget_mode).
+            phase_ceiling = self._phase_ceiling() if self.target else None
+            for i, item in enumerate(media):
+                if phase_ceiling is not None and len(self.posts) >= phase_ceiling:
+                    self._phase_buffer[self._phase_idx] = list(media[i:])
+                    break
                 try:
                     post = parse_hikerapi_instagram_post(item)
                 except Exception:  # noqa: BLE001 - one bad item must not kill the keyword
@@ -299,13 +419,34 @@ class _KeywordStream:
                 except Exception:  # noqa: BLE001
                     logger.debug("HikerAPI channel parse skipped", exc_info=True)
 
-            # Saturation accounting: consecutive pages with zero new unique pks
-            # mean the surface is looping (reels SERP) or dry -> next phase.
             self._empty_streak = self._empty_streak + 1 if new_unique == 0 else 0
+            phase_filled = phase_ceiling is not None and len(self.posts) >= phase_ceiling
+
+            # Target met: stop WITHOUT advancing/exhausting so global pooling can
+            # re-pull this stream (with a raised target) from exactly here - the
+            # phase keeps its cursor and any stashed leftover.
+            if self.target and len(self.posts) >= self.target:
+                self._cursor = next_cursor
+                self._phase_cursor[self._phase_idx] = next_cursor
+                break
+
+            if phase_filled:
+                # Slice full but target unmet -> hand off. The phase can still
+                # produce (more pages and/or stashed leftover), so keep it
+                # resumable for the uncapped backfill sweep.
+                has_leftover = bool(self._phase_buffer[self._phase_idx])
+                self._advance_phase(
+                    resumable=has_more or has_leftover,
+                    resume_cursor=next_cursor if has_more else None,
+                )
+                continue
+            # Saturated (consecutive pages with zero new unique pks -> looping /
+            # dry) or nothing more to page -> next surface.
             if self._empty_streak >= _SATURATION_PAGES or not has_more:
                 self._advance_phase()
                 continue
             self._cursor = next_cursor
+            self._phase_cursor[self._phase_idx] = next_cursor
 
         if self._pages_used >= page_ceiling:
             self.exhausted = True
