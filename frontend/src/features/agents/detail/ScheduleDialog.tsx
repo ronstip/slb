@@ -43,7 +43,8 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
 
   const isScheduled = !!task.schedule;
   const [editPreset, setEditPreset] = useState<SchedulePreset>('daily');
-  const [editTime, setEditTime] = useState('09:00');
+  // Slot times in local "HH:MM". Daily/weekly use [0]; twice-daily uses [0],[1].
+  const [editTimes, setEditTimes] = useState<string[]>(['09:00', '21:00']);
   const [editRunNow, setEditRunNow] = useState(!isScheduled);
 
   // Re-seed the form from the agent each time the dialog opens, so it always
@@ -52,13 +53,20 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
     if (!open) return;
     const init = task.schedule
       ? parseToPreset(task.schedule.frequency)
-      : { preset: 'daily' as SchedulePreset, time: '09:00' };
+      : { preset: 'daily' as SchedulePreset, times: ['09:00'] };
     setEditPreset(init.preset);
-    setEditTime(init.time);
+    // Keep a second default slot around so toggling to twice-daily has one.
+    setEditTimes([init.times[0] ?? '09:00', init.times[1] ?? '21:00']);
     setEditRunNow(!task.schedule);
   }, [open, task.schedule]);
 
-  const nextFrequency = buildScheduleFromPreset(editPreset, editTime);
+  const setSlot = (i: number, value: string) =>
+    setEditTimes((prev) => prev.map((t, idx) => (idx === i ? value : t)));
+
+  const nextFrequency = buildScheduleFromPreset(
+    editPreset,
+    editPreset === 'twice-daily' ? editTimes.slice(0, 2) : editTimes[0],
+  );
   // Preview the next run if saved now — mirrors the backend's computation.
   const previewNext = formatNextRun(computeNextRunAt(nextFrequency));
   const currentNext = !task.paused ? formatNextRun(task.next_run_at) : null;
@@ -138,6 +146,7 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
                 <SelectContent>
                   <SelectItem value="hourly">Hourly</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="twice-daily">Twice a day</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
                 </SelectContent>
               </Select>
@@ -147,34 +156,27 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
               <p className="text-[11px] text-muted-foreground">
                 Runs at the top of every hour.
               </p>
+            ) : editPreset === 'twice-daily' ? (
+              <div className="space-y-3">
+                <p className="text-[11px] text-muted-foreground">
+                  Runs at two times every day{getLocalTzAbbrev() ? ` (your local time - ${getLocalTzAbbrev()})` : ''}.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <TimeSlot label="First run" value={editTimes[0]} onChange={(v) => setSlot(0, v)} />
+                  <TimeSlot label="Second run" value={editTimes[1]} onChange={(v) => setSlot(1, v)} />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Stored as {localTimeToUtc(editTimes[0])} &amp; {localTimeToUtc(editTimes[1])} UTC
+                </p>
+              </div>
             ) : (
               <div className="space-y-1">
                 <label className="text-xs font-medium">
                   Run at <span className="text-muted-foreground font-normal">(your local time{getLocalTzAbbrev() ? ` - ${getLocalTzAbbrev()}` : ''})</span>
                 </label>
-                <Select value={editTime} onValueChange={setEditTime}>
-                  <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {(() => {
-                      const presetValues: string[] = SCHEDULE_LOCAL_TIMES.map((t) => t.value);
-                      const showCustom = !presetValues.includes(editTime);
-                      return (
-                        <>
-                          {showCustom && (
-                            <SelectItem value={editTime}>
-                              {formatTime12(editTime)} (current)
-                            </SelectItem>
-                          )}
-                          {SCHEDULE_LOCAL_TIMES.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                          ))}
-                        </>
-                      );
-                    })()}
-                  </SelectContent>
-                </Select>
+                <TimeSlot value={editTimes[0]} onChange={(v) => setSlot(0, v)} />
                 <p className="text-[11px] text-muted-foreground">
-                  Stored as {localTimeToUtc(editTime)} UTC
+                  Stored as {localTimeToUtc(editTimes[0])} UTC
                 </p>
               </div>
             )}
@@ -205,5 +207,36 @@ export function ScheduleDialog({ task, open, onOpenChange }: ScheduleDialogProps
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** A single local-time picker over the preset times, preserving any custom value
+ *  already stored on the schedule. */
+function TimeSlot({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label?: string;
+}) {
+  const presetValues: string[] = SCHEDULE_LOCAL_TIMES.map((t) => t.value);
+  const showCustom = !presetValues.includes(value);
+  return (
+    <div className="space-y-1">
+      {label && <label className="text-xs font-medium">{label}</label>}
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {showCustom && (
+            <SelectItem value={value}>{formatTime12(value)} (current)</SelectItem>
+          )}
+          {SCHEDULE_LOCAL_TIMES.map((t) => (
+            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

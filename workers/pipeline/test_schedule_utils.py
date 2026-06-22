@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from workers.pipeline.schedule_utils import (
     compute_next_run_at,
     is_recurring_agent_due,
+    is_valid_schedule,
     parse_schedule,
 )
 
@@ -46,6 +47,42 @@ def test_compute_next_run_hourly_on_the_hour_rolls_forward():
 def test_compute_next_run_multi_hour_aligns():
     at = datetime(2026, 6, 21, 14, 42, 0, tzinfo=timezone.utc)
     assert compute_next_run_at("2h", at) == datetime(2026, 6, 21, 16, 0, 0, tzinfo=timezone.utc)
+
+
+# --- twice-a-day: multi-time daily schedule "Nd@HH:MM,HH:MM" ---
+
+
+def test_parse_twice_daily_returns_first_time_for_back_compat():
+    # parse_schedule keeps its single-time tuple shape; the first listed time.
+    assert parse_schedule("1d@09:00,21:00") == ("d", 1, 9, 0)
+
+
+def test_valid_schedule_accepts_twice_daily():
+    assert is_valid_schedule("1d@09:00,21:00") is True
+
+
+def test_compute_next_run_twice_daily_picks_later_slot_today():
+    # 12:00 now, slots 09:00/21:00 -> today's 21:00 is the soonest future run.
+    at = datetime(2026, 6, 21, 12, 0, 0, tzinfo=timezone.utc)
+    assert compute_next_run_at("1d@09:00,21:00", at) == datetime(
+        2026, 6, 21, 21, 0, 0, tzinfo=timezone.utc
+    )
+
+
+def test_compute_next_run_twice_daily_wraps_to_tomorrow_first_slot():
+    # 22:00 now, both slots passed today -> tomorrow's 09:00.
+    at = datetime(2026, 6, 21, 22, 0, 0, tzinfo=timezone.utc)
+    assert compute_next_run_at("1d@09:00,21:00", at) == datetime(
+        2026, 6, 22, 9, 0, 0, tzinfo=timezone.utc
+    )
+
+
+def test_compute_next_run_twice_daily_takes_today_first_slot_when_before_both():
+    # 08:00 now, before both slots -> today's 09:00 (no full-day skip).
+    at = datetime(2026, 6, 21, 8, 0, 0, tzinfo=timezone.utc)
+    assert compute_next_run_at("1d@09:00,21:00", at) == datetime(
+        2026, 6, 21, 9, 0, 0, tzinfo=timezone.utc
+    )
 
 
 # --- due predicate: the schedule mechanism's gate ---

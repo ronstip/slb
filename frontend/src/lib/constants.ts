@@ -141,20 +141,28 @@ export type ScheduleUnit = 'minute' | 'hour' | 'day';
 export interface ParsedSchedule {
   unit: ScheduleUnit;
   interval: number;
-  time: string; // only meaningful for 'day' unit; stored as UTC
+  time: string; // first slot; only meaningful for 'day' unit; stored as UTC
+  times: string[]; // all slots (≥1 for 'day'); UTC "HH:MM", sorted ascending
 }
 
-/** Parse a schedule string → { unit, interval, time }. `time` is UTC "HH:MM". */
+// A day schedule carries one or more UTC clock times: "1d@09:00" (daily) or
+// "1d@09:00,21:00" (twice a day). Mirrors the backend `_DAY_RE`.
+const DAY_RE = /^(\d+)d@(\d{2}:\d{2}(?:,\d{2}:\d{2})*)$/;
+
+/** Parse a schedule string → { unit, interval, time, times }. Times are UTC "HH:MM". */
 export function parseScheduleString(schedule?: string | null): ParsedSchedule {
-  if (!schedule || schedule === 'daily') return { unit: 'day', interval: 1, time: '09:00' };
-  if (schedule === 'weekly') return { unit: 'day', interval: 7, time: '09:00' };
+  if (!schedule || schedule === 'daily') return { unit: 'day', interval: 1, time: '09:00', times: ['09:00'] };
+  if (schedule === 'weekly') return { unit: 'day', interval: 7, time: '09:00', times: ['09:00'] };
   const mm = schedule.match(/^(\d+)m$/);
-  if (mm) return { unit: 'minute', interval: parseInt(mm[1], 10), time: '09:00' };
+  if (mm) return { unit: 'minute', interval: parseInt(mm[1], 10), time: '09:00', times: ['09:00'] };
   const hm = schedule.match(/^(\d+)h$/);
-  if (hm) return { unit: 'hour', interval: parseInt(hm[1], 10), time: '09:00' };
-  const dm = schedule.match(/^(\d+)d@(\d{2}:\d{2})$/);
-  if (dm) return { unit: 'day', interval: parseInt(dm[1], 10), time: dm[2] };
-  return { unit: 'day', interval: 1, time: '09:00' };
+  if (hm) return { unit: 'hour', interval: parseInt(hm[1], 10), time: '09:00', times: ['09:00'] };
+  const dm = schedule.match(DAY_RE);
+  if (dm) {
+    const times = dm[2].split(',').sort();
+    return { unit: 'day', interval: parseInt(dm[1], 10), time: times[0], times };
+  }
+  return { unit: 'day', interval: 1, time: '09:00', times: ['09:00'] };
 }
 
 /** Build a schedule string from parts. `localTime` is local "HH:MM"; storage uses UTC. */
@@ -166,14 +174,19 @@ export function buildScheduleString(unit: ScheduleUnit, interval: number, localT
 
 /** Format a schedule into human-readable text (in the viewer's local time). */
 export function formatSchedule(schedule?: string | null): string {
-  const { unit, interval, time } = parseScheduleString(schedule);
+  const { unit, interval, times } = parseScheduleString(schedule);
   if (unit === 'minute') return `Every ${interval === 1 ? 'minute' : `${interval} minutes`}`;
   if (unit === 'hour') return `Every ${interval === 1 ? 'hour' : `${interval} hours`}`;
-  const local = utcTimeToLocal(time);
   const tz = getLocalTzAbbrev();
   const suffix = tz ? ` ${tz}` : '';
-  if (interval === 7) return `Every week at ${formatTime12(local)}${suffix}`;
-  return `Every ${interval === 1 ? 'day' : `${interval} days`} at ${formatTime12(local)}${suffix}`;
+  const local = times.map((t) => formatTime12(utcTimeToLocal(t)));
+  if (times.length > 1) {
+    // "Twice a day at 9:00 AM and 9:00 PM IDT" (or "at A, B and C" for more).
+    const list = local.length === 2 ? local.join(' and ') : `${local.slice(0, -1).join(', ')} and ${local[local.length - 1]}`;
+    return `${times.length === 2 ? 'Twice a day' : `${times.length}× a day`} at ${list}${suffix}`;
+  }
+  if (interval === 7) return `Every week at ${local[0]}${suffix}`;
+  return `Every ${interval === 1 ? 'day' : `${interval} days`} at ${local[0]}${suffix}`;
 }
 
 /** Compute the next run time for a schedule string, mirroring the backend
@@ -184,23 +197,35 @@ export function formatSchedule(schedule?: string | null): string {
  *  stored UTC time, at least one interval ahead of `from`. */
 export function computeNextRunAt(frequency?: string | null, from: Date = new Date()): Date | null {
   if (!frequency) return null;
-  const { unit, interval, time } = parseScheduleString(frequency);
-  const d = new Date(from);
+  const { unit, interval, times } = parseScheduleString(frequency);
   if (unit === 'minute') {
+    const d = new Date(from);
     d.setMinutes(d.getMinutes() + interval, 0, 0);
     return d;
   }
   if (unit === 'hour') {
+    const d = new Date(from);
     d.setUTCMinutes(0, 0, 0);
     d.setUTCHours(d.getUTCHours() + interval);
     return d;
   }
-  // day / week: `time` is stored UTC "HH:MM"
-  const [hh, mm] = time.split(':').map(Number);
-  d.setUTCHours(hh, mm, 0, 0);
-  d.setUTCDate(d.getUTCDate() + interval);
-  while (d.getTime() <= from.getTime()) d.setUTCDate(d.getUTCDate() + 1);
-  return d;
+  // day / week: each slot is a stored UTC "HH:MM"; take the soonest future one.
+  const multi = times.length > 1;
+  const candidates = times.map((time) => {
+    const [hh, mm] = time.split(':').map(Number);
+    const d = new Date(from);
+    d.setUTCHours(hh, mm, 0, 0);
+    if (multi) {
+      // Twice-a-day: soonest future slot, no forced full-day skip.
+      while (d.getTime() <= from.getTime()) d.setUTCDate(d.getUTCDate() + interval);
+    } else {
+      // Single-time daily/weekly: always at least one interval ahead.
+      d.setUTCDate(d.getUTCDate() + interval);
+      while (d.getTime() <= from.getTime()) d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return d;
+  });
+  return candidates.reduce((a, b) => (a.getTime() <= b.getTime() ? a : b));
 }
 
 /** Human-readable absolute time for a next-run indicator, in the viewer's local
@@ -216,22 +241,26 @@ export function formatNextRun(when?: string | Date | null): string | null {
   return tz ? `${text} ${tz}` : text;
 }
 
-export type SchedulePreset = 'hourly' | 'daily' | 'weekly';
+export type SchedulePreset = 'hourly' | 'daily' | 'twice-daily' | 'weekly';
 
-/** Build a schedule string from a preset frequency. `localTime` is local "HH:MM". */
-export function buildScheduleFromPreset(preset: SchedulePreset, localTime: string): string {
+/** Build a schedule string from a preset. `localTimes` are local "HH:MM" — a
+ *  single value for hourly/daily/weekly, or two for twice-daily. */
+export function buildScheduleFromPreset(preset: SchedulePreset, localTimes: string | string[]): string {
   if (preset === 'hourly') return '1h';
-  const utc = localTimeToUtc(localTime);
-  if (preset === 'daily') return `1d@${utc}`;
-  return `7d@${utc}`; // weekly
+  const list = Array.isArray(localTimes) ? localTimes : [localTimes];
+  const utc = list.map(localTimeToUtc);
+  if (preset === 'twice-daily') return `1d@${[...utc].sort().join(',')}`;
+  if (preset === 'weekly') return `7d@${utc[0]}`;
+  return `1d@${utc[0]}`; // daily
 }
 
-/** Reverse-map a schedule string to a preset + local "HH:MM". */
-export function parseToPreset(schedule?: string | null): { preset: SchedulePreset; time: string } {
+/** Reverse-map a schedule string to a preset + local "HH:MM" slots. */
+export function parseToPreset(schedule?: string | null): { preset: SchedulePreset; times: string[] } {
   const parsed = parseScheduleString(schedule);
   if (parsed.unit === 'hour' || parsed.unit === 'minute')
-    return { preset: 'hourly', time: '09:00' };
-  const local = utcTimeToLocal(parsed.time);
-  if (parsed.interval >= 7) return { preset: 'weekly', time: local };
-  return { preset: 'daily', time: local };
+    return { preset: 'hourly', times: ['09:00'] };
+  const local = parsed.times.map(utcTimeToLocal);
+  if (parsed.times.length > 1) return { preset: 'twice-daily', times: local };
+  if (parsed.interval >= 7) return { preset: 'weekly', times: local };
+  return { preset: 'daily', times: local };
 }
