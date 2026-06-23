@@ -1,0 +1,141 @@
+<!-- X post · "Why fans hate the hydration breaks" · argument frames by VIEWS · 1080×1350 · Scolto house style -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Why fans hate the hydration breaks · World Cup 2026 · Scolto</title>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..600&family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Inter+Tight:wght@400..700&family=JetBrains+Mono:wght@400..600&display=swap" rel="stylesheet" />
+  <script src="./logos.js?v=2"></script>
+  <script type="text/babel" src="./parts.jsx?v=2"></script>
+  <style>
+    html, body { margin: 0; background: #F6F4EF; }
+    #root { display: block; }
+    #card { box-shadow: none !important; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+    function Mount() {
+      const C = window.WC_C, F = window.WC_FONT;
+      const { WCEyebrow: Eyebrow, WCMark: Mark, WCEmblem: Emblem } = window;
+
+      // Argument frames driving the conversation, weighted by VIEWS (reach).
+      // Plain-English labels over the raw enrichment enum. Source: 537 on-topic
+      // posts, 143.7M views (X · TikTok · Instagram, 15–22 Jun 2026).
+      const BARS = [
+        { name: 'Momentum killer',            v: 31.8, lead: true },
+        { name: 'Unnecessary in cool stadiums', v: 22.4 },
+        { name: 'Commercial cash-grab',        v: 21.3 },
+        { name: 'Ruins the fan experience',    v: 9.3 },
+        { name: 'Competitive unfairness',      v: 3.5 },
+        { name: 'Player welfare (the defence)', v: 2.0, pro: true },
+        { name: 'Heat is genuinely severe',    v: 0.035, k: true, pro: true },
+      ];
+      const MAX = 31.8;
+      const fmt = (b) => b.k ? '34.9K' : b.v.toFixed(1) + 'M';
+
+      function Bar({ name, v, lead, pro, k }) {
+        const pct = Math.max((v / MAX) * 100, 1.2);
+        const fill = lead
+          ? `linear-gradient(90deg, ${C.orangeDeep}, ${C.orange})`
+          : pro
+            ? `linear-gradient(90deg, ${C.up}, #4FB58C)`
+            : `linear-gradient(90deg, ${C.ink}, ${C.slate})`;
+        const num = lead ? C.orangeDeep : pro ? C.up : C.ink;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+            <span style={{ width: 320, fontFamily: F.sans, fontWeight: lead ? 700 : 600, fontSize: 22,
+              letterSpacing: '-0.01em', color: lead ? C.ink : (pro ? C.up : C.slate), flexShrink: 0,
+              textAlign: 'right' }}>{name}</span>
+            <div style={{ flex: 1, height: lead ? 38 : 30, background: 'rgba(15,31,77,0.06)', borderRadius: 999, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: pct + '%', background: fill,
+                borderRadius: 999, boxShadow: lead ? '0 4px 16px -6px rgba(217,119,87,0.7)' : 'none' }} />
+            </div>
+            <span style={{ width: 118, textAlign: 'right', flexShrink: 0, fontFamily: F.serif,
+              fontWeight: lead ? 500 : 400, fontSize: lead ? 36 : 28, color: num,
+              letterSpacing: '-0.03em', fontVariantNumeric: 'tabular-nums' }}>{fmt({ v, k })}</span>
+          </div>
+        );
+      }
+
+      function Card() {
+        return (
+          <div id="card" style={{ width: 1080, height: 1350, boxSizing: 'border-box', background: C.cream, position: 'relative',
+            overflow: 'hidden', fontFamily: F.sans, color: C.ink, display: 'flex', flexDirection: 'column',
+            padding: '54px 60px 44px', boxShadow: '0 30px 90px rgba(0,0,0,0.45)' }}>
+
+            {/* house radial glow */}
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(120% 55% at 18% 4%, rgba(217,119,87,0.13) 0%, rgba(217,119,87,0.04) 42%, transparent 72%)', pointerEvents: 'none' }} />
+            {/* WC26 emblem, top-right */}
+            <div style={{ position: 'absolute', top: 34, right: 52, zIndex: 3 }}><Emblem size={148} /></div>
+            {/* faint Scolto watermark, bottom-right */}
+            <div style={{ position: 'absolute', right: -110, bottom: -120, opacity: 0.05, transform: 'rotate(-8deg)' }}>
+              <Mark size={560} stroke={C.ink} dot={C.orange} />
+            </div>
+
+            {/* masthead */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative' }}>
+              <Mark size={38} />
+              <span style={{ fontFamily: F.serif, fontStyle: 'italic', fontWeight: 400, fontSize: 32, letterSpacing: '-0.02em', color: C.ink }}>Scolto</span>
+            </div>
+
+            {/* title band */}
+            <div style={{ marginTop: 34, position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <span style={{ fontFamily: F.mono, fontSize: 15, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase', color: C.ink, whiteSpace: 'nowrap' }}>
+                  World Cup 2026<span style={{ color: C.orange, margin: '0 0.55em', fontWeight: 700 }}>·</span>15–22 Jun
+                </span>
+                <span style={{ flex: 1, height: 1.5, background: C.rule }} />
+              </div>
+              <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: 84, lineHeight: 0.95, letterSpacing: '-0.04em', color: C.ink, marginTop: 18, maxWidth: 860 }}>
+                Why fans hate the<br />hydration breaks
+              </div>
+              <div style={{ fontFamily: F.serif, fontWeight: 300, fontSize: 25, lineHeight: 1.32, color: C.slate, marginTop: 18, maxWidth: 880 }}>
+                We read <span style={{ fontStyle: 'italic', color: C.orangeDeep }}>928 posts</span> across X, TikTok & Instagram. The complaint isn't the water — it's the <span style={{ fontStyle: 'italic', color: C.orangeDeep }}>ad breaks</span> and the broken momentum.
+              </div>
+            </div>
+
+            {/* hero number */}
+            <div style={{ marginTop: 34, display: 'flex', alignItems: 'baseline', gap: 20, position: 'relative' }}>
+              <span style={{ fontFamily: F.serif, fontWeight: 500, fontSize: 116, lineHeight: 0.85, letterSpacing: '-0.04em', color: C.orangeDeep, fontVariantNumeric: 'tabular-nums' }}>66<span style={{ fontSize: 60, color: C.orange }}>%</span></span>
+              <span style={{ fontFamily: F.sans, fontWeight: 600, fontSize: 26, color: C.ink, letterSpacing: '-0.01em', lineHeight: 1.25, maxWidth: 360 }}>
+                opposed — just <span style={{ color: C.orangeDeep, fontWeight: 700 }}>4% in favour.</span><br />
+                <span style={{ fontFamily: F.mono, fontSize: 13, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: C.muted }}>and opposition owns the views, not just the volume</span>
+              </span>
+            </div>
+
+            {/* bars */}
+            <div style={{ marginTop: 38, position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
+                <Eyebrow size={12}>The arguments — by views (reach)</Eyebrow>
+                <div style={{ flex: 1, height: 1, background: C.rule }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
+                {BARS.map(b => <Bar key={b.name} {...b} />)}
+              </div>
+            </div>
+
+            {/* footer */}
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 18, borderTop: `1px solid ${C.rule}`, position: 'relative' }}>
+              <Eyebrow size={11} color={C.muted}>World Cup 2026 · 143.7M views analysed · 7-day window</Eyebrow>
+              <span style={{ fontFamily: F.mono, fontSize: 11.5, color: C.muted, letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
+                Tracked by Scolto · <span style={{ fontWeight: 600, color: C.orangeDeep }}>scolto.com</span>
+              </span>
+            </div>
+          </div>
+        );
+      }
+      ReactDOM.createRoot(document.getElementById('root')).render(<Card />);
+    }
+    if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', Mount);
+    else Mount();
+  </script>
+</body>
+</html>
