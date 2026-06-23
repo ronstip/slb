@@ -192,6 +192,28 @@ async def run_comments_handler(request: Request):
         _reset_cost_context(cost_token)
 
 
+@app.post("/whatsapp/inbound")
+async def run_whatsapp_inbound_handler(request: Request):
+    """Handle a WhatsApp webhook payload enqueued by the API webhook.
+
+    Always returns 200 (worker contract) — the handler's own `wamid` dedup
+    makes a Cloud Tasks retry safe anyway.
+    """
+    body = await request.json()
+    payload = body.get("payload") or {}
+    try:
+        from workers.whatsapp.handler import process_inbound
+
+        result = process_inbound(payload)
+        return result
+    except Exception as e:
+        logger.exception("WhatsApp inbound worker failed")
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("worker", "whatsapp")
+            sentry_sdk.capture_exception(e)
+        return {"status": "error", "error": str(e)}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

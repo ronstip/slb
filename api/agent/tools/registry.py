@@ -34,7 +34,7 @@ from api.agent.tools.list_topics import list_topics
 from api.agent.tools.update_todos import update_todos
 from api.agent.tools.verify_briefing import verify_briefing
 
-AgentMode = Literal["chat", "autonomous", "report_editor"]
+AgentMode = Literal["chat", "autonomous", "report_editor", "concierge"]
 
 
 @dataclass(frozen=True)
@@ -120,6 +120,20 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
         "list_topics",
         "ask_user",
         "update_todos",
+    },
+    # Cross-channel WhatsApp Concierge (spec §6): serves a User across ALL their
+    # Agents. READS + OPERATE freely; deliberately EXCLUDES billing,
+    # destructive-delete, and external-share (publish_dashboard / compose_email /
+    # generate_presentation) — those are not exposed over WhatsApp yet (ADR 0001;
+    # future `sensitive_actions` step-up policy, not built now).
+    "concierge": {
+        "create_chart", "create_markdown", "export_data", "list_topics",
+        "read_dashboard", "create_dashboard_from_template", "update_dashboard",
+        "verify_dashboard", "verify_story",
+        "start_agent", "set_active_agent", "get_agent_status",
+        "ask_user",
+        "update_todos",
+        "compose_briefing",
     },
 }
 

@@ -285,6 +285,17 @@ class Settings(BaseSettings):
     sendgrid_from_email: str = "ronnstip@gmail.com"
     sendgrid_from_name: str = "SLB"
 
+    # WhatsApp channel (spec docs/whatsapp-channel-impl-spec.md §5).
+    # api service needs app_secret + verify_token (webhook); worker service
+    # needs access_token + phone_number_id + business_account_id (outbound).
+    # All five empty = channel disabled. ⚠️ When wiring deploy, add these to
+    # BOTH deploy.yml AND deploy_prod.sh env blocks (env-truncation gotcha).
+    whatsapp_phone_number_id: str = ""
+    whatsapp_business_account_id: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_app_secret: str = ""
+    whatsapp_verify_token: str = ""
+
     # Sentry error tracking (§C.1). Empty DSN = disabled (local dev default).
     # Sample rates default to 0.0 = errors-only, which keeps the Sentry free
     # plan from ever billing; raise them to experiment with tracing/profiling.

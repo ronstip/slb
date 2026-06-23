@@ -70,6 +70,13 @@ def create_agent(
         )
         static_prompt = REPORT_EDITOR_STATIC_PROMPT
         dynamic_template = REPORT_EDITOR_DYNAMIC_PROMPT
+    elif mode == "concierge":
+        from api.agent.prompts.concierge_prompt import (
+            CONCIERGE_DYNAMIC_PROMPT,
+            CONCIERGE_STATIC_PROMPT,
+        )
+        static_prompt = CONCIERGE_STATIC_PROMPT
+        dynamic_template = CONCIERGE_DYNAMIC_PROMPT
     else:
         from api.agent.prompts.autonomous_prompt import (
             AUTONOMOUS_DYNAMIC_PROMPT,
@@ -158,6 +165,12 @@ def create_agent(
         description = (
             "Co-author for the active report - adds, modifies, or removes "
             "widgets on the user's request."
+        )
+    elif mode == "concierge":
+        name = "concierge"
+        description = (
+            "Cross-channel assistant serving the user across all their "
+            "monitoring agents over WhatsApp."
         )
     else:
         name = "executor"
