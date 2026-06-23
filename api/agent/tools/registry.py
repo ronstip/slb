@@ -31,6 +31,7 @@ from api.agent.tools.start_agent import start_agent
 from api.agent.tools.generate_briefing import generate_briefing
 from api.agent.tools.compose_briefing import compose_briefing
 from api.agent.tools.list_topics import list_topics
+from api.agent.tools.manage_alerts import create_alert, list_alerts
 from api.agent.tools.update_todos import update_todos
 from api.agent.tools.verify_briefing import verify_briefing
 
@@ -55,6 +56,9 @@ REGISTRY: dict[str, ToolSpec] = {
         ToolSpec("start_agent", start_agent, "agent", True, "Create and dispatch a new agent - call AFTER user approval"),
         ToolSpec("get_agent_status", get_agent_status, "agent", False, "Read the status of an agent"),
         ToolSpec("set_active_agent", set_active_agent, "agent", True, "Set the active agent for the session"),
+        # Dynamic email alerts - saved dashboard filter that emails on new matching posts
+        ToolSpec("create_alert", create_alert, "agent", True, "Create a dynamic email alert on an agent from a dashboard-style filter - fires when a collection run brings in matching posts"),
+        ToolSpec("list_alerts", list_alerts, "agent", False, "List the alerts configured on an agent"),
         # User interaction
         ToolSpec("ask_user", ask_user, "user", True, "Prompt the user - only when genuinely ambiguous; otherwise pick a default and state it"),
         # Output & visualization
@@ -93,6 +97,8 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
         "read_dashboard", "create_dashboard_from_template", "update_dashboard", "verify_dashboard", "verify_story", "publish_dashboard",
         # Agent management (interactive)
         "start_agent", "set_active_agent", "get_agent_status",
+        # Dynamic email alerts
+        "create_alert", "list_alerts",
         # User interaction
         "ask_user",
         # Planning & output (shared)
