@@ -77,6 +77,29 @@ def test_download_rows_falls_back_to_fresh_iterator_after_arrow_failure():
     assert fake.list_rows_calls == 1
 
 
+def test_download_rows_disables_storage_after_failure():
+    """A Storage-path failure must disable Storage for the whole instance.
+
+    Regression for the recurring-agent stall: the SA lacked
+    `bigquery.readsessions.create`, so `to_arrow` 403'd at create_read_session
+    on EVERY query. The client stayed "live" (cache only flipped to False on
+    constructor failure), so each of a continuation's many queries paid a
+    doomed Storage round-trip + slow REST re-download -> the continuation blew
+    its request deadline -> agent stuck at status=failed -> schedule bricked.
+    After one failure, later queries must skip Storage entirely.
+    """
+    fake = _FakeClient([{"id": 1}])
+    bq = _make_client(fake, object())  # truthy -> Storage attempted
+
+    bq._download_rows(_PoisonedIterator([{"id": 1}]), _FakeJob())
+    assert bq._bqstorage is False  # Storage disabled for the instance
+
+    # Second query: Storage already disabled -> REST directly, no to_arrow.
+    rows = bq._download_rows(_FreshIterator([{"id": 7}]), _FakeJob())
+    assert rows == [{"id": 7}]
+    assert fake.list_rows_calls == 1  # only the first call re-fetched
+
+
 def test_download_rows_uses_rest_directly_when_no_storage_client():
     """No Storage client -> iterate the original iterator, never re-fetch."""
     fake = _FakeClient([{"id": 99}])
