@@ -215,9 +215,19 @@ class BQClient:
                 table = _retry(results.to_arrow, bqstorage_client=bqs)
                 return table.to_pylist()
             except Exception:  # noqa: BLE001 - any Storage failure -> REST
+                # Disable Storage for this instance. The 403 fires at
+                # create_read_session (inside to_arrow), not at client
+                # construction, so the _bqstorage cache never flips to False on
+                # its own - leaving every subsequent query to pay a doomed
+                # Storage round-trip + slow REST re-download. Over a many-query
+                # run (e.g. an agent continuation) that compounds into a request
+                # timeout. One failure -> REST for the rest of this client's life.
                 logger.warning(
-                    "Storage API download failed; falling back to REST", exc_info=True
+                    "Storage API download failed; disabling Storage and "
+                    "falling back to REST",
+                    exc_info=True,
                 )
+                self._bqstorage = False
                 results = self._client.list_rows(query_job.destination)
         return [dict(r) for r in results]
 
