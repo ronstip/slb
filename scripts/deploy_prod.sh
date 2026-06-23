@@ -244,6 +244,38 @@ echo "  Worker deployed at: $WORKER_URL"
 echo ""
 
 # ══════════════════════════════════════════════════
+# STEP 5b: Build & deploy the headless render service (sl-render)
+# Screenshots dashboard widgets to PNG for visual alert emails. Heavy Chromium
+# image, so it lives in its own Cloud Run service. Gated by RENDER_SERVICE_TOKEN
+# (a shared bearer); allow-unauthenticated + token keeps the worker call simple.
+# ══════════════════════════════════════════════════
+echo "==> [6b] Building & deploying render service..."
+gcloud builds submit render/ \
+    --tag "gcr.io/$PROJECT_ID/sl-render:latest" \
+    --timeout=600 \
+    --quiet
+
+gcloud run deploy sl-render \
+    --image "gcr.io/$PROJECT_ID/sl-render:latest" \
+    --region "$REGION" \
+    --platform managed \
+    --service-account "$WORKER_SA" \
+    --set-env-vars "RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-}" \
+    --min-instances 0 \
+    --max-instances 3 \
+    --memory 2Gi \
+    --cpu 1 \
+    --timeout 120 \
+    --concurrency 2 \
+    --port 8080 \
+    --allow-unauthenticated \
+    --quiet
+
+RENDER_URL=$(gcloud run services describe sl-render --region="$REGION" --format='value(status.url)' --project="$PROJECT_ID")
+echo "  Render service deployed at: $RENDER_URL"
+echo ""
+
+# ══════════════════════════════════════════════════
 # STEP 6: Wire services together
 # ══════════════════════════════════════════════════
 echo "==> [7/9] Wiring services (CORS, worker URL, frontend URL)..."
@@ -254,13 +286,15 @@ CORS_ORIGINS="https://scolto.com,https://www.scolto.com,https://${PROJECT_ID}.we
 
 gcloud run services update sl-api \
     --region "$REGION" \
-    --update-env-vars "^|^WORKER_SERVICE_URL=$WORKER_URL|CORS_ORIGINS=${CORS_ORIGINS}|FRONTEND_URL=${FRONTEND_URL}" \
+    --update-env-vars "^|^WORKER_SERVICE_URL=$WORKER_URL|CORS_ORIGINS=${CORS_ORIGINS}|FRONTEND_URL=${FRONTEND_URL}|RENDER_SERVICE_URL=$RENDER_URL|RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-}|ALERT_RENDER_SECRET=${ALERT_RENDER_SECRET:-}" \
     --quiet
 
-# Tell the worker where the API is - used by Cloud Task continuation dispatches
+# Tell the worker where the API is - used by Cloud Task continuation dispatches.
+# Also point it at the render service + give it the alert render secrets so the
+# collection-completion evaluator can snapshot widgets into visual emails.
 gcloud run services update sl-worker \
     --region "$REGION" \
-    --update-env-vars "API_SERVICE_URL=$API_URL,CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA" \
+    --update-env-vars "API_SERVICE_URL=$API_URL,CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA,RENDER_SERVICE_URL=$RENDER_URL,RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-},ALERT_RENDER_SECRET=${ALERT_RENDER_SECRET:-}" \
     --quiet
 
 # Allow the API service account to invoke the worker (for Cloud Tasks)

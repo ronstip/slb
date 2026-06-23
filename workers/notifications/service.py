@@ -46,3 +46,40 @@ def send_composed_email(
     if success:
         return {"status": "success", "message": f"Email sent to {recipient_email}."}
     return {"status": "error", "message": "Failed to send email. Please try again later."}
+
+
+def send_composed_html_email(
+    recipient_email: str,
+    subject: str,
+    body_html: str,
+) -> dict:
+    """Send a pre-rendered HTML email (no markdown round-trip).
+
+    Used for visual alerts whose body is hand-built inline-CSS HTML (widget
+    images). The body is still wrapped in the branded shell. Mirrors
+    ``send_composed_email``'s return contract.
+    """
+    settings = get_settings()
+
+    if not settings.sendgrid_api_key:
+        return {"status": "error", "message": "Email is not configured. SendGrid API key is missing."}
+    if not recipient_email:
+        return {"status": "error", "message": "Recipient email address is required."}
+
+    html_email = wrap_html(body_html, subject, app_url=settings.frontend_url)
+
+    channel = EmailChannel(
+        api_key=settings.sendgrid_api_key,
+        from_email=settings.sendgrid_from_email,
+        from_name=settings.sendgrid_from_name,
+    )
+    success = channel.send(
+        recipient=recipient_email,
+        subject=subject,
+        html_body=html_email,
+        plain_body=subject,
+    )
+
+    if success:
+        return {"status": "success", "message": f"Email sent to {recipient_email}."}
+    return {"status": "error", "message": "Failed to send email. Please try again later."}

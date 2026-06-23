@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
+  Bell,
   Building2,
   CalendarClock,
   ChevronDown,
@@ -61,7 +62,7 @@ import {
 } from './ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
-export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer' | 'settings' | 'topics';
+export type DetailTab = 'overview' | 'chat' | 'data' | 'artifacts' | 'explorer' | 'settings' | 'topics' | 'alerts';
 
 export const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -69,6 +70,7 @@ export const TABS: { id: DetailTab; label: string; icon: React.ElementType }[] =
   { id: 'explorer', label: 'Explorer', icon: Compass },
   { id: 'artifacts', label: 'Deliverables', icon: FileText },
   { id: 'data', label: 'Data', icon: Database },
+  { id: 'alerts', label: 'Alerts', icon: Bell },
 ];
 
 // ── Shared class fragments - sidebar uses the always-dark sidebar-* tokens ──

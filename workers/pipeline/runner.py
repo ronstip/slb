@@ -1946,3 +1946,13 @@ class PipelineRunner:
             update_kwargs["error_message"] = msg
 
         self.fs.update_collection_status(self.collection_id, **update_kwargs)
+
+        # Dynamic alerts: now that every post in this run is fully enriched,
+        # match the run's posts against the agent's enabled alerts and email on
+        # a hit. Guarded - alert delivery must never fail the pipeline.
+        try:
+            from workers.alerts.evaluator import evaluate_alerts_for_collection
+
+            evaluate_alerts_for_collection(self.collection_id, bq=self.bq, fs=self.fs)
+        except Exception:
+            logger.exception("Alert evaluation failed for %s", self.collection_id)

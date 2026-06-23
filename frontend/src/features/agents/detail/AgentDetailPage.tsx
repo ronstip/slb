@@ -39,6 +39,9 @@ const AgentArtifactsTab = lazy(() =>
 const AgentExplorerTab = lazy(() =>
   import('./tabs/AgentExplorerTab.tsx').then((m) => ({ default: m.AgentExplorerTab })),
 );
+const AgentAlertsTab = lazy(() =>
+  import('./tabs/AgentAlertsTab.tsx').then((m) => ({ default: m.AgentAlertsTab })),
+);
 
 function TabFallback() {
   return (
@@ -58,7 +61,7 @@ import {
   AlertDialogTitle,
 } from '../../../components/ui/alert-dialog.tsx';
 
-const VALID_TABS: DetailTab[] = ['overview', 'chat', 'data', 'artifacts', 'explorer', 'settings'];
+const VALID_TABS: DetailTab[] = ['overview', 'chat', 'data', 'artifacts', 'explorer', 'alerts', 'settings'];
 
 export function AgentDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -354,6 +357,7 @@ export function AgentDetailPage() {
                   startInEditMode={startInEditMode}
                 />
               )}
+              {activeTab === 'alerts' && <AgentAlertsTab task={task} />}
             </Suspense>
           )}
         </main>
