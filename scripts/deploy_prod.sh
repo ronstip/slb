@@ -286,7 +286,7 @@ CORS_ORIGINS="https://scolto.com,https://www.scolto.com,https://${PROJECT_ID}.we
 
 gcloud run services update sl-api \
     --region "$REGION" \
-    --update-env-vars "^|^WORKER_SERVICE_URL=$WORKER_URL|CORS_ORIGINS=${CORS_ORIGINS}|FRONTEND_URL=${FRONTEND_URL}|RENDER_SERVICE_URL=$RENDER_URL|RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-}|ALERT_RENDER_SECRET=${ALERT_RENDER_SECRET:-}" \
+    --update-env-vars "^|^WORKER_SERVICE_URL=$WORKER_URL|CORS_ORIGINS=${CORS_ORIGINS}|FRONTEND_URL=${FRONTEND_URL}|RENDER_SERVICE_URL=$RENDER_URL|RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-}|ALERT_RENDER_SECRET=${ALERT_RENDER_SECRET:-}|SENDGRID_API_KEY=${SENDGRID_API_KEY:-}" \
     --quiet
 
 # Tell the worker where the API is - used by Cloud Task continuation dispatches.
@@ -294,7 +294,7 @@ gcloud run services update sl-api \
 # collection-completion evaluator can snapshot widgets into visual emails.
 gcloud run services update sl-worker \
     --region "$REGION" \
-    --update-env-vars "API_SERVICE_URL=$API_URL,CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA,RENDER_SERVICE_URL=$RENDER_URL,RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-},ALERT_RENDER_SECRET=${ALERT_RENDER_SECRET:-}" \
+    --update-env-vars "API_SERVICE_URL=$API_URL,CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA,RENDER_SERVICE_URL=$RENDER_URL,RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-},ALERT_RENDER_SECRET=${ALERT_RENDER_SECRET:-},SENDGRID_API_KEY=${SENDGRID_API_KEY:-}" \
     --quiet
 
 # Allow the API service account to invoke the worker (for Cloud Tasks)
