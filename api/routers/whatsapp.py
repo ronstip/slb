@@ -46,7 +46,14 @@ async def receive_webhook(request: Request):
         raise HTTPException(status_code=403, detail="invalid signature")
 
     payload = await request.json()
-    # Signature is verified; the worker trusts the parsed payload. Enqueue and
-    # return fast so Meta sees a <1s 200.
-    dispatch_worker_task("/whatsapp/inbound", {"payload": payload})
+    # Signature is verified; the worker trusts the parsed payload.
+    if settings.is_dev:
+        # Local dev has no Cloud Tasks worker — process inline. Safe because the
+        # handler dedups on `wamid`, so a Meta retry from a slow ack just NOOPs.
+        from workers.whatsapp.handler import process_inbound
+
+        process_inbound(payload)
+    else:
+        # Prod: enqueue and return fast so Meta sees a <1s 200.
+        dispatch_worker_task("/whatsapp/inbound", {"payload": payload})
     return {"status": "ok"}

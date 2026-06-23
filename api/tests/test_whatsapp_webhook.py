@@ -16,15 +16,15 @@ SECRET = "app-secret"
 VERIFY = "verify-token"
 
 
+def _settings(is_dev=False):
+    return SimpleNamespace(
+        whatsapp_app_secret=SECRET, whatsapp_verify_token=VERIFY, is_dev=is_dev
+    )
+
+
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(
-        wa,
-        "get_settings",
-        lambda: SimpleNamespace(
-            whatsapp_app_secret=SECRET, whatsapp_verify_token=VERIFY
-        ),
-    )
+    monkeypatch.setattr(wa, "get_settings", lambda: _settings(is_dev=False))
     dispatched: list = []
     monkeypatch.setattr(
         wa, "dispatch_worker_task", lambda path, payload: dispatched.append((path, payload))
@@ -86,3 +86,29 @@ def test_post_bad_signature_rejected_and_not_enqueued(client):
     )
     assert resp.status_code == 403
     assert client.dispatched == []
+
+
+def test_dev_mode_processes_inline_not_enqueued(monkeypatch):
+    """In dev, the webhook calls process_inbound directly (no Cloud Tasks)."""
+    monkeypatch.setattr(wa, "get_settings", lambda: _settings(is_dev=True))
+    dispatched: list = []
+    monkeypatch.setattr(wa, "dispatch_worker_task",
+                        lambda p, pl: dispatched.append((p, pl)))
+    processed: list = []
+    import workers.whatsapp.handler as handler
+    monkeypatch.setattr(handler, "process_inbound", lambda payload: processed.append(payload))
+
+    app = FastAPI()
+    app.include_router(wa.router)
+    c = TestClient(app)
+
+    payload = {"object": "whatsapp_business_account", "entry": [{"x": 1}]}
+    body = json.dumps(payload).encode()
+    resp = c.post(
+        "/whatsapp/webhook",
+        content=body,
+        headers={"X-Hub-Signature-256": _sig(body), "Content-Type": "application/json"},
+    )
+    assert resp.status_code == 200
+    assert processed == [payload]       # handled inline
+    assert dispatched == []             # not enqueued
