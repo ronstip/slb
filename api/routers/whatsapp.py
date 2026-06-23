@@ -48,11 +48,16 @@ async def receive_webhook(request: Request):
     payload = await request.json()
     # Signature is verified; the worker trusts the parsed payload.
     if settings.is_dev:
-        # Local dev has no Cloud Tasks worker — process inline. Safe because the
-        # handler dedups on `wamid`, so a Meta retry from a slow ack just NOOPs.
+        # Local dev has no Cloud Tasks worker — process inline. Run in a thread:
+        # process_inbound is blocking (Firestore + HTTP + ADK) and the Concierge
+        # itself opens an event loop, so it must NOT run on this request's loop.
+        # Safe because the handler dedups on `wamid` — a Meta retry from a slow
+        # ack just NOOPs.
+        import asyncio
+
         from workers.whatsapp.handler import process_inbound
 
-        process_inbound(payload)
+        await asyncio.to_thread(process_inbound, payload)
     else:
         # Prod: enqueue and return fast so Meta sees a <1s 200.
         dispatch_worker_task("/whatsapp/inbound", {"payload": payload})

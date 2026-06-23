@@ -202,9 +202,13 @@ async def run_whatsapp_inbound_handler(request: Request):
     body = await request.json()
     payload = body.get("payload") or {}
     try:
+        import asyncio
+
         from workers.whatsapp.handler import process_inbound
 
-        result = process_inbound(payload)
+        # Off the event loop: process_inbound is blocking and the Concierge
+        # opens its own event loop (asyncio.run), which can't run on this one.
+        result = await asyncio.to_thread(process_inbound, payload)
         return result
     except Exception as e:
         logger.exception("WhatsApp inbound worker failed")

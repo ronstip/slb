@@ -26,6 +26,7 @@ from api.agent.tools.dashboard_report import (
 from api.agent.tools.export_data import export_data
 from api.agent.tools.presentation import generate_presentation, validate_deck_plan
 from api.agent.tools.get_agent_status import get_agent_status
+from api.agent.tools.list_agents import list_agents
 from api.agent.tools.set_active_agent import set_active_agent
 from api.agent.tools.start_agent import start_agent
 from api.agent.tools.generate_briefing import generate_briefing
@@ -54,6 +55,7 @@ REGISTRY: dict[str, ToolSpec] = {
         # Agent management
         ToolSpec("start_agent", start_agent, "agent", True, "Create and dispatch a new agent - call AFTER user approval"),
         ToolSpec("get_agent_status", get_agent_status, "agent", False, "Read the status of an agent"),
+        ToolSpec("list_agents", list_agents, "agent", False, "List the user's agents, most recently run first - pick the relevant one before answering a data question"),
         ToolSpec("set_active_agent", set_active_agent, "agent", True, "Set the active agent for the session"),
         # User interaction
         ToolSpec("ask_user", ask_user, "user", True, "Prompt the user - only when genuinely ambiguous; otherwise pick a default and state it"),
@@ -122,18 +124,17 @@ TOOL_PROFILES: dict[AgentMode, set[str]] = {
         "update_todos",
     },
     # Cross-channel WhatsApp Concierge (spec §6): serves a User across ALL their
-    # Agents. READS + OPERATE freely; deliberately EXCLUDES billing,
-    # destructive-delete, and external-share (publish_dashboard / compose_email /
-    # generate_presentation) — those are not exposed over WhatsApp yet (ADR 0001;
-    # future `sensitive_actions` step-up policy, not built now).
+    # Agents. READ-ONLY for now — it answers and analyzes but performs NO
+    # mutations: no start/set-active agent, no dashboard create/edit, no
+    # briefing/todo writes, no billing, no destructive-delete, no external-share.
+    # Every tool below is flagged side_effects=False in REGISTRY; the
+    # test_concierge_profile_is_strictly_read_only guard fails if a mutating tool
+    # is ever added here. (Operate/share are a deferred `sensitive_actions`
+    # step-up policy — ADR 0001 — not built now.)
     "concierge": {
         "create_chart", "create_markdown", "export_data", "list_topics",
-        "read_dashboard", "create_dashboard_from_template", "update_dashboard",
-        "verify_dashboard", "verify_story",
-        "start_agent", "set_active_agent", "get_agent_status",
-        "ask_user",
-        "update_todos",
-        "compose_briefing",
+        "read_dashboard", "verify_dashboard", "verify_story",
+        "get_agent_status", "list_agents",
     },
 }
 
