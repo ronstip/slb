@@ -1947,12 +1947,8 @@ class PipelineRunner:
 
         self.fs.update_collection_status(self.collection_id, **update_kwargs)
 
-        # Dynamic alerts: now that every post in this run is fully enriched,
-        # match the run's posts against the agent's enabled alerts and email on
-        # a hit. Guarded - alert delivery must never fail the pipeline.
-        try:
-            from workers.alerts.evaluator import evaluate_alerts_for_collection
-
-            evaluate_alerts_for_collection(self.collection_id, bq=self.bq, fs=self.fs)
-        except Exception:
-            logger.exception("Alert evaluation failed for %s", self.collection_id)
+        # NOTE: dynamic-alert evaluation is intentionally NOT here. An agent run
+        # fans out into one collection per source, so firing per-collection sent
+        # one (deduped) email per sub-collection. Alerts now fire ONCE per run,
+        # across all the run's collections, from
+        # workers/agent_continuation.py::check_agent_completion (all_complete branch).
