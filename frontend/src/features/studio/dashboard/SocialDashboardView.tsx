@@ -73,6 +73,12 @@ interface SocialDashboardViewProps {
   artifactId: string;
   filteredPosts: DashboardPost[];
   allPosts: DashboardPost[];
+  /** Globally-filtered comment rows (post-shaped, from scope_comments). Drives
+   *  comments/both widgets. Empty when the agent has no enriched comments. */
+  filteredComments?: DashboardPost[];
+  /** All comment rows (pre-filter) - for the config dialog's source-availability
+   *  gate and comment-widget preview. */
+  allComments?: DashboardPost[];
   /** Agent-scoped topic_metrics rows. Empty when no agent context. */
   topics?: TopicMetric[];
   availableOptions: FilterOptions;
@@ -133,6 +139,8 @@ export function SocialDashboardView({
   artifactId,
   filteredPosts,
   allPosts,
+  filteredComments = [],
+  allComments = [],
   topics = [],
   availableOptions,
   truncated: _truncated,
@@ -756,6 +764,7 @@ export function SocialDashboardView({
         key={orientation}
         widgets={widgetsForGrid}
         filteredPosts={filteredPosts}
+        filteredComments={filteredComments}
         topics={topics}
         isEditMode={isEditMode && !readOnly}
         orientation={orientation}
@@ -783,6 +792,8 @@ export function SocialDashboardView({
         mode={configMode}
         allPosts={allPosts}
         filteredPosts={filteredPosts}
+        allComments={allComments}
+        filteredComments={filteredComments}
         availableOptions={availableOptions}
         onSave={handleSaveWidget}
         onClose={() => setConfigWidget(null)}

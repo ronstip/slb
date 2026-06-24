@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS social_listening.comments (
     channel_handle STRING NOT NULL,
     channel_id STRING,
     content STRING,
+    comment_url STRING,
+    post_type STRING,
     commented_at TIMESTAMP,
     likes INT64,
     shares INT64,

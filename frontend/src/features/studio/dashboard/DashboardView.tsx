@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { ArrowLeft, Download, Loader2, AlertTriangle, Share2, Table2, Maximize2, Pencil, X } from 'lucide-react';
 import { useStudioStore } from '../../../stores/studio-store.ts';
@@ -17,7 +17,7 @@ import { UnderlyingDataDialog } from '../UnderlyingDataDialog.tsx';
 import { ReportAIAssistant } from './ReportAIAssistant.tsx';
 import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
-import { useDashboardFilters } from './use-dashboard-filters.ts';
+import { applyFilters, useDashboardFilters } from './use-dashboard-filters.ts';
 import { useDashboardLayout } from './hooks/useDashboardLayout.ts';
 import { useAuth } from '../../../auth/useAuth.ts';
 import { isAuthReady } from '../../../auth/authReady.ts';
@@ -158,6 +158,13 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
     activeFilterCount,
     clearAll,
   } = useDashboardFilters(allPosts, reportScope);
+
+  // Comments (dataSource: comments/both) ride the same global filters as posts.
+  const allComments = response?.comments ?? [];
+  const filteredComments = useMemo(
+    () => applyFilters(allComments, effectiveFilters),
+    [allComments, effectiveFilters],
+  );
 
   // Consume pending topic filter from TopicCard "Dashboard" button
   const pendingTopicFilter = useStudioStore((s) => s.pendingTopicFilter);
@@ -388,6 +395,8 @@ export function DashboardView({ artifact, standalone = false, defaultLayout, onC
             artifactId={artifact.id}
             filteredPosts={filteredPosts}
             allPosts={allPosts}
+            filteredComments={filteredComments}
+            allComments={allComments}
             topics={response?.topics ?? []}
             availableOptions={availableOptions}
             truncated={response?.truncated}

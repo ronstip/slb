@@ -274,6 +274,51 @@ async def fetch_post_comments_endpoint(
     return {"status": "queued", "post_id": post_id}
 
 
+@router.post("/posts/{post_id}/enrich-comments")
+async def enrich_post_comments_endpoint(
+    post_id: str,
+    body: FetchCommentsRequest,
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Enrich the already-fetched comments of one post, in light of the parent.
+
+    Dispatches to the worker (`/comments/enrich`), which reads the post's
+    comments from BQ, enriches each with the parent's ai_summary/context, and
+    appends to `enriched_comments`. Fire-and-forget - the dashboard's
+    comments source picks them up once done.
+    """
+    post = await asyncio.to_thread(_read_post_for_comments, post_id)
+    if post is None:
+        raise HTTPException(status_code=404, detail=f"Post {post_id} not found")
+    _check_collection_access(user, post["collection_id"])
+
+    payload = {
+        "post_id": post_id,
+        "collection_id": post["collection_id"],
+        "user_id": user.uid,
+        "org_id": user.org_id,
+    }
+
+    settings = get_settings()
+    if settings.is_dev:
+        import threading
+        from workers.comments_enrichment.worker import run_comment_enrichment_for_post
+
+        logger.info("DEV MODE: enriching comments in background thread for post %s", post_id)
+        threading.Thread(
+            target=run_comment_enrichment_for_post,
+            args=(post_id, post["collection_id"]),
+            daemon=True,
+        ).start()
+    else:
+        from api.services.cloud_tasks import dispatch_worker_task
+
+        await asyncio.to_thread(dispatch_worker_task, "/comments/enrich", payload)
+
+    logger.info("Queued comment enrichment for post %s", post_id)
+    return {"status": "queued", "post_id": post_id}
+
+
 @router.get("/posts/{post_id}/comments", response_model=CommentsResponse)
 async def list_post_comments(
     post_id: str,

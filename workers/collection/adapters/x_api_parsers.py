@@ -216,12 +216,16 @@ def parse_comment(tweet: dict, users_by_id: dict[str, dict]) -> Comment:
     if note_tweet.get("text"):
         platform_metadata["has_note_tweet"] = True
 
+    tweet_id = str(tweet.get("id", ""))
+    comment_url = f"https://x.com/{handle}/status/{tweet_id}" if handle and tweet_id else None
+
     return Comment(
-        comment_id=str(tweet.get("id", "")),
+        comment_id=tweet_id,
         platform="twitter",
         channel_handle=handle,
         channel_id=author_id or None,
         content=content,
+        comment_url=comment_url,
         commented_at=_parse_iso8601(tweet.get("created_at")),
         likes=metrics.get("like_count"),
         shares=metrics.get("retweet_count"),

@@ -14,7 +14,7 @@ import { getSharedDashboardData, getSharedPostDetails } from '../../../api/endpo
 import { trackEvent } from '../../../lib/analytics.ts';
 import { DashboardFilterBar, DEFAULT_FILTER_BAR_FILTERS } from './DashboardFilterBar.tsx';
 import type { FilterBarFilterId } from './DashboardFilterBar.tsx';
-import { useDashboardFilters } from './use-dashboard-filters.ts';
+import { applyFilters, useDashboardFilters } from './use-dashboard-filters.ts';
 import { SocialDashboardView } from './SocialDashboardView.tsx';
 import type { SocialDashboardWidget, ReportScope, ReportConfig, WidgetData } from './types-social-dashboard.ts';
 
@@ -104,10 +104,18 @@ export function SharedDashboardPage() {
     toggleFilterValue,
     setFilter,
     filteredPosts,
+    effectiveFilters,
     availableOptions,
     activeFilterCount,
     clearAll,
   } = useDashboardFilters(allPosts, reportScope);
+
+  // Comments (dataSource: comments/both) ride the same filters as posts.
+  const allComments = response?.comments ?? [];
+  const filteredComments = useMemo(
+    () => applyFilters(allComments, effectiveFilters),
+    [allComments, effectiveFilters],
+  );
 
   const handleLayoutLoaded = useCallback((persisted: string[]) => {
     setFilterBarFilters(persisted as FilterBarFilterId[]);
@@ -241,6 +249,8 @@ export function SharedDashboardPage() {
               artifactId={token!}
               filteredPosts={filteredPosts}
               allPosts={allPosts}
+              filteredComments={filteredComments}
+              allComments={allComments}
               topics={response.topics ?? []}
               availableOptions={availableOptions}
               truncated={response.truncated}

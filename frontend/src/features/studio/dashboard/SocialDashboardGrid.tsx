@@ -32,6 +32,8 @@ const MARGIN: [number, number] = [14, 14];
 interface SocialDashboardGridProps {
   widgets: SocialDashboardWidget[];
   filteredPosts: DashboardPost[];
+  /** Globally-filtered comment rows. Forwarded to comments/both widgets. */
+  filteredComments?: DashboardPost[];
   /** Agent-scoped topic_metrics rows. Forwarded to topic widgets. */
   topics?: TopicMetric[];
   isEditMode: boolean;
@@ -71,6 +73,7 @@ const VERTICAL_WIDTH_RATIO = 0.69;
 export function SocialDashboardGrid({
   widgets,
   filteredPosts,
+  filteredComments,
   topics,
   isEditMode,
   orientation = 'horizontal',
@@ -316,6 +319,7 @@ export function SocialDashboardGrid({
                 widget={widget}
                 widgetIndex={widgetIndex}
                 filteredPosts={filteredPosts}
+                filteredComments={filteredComments}
                 topics={topics}
                 isEditMode={isEditMode}
                 onConfigure={onConfigure}

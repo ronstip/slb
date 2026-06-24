@@ -1921,6 +1921,10 @@ interface SocialWidgetRendererProps {
   widgetIndex?: number;
   /** Already globally filtered posts */
   filteredPosts: DashboardPost[];
+  /** Already globally filtered COMMENT rows (post-shaped, from scope_comments).
+   *  Optional - only `dataSource: comments/both` widgets read this; empty/absent
+   *  when the agent has no enriched comments. */
+  filteredComments?: DashboardPost[];
   /** Agent-scoped topic_metrics rows. Optional - widgets with
    *  `dataSource: 'posts'` ignore this. Empty array when no agent context. */
   topics?: TopicMetric[];
@@ -1951,6 +1955,7 @@ function SocialWidgetRendererImpl({
   widget: rawWidget,
   widgetIndex = 0,
   filteredPosts,
+  filteredComments,
   topics,
   isEditMode,
   onConfigure,
@@ -1998,9 +2003,21 @@ function SocialWidgetRendererImpl({
     return normalized;
   }, [rawWidget, reportValueColors]);
 
+  // Pick the widget's data source. Comments are post-shaped, so the selected
+  // array flows through every sub-widget (custom/kpi/channels/…) unchanged -
+  // one substitution here is the whole comment-source wiring. Topics are NOT
+  // selected here (they ride a separate `topics` prop + vocabulary).
+  const sourceRows = useMemo(() => {
+    const ds = widget.dataSource ?? 'posts';
+    const comments = filteredComments ?? [];
+    if (ds === 'comments') return comments;
+    if (ds === 'both') return comments.length ? [...filteredPosts, ...comments] : filteredPosts;
+    return filteredPosts;
+  }, [widget.dataSource, filteredPosts, filteredComments]);
+
   const widgetPosts = useMemo(
-    () => applyWidgetFilters(filteredPosts, widget.filters),
-    [filteredPosts, widget.filters],
+    () => applyWidgetFilters(sourceRows, widget.filters),
+    [sourceRows, widget.filters],
   );
 
   // Bind the id-taking grid handlers to this widget once. Stable identities so
@@ -2032,7 +2049,7 @@ function SocialWidgetRendererImpl({
         {...frameProps}
         widgetIndex={widgetIndex}
         posts={widgetPosts}
-        basePosts={filteredPosts}
+        basePosts={sourceRows}
         topics={topics}
         onFilterToggle={onFilterToggle}
         onTopicNavigate={onTopicNavigate}

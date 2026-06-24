@@ -4,8 +4,11 @@ import type { CustomFieldDef } from '../../../api/types.ts';
 
 /** Which BigQuery source a widget reads from. `posts` (default) = post-level
  *  rows from `scope_posts`. `topics` = topic cluster rows from `topic_metrics`
- *  (one row per cluster in the agent's latest clustering run). */
-export type DataSource = 'posts' | 'topics';
+ *  (one row per cluster in the agent's latest clustering run). `comments` =
+ *  comment-level rows from `scope_comments` (post-shaped; reuses the post
+ *  vocabulary). `both` = posts ∪ comments. Comment/both widgets render from the
+ *  response's `comments` array; default stays posts. */
+export type DataSource = 'posts' | 'topics' | 'comments' | 'both';
 
 export const DEFAULT_DATA_SOURCE: DataSource = 'posts';
 
