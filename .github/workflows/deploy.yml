@@ -160,12 +160,12 @@ jobs:
             --platform managed \
             --service-account sl-api@$GCP_PROJECT_ID.iam.gserviceaccount.com \
             --set-env-vars "^||^ENVIRONMENT=production||GCP_PROJECT_ID=$GCP_PROJECT_ID||GCP_REGION=$GCP_REGION||GOOGLE_GENAI_USE_VERTEXAI=TRUE||GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID||GOOGLE_CLOUD_LOCATION=global||API_SERVICE_URL=$API_URL||CORS_ORIGINS=https://scolto.com,https://www.scolto.com,https://social-listening-pl.web.app,https://social-listening-pl.firebaseapp.com||FRONTEND_URL=https://scolto.com||WORKER_SERVICE_URL=$WORKER_URL||CLOUD_TASKS_SERVICE_ACCOUNT=sl-api@$GCP_PROJECT_ID.iam.gserviceaccount.com||RENDER_SERVICE_URL=$RENDER_URL||RENDER_SERVICE_TOKEN=${{ secrets.RENDER_SERVICE_TOKEN }}||ALERT_RENDER_SECRET=${{ secrets.ALERT_RENDER_SECRET }}||SENDGRID_API_KEY=${{ secrets.SENDGRID_API_KEY }}||DASHBOARD_SERVER_AGG=true||SIGNUP_GATE=entitlements||ALLOWED_EMAILS=${{ secrets.ALLOWED_EMAILS }}||SUPER_ADMIN_EMAILS=${{ secrets.SUPER_ADMIN_EMAILS }}||VETRIC_API_KEY_TWITTER=${{ secrets.VETRIC_API_KEY_TWITTER }}||VETRIC_API_KEY_INSTAGRAM=${{ secrets.VETRIC_API_KEY_INSTAGRAM }}||VETRIC_API_KEY_TIKTOK=${{ secrets.VETRIC_API_KEY_TIKTOK }}||HIKERAPI_API_KEY=${{ secrets.HIKERAPI_API_KEY }}||SENTRY_DSN=${{ secrets.SENTRY_DSN }}||SENTRY_ENVIRONMENT=production||SENTRY_RELEASE=${{ github.sha }}" \
-            --min-instances 0 \
+            --min-instances 1 \
             --max-instances 10 \
             --memory 2Gi \
-            --cpu 1 \
+            --cpu 2 \
             --timeout 3600 \
-            --concurrency 80 \
+            --concurrency 16 \
             --port 8080 \
             --allow-unauthenticated \
             --quiet

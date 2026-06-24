@@ -244,6 +244,37 @@ def test_heatmap_widget_is_covered(client):
     assert body["widgetData"]["heat"]["groupedCategorical"]["labels"] == ["twitter", "youtube"]
 
 
+def test_warm_bytes_cache_skips_aggregation(client, monkeypatch):
+    # A warm gzip-bytes cache hit must short-circuit BEFORE the server-agg engine
+    # runs - otherwise every warm hit re-aggregates the full post set (the 10K-post
+    # `wc26brands` recompute that kept warm shares at ~3s). The cache key is fully
+    # determined by stamp + share metadata, all known before aggregation.
+    from api.services import dashboard_response
+
+    dashboard_response.clear_encoded()
+    calls = {"n": 0}
+    real = ds_router.build_widget_data_map
+
+    def _spy(posts, layout):
+        calls["n"] += 1
+        return real(posts, layout)
+
+    monkeypatch.setattr(ds_router, "build_widget_data_map", _spy)
+
+    # First request: cold bytes cache -> aggregation runs once, body is cached.
+    r1 = client.get("/dashboard/shares/public/tok1?slim=1&agg=server")
+    assert r1.status_code == 200
+    assert calls["n"] == 1
+
+    # Second identical request: warm bytes cache -> aggregation must NOT run again.
+    r2 = client.get("/dashboard/shares/public/tok1?slim=1&agg=server")
+    assert r2.status_code == 200
+    assert calls["n"] == 1, "aggregation re-ran on a warm bytes-cache hit"
+
+    # The short-circuited body is identical to the freshly-built one.
+    assert r1.json() == r2.json()
+
+
 def test_post_mode_table_ships_as_feed(client):
     # #5: a post-mode table sorted by a numeric column ships a bounded post-id
     # feed and (with only static siblings) trips the omit gate.
