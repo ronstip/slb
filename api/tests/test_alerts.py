@@ -416,6 +416,27 @@ def test_evaluator_matches_and_emails(captured_emails):
     assert fake.alerts["al1"]["trigger_count"] == 1
 
 
+def test_agent_run_with_many_collections_sends_one_email(captured_emails):
+    """An agent run fans out into one collection per source. Alerts must fire
+    ONCE per run across all the run's collections - not once per sub-collection
+    (the bug: a 4-collection run produced 3 deduped emails)."""
+    from workers.alerts.evaluator import evaluate_alerts_for_agent_run
+
+    fake = _eval_fs()
+    # Posts span the run's collections; the dashboard SQL fetches them together.
+    bq = FakeBQ([_post("p1", "negative"), _post("p2", "negative"), _post("p3", "negative")])
+
+    summary = evaluate_alerts_for_agent_run(
+        "agent1", ["c1", "c2", "c3", "c4"], bq=bq, fs=fake
+    )
+
+    assert summary["alerts_triggered"] == 1
+    assert len(captured_emails) == 1  # single batched email, not one per collection
+    assert "3 new" in captured_emails[0]["subject"]
+    assert fake.seen["al1"] == {"p1", "p2", "p3"}
+    assert fake.alerts["al1"]["trigger_count"] == 1
+
+
 def test_evaluator_dedups_across_runs(captured_emails):
     from workers.alerts.evaluator import evaluate_alerts_for_collection
 

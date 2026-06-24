@@ -1,15 +1,17 @@
-"""Evaluate per-agent alerts against a finished collection run.
+"""Evaluate per-agent alerts against a finished agent run.
 
-Hooked at collection completion (see `workers/pipeline/runner.py::_set_final_status`)
-so every post in the run is fully enriched (sentiment / emotion / themes /
-entities / brands / custom_fields all populated) before matching. One evaluation
-per collection-completion event → at most one email per alert per run, with all
-of that run's matches batched together.
+Hooked at agent-RUN completion (see `workers/agent_continuation.py::check_agent_completion`,
+the `all_complete` branch) — NOT at per-collection completion. An agent run fans
+out into one collection per source/channel; firing per-collection sent one email
+per sub-collection (deduped, so the user saw several emails with disjoint posts).
+Evaluating once, across ALL the run's collections, batches every match into a
+single email. By this point every post in the run is fully enriched (sentiment /
+emotion / themes / entities / brands / custom_fields all populated).
 
-"New post" semantics fall out of the trigger point: the event fires once, ever,
-for a given collection, and a collection holds exactly the posts newly collected
-in that run. Cross-run / overlapping duplicates are caught by the per-alert
-`alerted_posts` dedup ledger so the same post never alerts twice.
+"New post" semantics fall out of the trigger point: the run completes once, and
+its collections hold exactly the posts newly collected in that run. Cross-run /
+overlapping duplicates are caught by the per-alert `alerted_posts` dedup ledger
+so the same post never alerts twice.
 """
 
 from __future__ import annotations
@@ -66,10 +68,10 @@ def _recipients_for(alert: dict, fs) -> list[str]:
     return []
 
 
-def _fetch_run_posts(collection_id: str, agent_id: str, bq) -> list[dict]:
+def _fetch_run_posts(collection_ids: list[str], agent_id: str, bq) -> list[dict]:
     from api.services.dashboard_service import build_dashboard_sql
 
-    sql, params = build_dashboard_sql([collection_id], agent_id, _MAX_ROWS)
+    sql, params = build_dashboard_sql(list(collection_ids), agent_id, _MAX_ROWS)
     if not sql:
         return []
     rows = bq.query(sql, params)
@@ -77,18 +79,12 @@ def _fetch_run_posts(collection_id: str, agent_id: str, bq) -> list[dict]:
 
 
 def evaluate_alerts_for_collection(collection_id: str, *, bq, fs) -> dict:
-    """Match a finished collection's posts against the agent's enabled alerts
-    and email recipients on a match. Returns a small summary dict (for logging /
-    the worker endpoint). Never raises for per-alert failures - one bad alert
-    must not block the others or the pipeline."""
-    from datetime import datetime, timezone
+    """Single-collection entry point (manual re-run endpoint + legacy callers).
 
-    from api.services.dashboard_widget_filters import apply_widget_filters
-    from config.settings import get_settings
-    from workers.alerts.email import build_alert_email_html
-    from workers.alerts.render_client import render_alert_widgets
-    from workers.notifications.service import send_composed_html_email
-
+    Resolves the owning agent and delegates to ``evaluate_alerts_for_agent_run``
+    over just this collection. The primary trigger is the agent-run hook, which
+    passes the run's full collection set; this wrapper exists so an operator can
+    re-evaluate one collection in isolation."""
     summary = {"collection_id": collection_id, "alerts_evaluated": 0, "alerts_triggered": 0, "emails_sent": 0}
 
     status = fs.get_collection_status(collection_id) or {}
@@ -97,11 +93,41 @@ def evaluate_alerts_for_collection(collection_id: str, *, bq, fs) -> dict:
         logger.info("No agent_id for collection %s - skipping alert evaluation", collection_id)
         return summary
 
+    return evaluate_alerts_for_agent_run(agent_id, [collection_id], bq=bq, fs=fs)
+
+
+def evaluate_alerts_for_agent_run(
+    agent_id: str, collection_ids: list[str], *, bq, fs
+) -> dict:
+    """Match a finished agent run's posts (across ALL its collections) against the
+    agent's enabled alerts and email recipients on a match. One call per agent-run
+    completion → at most one email per alert per run, batching matches from every
+    collection. Returns a small summary dict. Never raises for per-alert failures -
+    one bad alert must not block the others or the pipeline."""
+    from datetime import datetime, timezone
+
+    from api.services.dashboard_widget_filters import apply_widget_filters
+    from config.settings import get_settings
+    from workers.alerts.email import build_alert_email_html
+    from workers.alerts.render_client import render_alert_widgets
+    from workers.notifications.service import send_composed_html_email
+
+    summary = {
+        "agent_id": agent_id,
+        "collection_ids": list(collection_ids),
+        "alerts_evaluated": 0,
+        "alerts_triggered": 0,
+        "emails_sent": 0,
+    }
+
+    if not agent_id or not collection_ids:
+        return summary
+
     alerts = fs.list_enabled_alerts_for_agent(agent_id)
     if not alerts:
         return summary
 
-    posts = _fetch_run_posts(collection_id, agent_id, bq)
+    posts = _fetch_run_posts(collection_ids, agent_id, bq)
     summary["posts_scanned"] = len(posts)
     if not posts:
         return summary
@@ -168,7 +194,7 @@ def evaluate_alerts_for_collection(collection_id: str, *, bq, fs) -> dict:
                 )
                 summary["alerts_triggered"] += 1
         except Exception:
-            logger.exception("Alert %s evaluation failed for collection %s", alert_id, collection_id)
+            logger.exception("Alert %s evaluation failed for agent %s run", alert_id, agent_id)
 
-    logger.info("Alert evaluation for %s: %s", collection_id, summary)
+    logger.info("Alert evaluation for agent %s run: %s", agent_id, summary)
     return summary

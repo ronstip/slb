@@ -18,11 +18,14 @@ All conditions are ANDed (flat). OR is achieved with multiple alerts.
 
 ## Trigger model (decided with product)
 
-- **Per-item**, fired **once per collection-run at completion** (not per-batch):
-  the hook is `workers/pipeline/runner.py::_set_final_status` (only on `success`),
-  so every post is fully enriched (sentiment/themes/brands/custom_fields) before
-  matching. One evaluation → at most one email per alert per run, batching all of
-  that run's matches.
+- **Per-item**, fired **once per agent-RUN at completion** (not per-collection,
+  not per-batch): the hook is
+  `workers/agent_continuation.py::check_agent_completion` (the `all_complete`
+  branch, which fires once when every collection in the run reaches a terminal
+  state). An agent run fans out into one collection per source, so the earlier
+  per-collection hook (`runner._set_final_status`) sent one deduped email per
+  sub-collection. Evaluating once across all the run's collections batches every
+  match into a single email; by this point all posts are fully enriched.
 - **"New post" semantics** fall out of the trigger point: a completion event
   fires once, ever, for a collection, and a collection holds exactly that run's
   newly-collected posts. No retroactive scan.
@@ -54,7 +57,7 @@ email. Emails are transactional (promo-free) with a "Manage this alert" link.
 | REST router | `api/routers/alerts.py` (wired in `api/main.py`, gated) |
 | Evaluator | `workers/alerts/evaluator.py` |
 | Email composition | `workers/alerts/email.py` |
-| Completion hook | `workers/pipeline/runner.py::_set_final_status` (inline, guarded) |
+| Completion hook | `workers/agent_continuation.py::check_agent_completion` (all_complete branch, guarded) |
 | Worker endpoint (manual/scheduled) | `workers/server.py::/alerts/evaluate` |
 | Agent NL tools | `api/agent/tools/manage_alerts.py` (`create_alert`, `list_alerts`) registered in `registry.py` (chat profile) |
 | Frontend tab | `frontend/src/features/agents/detail/tabs/AgentAlertsTab.tsx` + `AlertEditorDialog.tsx` |
