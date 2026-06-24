@@ -29,7 +29,7 @@ from api.services.dashboard_cache import get_core, set_core
 
 logger = logging.getLogger(__name__)
 
-MAX_ROWS = 10000
+MAX_ROWS = 50000
 
 # Display-only post fields read ONLY for the bounded set of posts actually on
 # screen - the embed-gallery thumbnail (`media_refs`), a table's expanded row

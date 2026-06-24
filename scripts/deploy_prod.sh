@@ -202,9 +202,9 @@ gcloud run deploy sl-api \
     --min-instances 1 \
     --max-instances 10 \
     --memory 2Gi \
-    --cpu 1 \
+    --cpu 2 \
     --timeout 3600 \
-    --concurrency 80 \
+    --concurrency 16 \
     --port 8080 \
     --allow-unauthenticated \
     --quiet

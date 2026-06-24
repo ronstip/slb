@@ -3,8 +3,8 @@ import { CHECKPOINTS, type Brand } from './checkpoints';
 export const FPS = 30;
 export const VISIBLE = 12; // rows shown (boards slice top-12)
 
-// Which day each checkpoint represents (pre / day4 / day7 / day11 / day12).
-const CHECKPOINT_DAYS = [1, 4, 7, 11, 12];
+// Which day each checkpoint represents (pre / day4 / day7 / day11 / day12 / day14).
+const CHECKPOINT_DAYS = [1, 4, 7, 11, 12, 14];
 export const FIRST_DAY = CHECKPOINT_DAYS[0]; // Day 1 = Thu 11 Jun 2026
 export const NUM_DAYS = CHECKPOINT_DAYS[CHECKPOINT_DAYS.length - 1];
 

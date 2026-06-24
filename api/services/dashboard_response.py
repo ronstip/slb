@@ -150,6 +150,37 @@ def share_cache_key(
     return "share|" + stable_hash(token, stamp, bool(slim), metadata, bool(agg_enabled))
 
 
+def _gzip_response(body: bytes) -> Response:
+    """Wrap already-gzipped bytes in a Response with the headers that stop
+    GZipMiddleware from re-compressing them."""
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={
+            "Content-Encoding": "gzip",
+            "Content-Length": str(len(body)),
+            "Vary": "Accept-Encoding",
+        },
+    )
+
+
+def cached_gzip_response(cache_key: str, accept_encoding: str) -> Response | None:
+    """Return a Response from the bytes cache, or None if it can't be served.
+
+    Lets a handler short-circuit BEFORE building (and aggregating) the payload:
+    when the client accepts gzip and the key is warm, the stored compressed body
+    is everything we need. None means the caller must build the payload and call
+    :func:`gzipped_json_response` (identity client, or a cold key). The cache key
+    must already capture everything the body depends on (see ``share_cache_key``).
+    """
+    if "gzip" not in accept_encoding.lower():
+        return None
+    body = get_encoded(cache_key)
+    if body is None:
+        return None
+    return _gzip_response(body)
+
+
 def gzipped_json_response(payload: dict, cache_key: str, accept_encoding: str) -> Response:
     """JSON response that serves a cached gzip body to gzip-capable clients.
 
@@ -163,13 +194,5 @@ def gzipped_json_response(payload: dict, cache_key: str, accept_encoding: str) -
         if body is None:
             body = gzip.compress(orjson.dumps(payload), compresslevel=_GZIP_LEVEL)
             set_encoded(cache_key, body)
-        return Response(
-            content=body,
-            media_type="application/json",
-            headers={
-                "Content-Encoding": "gzip",
-                "Content-Length": str(len(body)),
-                "Vary": "Accept-Encoding",
-            },
-        )
+        return _gzip_response(body)
     return ORJSONResponse(payload)

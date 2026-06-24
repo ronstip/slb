@@ -33,7 +33,11 @@ from api.services.dashboard_aggregate import (
     build_widget_data_map,
     layout_fully_covered,
 )
-from api.services.dashboard_response import gzipped_json_response, share_cache_key
+from api.services.dashboard_response import (
+    cached_gzip_response,
+    gzipped_json_response,
+    share_cache_key,
+)
 from api.services.dashboard_scope import apply_report_scope
 from api.services.dashboard_service import (
     COLLECTION_NAMES_SQL,
@@ -453,6 +457,33 @@ async def get_shared_dashboard(
     # Fire-and-forget telemetry update
     asyncio.create_task(_record_access(fs, token))
 
+    # Compute the response-cache key NOW, before any aggregation. It depends only
+    # on the data freshness stamp + this share's metadata - all resolved above -
+    # so a warm gzip-bytes hit can short-circuit the entire server-agg engine.
+    # Without this, every warm hit re-aggregated the full post set (the ~3s on the
+    # 10K-post `wc26brands` share even on a core-cache HIT). The same key stores
+    # the body on a miss below, so the two must stay byte-identical.
+    settings = get_settings()
+    server_agg_enabled = settings.dashboard_server_agg and agg not in ("client", "off")
+    cache_key = share_cache_key(
+        token,
+        stamp,
+        slim,
+        {
+            "title": current_title,
+            "layout": layout,
+            "filterBarFilters": filter_bar_filters,
+            "orientation": orientation,
+            "reportScope": report_scope,
+            "filterBarHidden": filter_bar_hidden,
+            "reportConfig": report_config,
+        },
+        server_agg_enabled,
+    )
+    warm = cached_gzip_response(cache_key, request.headers.get("accept-encoding", ""))
+    if warm is not None:
+        return warm
+
     # Apply the report-level transform (canonicalization + computed fields) so a
     # shared link shows the same canonical numbers as the owner's interactive
     # dashboard. Runs on the cached raw core; an invalid config is ignored here
@@ -475,10 +506,9 @@ async def get_shared_dashboard(
     # reproduce exactly (object-list edge cases, computed-expr, runtime metric
     # toggles) are skipped and keep client-side aggregation.
     # Default-on (gated by the kill-switch setting); a per-request `agg=client`/
-    # `agg=off` forces the legacy full-posts path. The resolved bool is folded
-    # into the share cache key, so flagged/unflagged bodies never collide.
-    settings = get_settings()
-    server_agg_enabled = settings.dashboard_server_agg and agg not in ("client", "off")
+    # `agg=off` forces the legacy full-posts path. The resolved bool
+    # (`server_agg_enabled`, computed above) is folded into the share cache key,
+    # so flagged/unflagged bodies never collide.
     # A committed reportScope is the floor for every widget aggregation. The
     # read-only client narrows its displayed set to the scope (filter bar hidden →
     # empty viewer selection → scope promoted to active filters); reproduce that
@@ -547,26 +577,11 @@ async def get_shared_dashboard(
         # must render every widget from widgetData/tableData/feedData (it does).
         body["serverComplete"] = fully_covered
 
-    # Gzip-capable clients are served the compressed body from the
-    # response-bytes cache. The key folds in the share metadata (title/layout/
-    # filter config/reportConfig) ON TOP OF the data freshness stamp + slim,
-    # because those change the body but NOT the stamp - keying only on the stamp
-    # would serve a stale layout after an owner edit.
-    cache_key = share_cache_key(
-        token,
-        stamp,
-        slim,
-        {
-            "title": current_title,
-            "layout": layout,
-            "filterBarFilters": filter_bar_filters,
-            "orientation": orientation,
-            "reportScope": report_scope,
-            "filterBarHidden": filter_bar_hidden,
-            "reportConfig": report_config,
-        },
-        server_agg_enabled,
-    )
+    # Store under the SAME key computed before aggregation (gzip-capable clients);
+    # the next warm hit short-circuits at `cached_gzip_response` above. The key
+    # folds in the share metadata (title/layout/filter config/reportConfig) ON TOP
+    # OF the data freshness stamp + slim, because those change the body but NOT the
+    # stamp - keying only on the stamp would serve a stale layout after an edit.
     return gzipped_json_response(
         body, cache_key, request.headers.get("accept-encoding", "")
     )
