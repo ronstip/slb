@@ -138,7 +138,7 @@ TopicMetric = Literal[
 AnyDimension = Union[CustomDimensionField, TopicDimension, ComputedFieldRef]
 AnyMetric = Union[CustomMetric, TopicMetric, CustomObjectMetric, ComputedFieldRef]
 
-DataSource = Literal["posts", "topics"]
+DataSource = Literal["posts", "topics", "comments", "both"]
 
 # Post-level field - used in post-mode tables (one row per post). Mirrors
 # the PostField union in types-social-dashboard.ts.

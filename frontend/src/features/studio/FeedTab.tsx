@@ -52,6 +52,8 @@ export function FeedTab() {
   const [sort, setSort] = useState<FeedParams['sort']>('views');
   const [platform, setPlatform] = useState('all');
   const [sentiment, setSentiment] = useState('all');
+  // Data source: posts (default), comments, or both (scope_comments union).
+  const [feedSource, setFeedSource] = useState<'posts' | 'comments' | 'both'>('posts');
   // Which of the active collections to show (empty = all)
   const [collectionFilter, setCollectionFilter] = useState<string[]>([]);
   // Topic filter (set from TopicCard "Posts" button)
@@ -88,7 +90,7 @@ export function FeedTab() {
   );
 
   const { data, fetchNextPage, hasNextPage, isFetching, isLoading, isError } = useInfiniteQuery({
-    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, topicFilter?.id ?? '', agentStartDate ?? '', agentEndDate ?? '', activeAgentId ?? ''],
+    queryKey: ['feed-multi', effectiveIds.join(','), sort, platform, sentiment, topicFilter?.id ?? '', agentStartDate ?? '', agentEndDate ?? '', activeAgentId ?? '', feedSource],
     queryFn: ({ pageParam = 0 }) =>
       getMultiCollectionPosts({
         collection_ids: effectiveIds,
@@ -100,6 +102,7 @@ export function FeedTab() {
         start_date: agentStartDate,
         end_date: agentEndDate,
         agent_id: activeAgentId ?? undefined,
+        source: feedSource,
         ...(topicFilter ? { topic_cluster_id: topicFilter.id } : {}),
       }),
     getNextPageParam: (lastPage) => {
@@ -171,6 +174,28 @@ export function FeedTab() {
         onViewModeChange={setViewMode}
         topicCount={topicCount}
       />
+
+      {/* Data-source toggle (posts | comments | both). Agent-scoped only -
+          scope_comments needs an agent. Default posts. */}
+      {activeAgentId && viewMode === 'posts' && (
+        <div className="flex items-center gap-1.5 border-b border-border px-3 py-1.5">
+          <span className="text-[11px] text-muted-foreground">Source:</span>
+          {(['posts', 'comments', 'both'] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setFeedSource(s)}
+              className={`rounded-md border px-2 py-0.5 text-[11px] font-medium capitalize transition-colors ${
+                feedSource === s
+                  ? 'border-primary bg-primary/5 text-primary'
+                  : 'border-border text-muted-foreground hover:text-foreground hover:border-primary/30'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Topic filter chip */}
       {topicFilter && viewMode === 'posts' && (

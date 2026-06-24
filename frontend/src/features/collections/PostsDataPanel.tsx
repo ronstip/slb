@@ -92,6 +92,9 @@ export function PostsDataPanel({
   const [sourceFilter, setSourceFilter] = useState('all');
   const [platformFilter, setPlatformFilter] = useState('all');
   const [sentimentFilter, setSentimentFilter] = useState('all');
+  // Data source: posts (default), comments, or both (scope_comments union).
+  // Agent-scoped only - comments need an agent context.
+  const [feedSource, setFeedSource] = useState<'posts' | 'comments' | 'both'>('posts');
   const [dateRange, setDateRange] = useState<DateTimeRange>({ from: null, to: null });
 
   // Fetch agent doc to read custom_fields schema for the field registry.
@@ -160,7 +163,7 @@ export function PostsDataPanel({
   const fetchLimit = showAll ? 10_000 : INITIAL_LIMIT;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, effectiveEndDate, agentId ?? '', fetchLimit],
+    queryKey: ['collection-posts', effectiveCollectionIds, dedup, platformFilter, sentimentFilter, effectiveStartDate, effectiveEndDate, agentId ?? '', fetchLimit, feedSource],
     queryFn: () =>
       getMultiCollectionPosts({
         collection_ids: effectiveCollectionIds,
@@ -176,6 +179,8 @@ export function PostsDataPanel({
         start_date: effectiveStartDate ?? undefined,
         end_date: effectiveEndDate,
         agent_id: agentId,
+        // Posts (default), comments (scope_comments), or both. Agent-scoped only.
+        source: agentId ? feedSource : undefined,
       }),
     enabled: hasSelection,
     // Bumped from 30 s - posts data rarely changes mid-session; the 30 s window
@@ -342,6 +347,26 @@ export function PostsDataPanel({
   // Right-side controls: columns + clear-all + export + view toggle
   const controls = (
     <>
+      {/* Data source: posts | comments | both (scope_comments). Agent-scoped
+          only; default posts. */}
+      {agentId && (
+        <div className="flex items-center gap-1">
+          {(['posts', 'comments', 'both'] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setFeedSource(s)}
+              className={`rounded-md border px-2 py-1 text-xs font-medium capitalize transition-colors ${
+                feedSource === s
+                  ? 'border-primary bg-primary/5 text-primary'
+                  : 'border-border text-muted-foreground hover:text-foreground hover:border-primary/30'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
       <ColumnPicker
         registry={registry}
         prefs={columnPrefs}

@@ -51,6 +51,7 @@ class FeedPostResponse(BaseModel):
     collection_id: str | None = None
     is_retweet: bool | None = None
     is_quote: bool | None = None
+    parent_post_content: str | None = None
 
 
 class TopicBreakdownEntry(BaseModel):
@@ -180,6 +181,9 @@ class TopicMetricsResponse(BaseModel):
 class DashboardDataResponse(BaseModel):
     posts: list[DashboardPostResponse]
     topics: list[TopicMetricsResponse] = []
+    # Optional parallel source for dataSource: comments/both widgets. Post-shaped
+    # (comment_id aliased to post_id). Empty when the agent has no enriched comments.
+    comments: list[DashboardPostResponse] = []
     collection_names: dict[str, str]
     truncated: bool = False
     kpis: DashboardKpis | None = None

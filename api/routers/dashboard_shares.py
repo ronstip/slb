@@ -461,6 +461,13 @@ async def get_shared_dashboard(
     if report_config and not validate_report_config(report_config):
         canon_posts = transform_posts(core["posts"], report_config)
 
+    # Comments (dataSource: comments/both) are canonicalized the same way and
+    # shipped whole - the share's server-agg engine is posts-only, so comment
+    # widgets render client-side from this array (same as any uncovered widget).
+    canon_comments = core.get("comments", [])
+    if canon_comments and report_config and not validate_report_config(report_config):
+        canon_comments = transform_posts(canon_comments, report_config)
+
     # P2 (opt-in): server-aggregate every eligible widget over the canonicalized
     # posts (before slimming - slimming only drops display-only fields, which
     # aggregation never reads). The share's filter bar is hidden, so each
@@ -508,6 +515,7 @@ async def get_shared_dashboard(
     # (same cached core). The share's filter bar is hidden, so the displayed set
     # is static and the fetch happens once per visible widget.
     share_posts = strip_detail_fields(body_posts) if slim else body_posts
+    share_comments = strip_detail_fields(canon_comments) if slim else canon_comments
 
     # Wrap the cached core (posts/topics/collection_names/truncated) with this
     # share's per-request metadata; kpis in the core are unused here. Shape
@@ -515,6 +523,7 @@ async def get_shared_dashboard(
     body = {
         "posts": share_posts,
         "topics": core["topics"],
+        "comments": share_comments,
         "collection_names": core["collection_names"],
         "truncated": core["truncated"],
         "meta": meta.model_dump(),

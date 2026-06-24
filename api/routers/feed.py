@@ -148,6 +148,7 @@ async def get_multi_collection_feed(
                 collection_id=row.get("collection_id"),
                 is_retweet=row.get("is_retweet"),
                 is_quote=row.get("is_quote"),
+                parent_post_content=row.get("parent_post_content"),
             )
         )
 
@@ -248,6 +249,43 @@ def _build_tvf_filters(request: MultiFeedRequest) -> tuple[str, str, dict]:
     return topic_join_sql, where_sql, params
 
 
+# Aligned projections so a "comments"/"both" feed reuses the post-shaped
+# downstream query. Posts stays `SELECT *` (byte-identical to the original) so
+# the default path can't regress; comments fills post-only columns with NULL/
+# FALSE. The two explicit lists share column order for the UNION ALL in "both".
+_FEED_POST_COLS = (
+    "post_id, platform, channel_handle, channel_id, title, content, post_url, "
+    "posted_at, post_type, media_refs, collection_id, likes, shares, views, "
+    "comments_count, saves, sentiment, emotion, themes, entities, ai_summary, "
+    "content_type, language, custom_fields, context, detected_brands, "
+    "channel_type, is_retweet, is_quote, CAST(NULL AS STRING) AS parent_post_content"
+)
+_FEED_COMMENT_COLS = (
+    "comment_id AS post_id, platform, channel_handle, channel_id, title, content, "
+    "post_url, posted_at, post_type, media_refs, "
+    "collection_id, likes, shares, views, comments_count, "
+    "CAST(NULL AS INT64) AS saves, sentiment, emotion, themes, entities, "
+    "ai_summary, content_type, language, custom_fields, context, detected_brands, "
+    "channel_type, FALSE AS is_retweet, FALSE AS is_quote, parent_post_content"
+)
+
+
+def _feed_base_cte(source: str) -> str:
+    """The `base` CTE body for the chosen feed source. Posts-only is unchanged
+    (`SELECT *`); comments/both project the post-shaped column set so the rest
+    of the feed query is identical across sources."""
+    posts = "SELECT * FROM social_listening.scope_posts(@agent_id)"
+    if source == "comments":
+        return f"SELECT {_FEED_COMMENT_COLS} FROM social_listening.scope_comments(@agent_id)"
+    if source == "both":
+        return (
+            f"SELECT {_FEED_POST_COLS} FROM social_listening.scope_posts(@agent_id)\n"
+            f"      UNION ALL\n"
+            f"      SELECT {_FEED_COMMENT_COLS} FROM social_listening.scope_comments(@agent_id)"
+        )
+    return posts
+
+
 def _build_tvf_sql(request: MultiFeedRequest) -> tuple[str, dict]:
     """Build the agent-aware feed query that delegates scoping to scope_posts TVF."""
     topic_join_sql, where_sql, params = _build_tvf_filters(request)
@@ -257,7 +295,7 @@ def _build_tvf_sql(request: MultiFeedRequest) -> tuple[str, dict]:
 
     sql = f"""
     WITH base AS (
-      SELECT * FROM social_listening.scope_posts(@agent_id)
+      {_feed_base_cte(request.source)}
     )
     SELECT
         base.post_id, base.platform, base.channel_handle, base.channel_id,
@@ -322,7 +360,7 @@ def _build_tvf_kpis_sql(request: MultiFeedRequest) -> tuple[str, dict]:
 
     sql = f"""
     WITH base AS (
-      SELECT * FROM social_listening.scope_posts(@agent_id)
+      {_feed_base_cte(request.source)}
     ),
     filtered AS (
       SELECT base.* FROM base

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { ChevronRight, ChevronDown } from 'lucide-react';
 import type { MediaRef } from '../../api/types.ts';
 import { PostMedia } from '../../features/studio/PostCard.tsx';
 import { parseStringList, SentimentBadge } from './cells.tsx';
@@ -13,6 +15,7 @@ import { formatNumber } from '../../lib/format.ts';
 interface ExpandableRow {
   title?: string | null;
   content?: string | null;
+  parent_post_content?: string | null;
   ai_summary?: string | null;
   context?: string | null;
   emotion?: string | null;
@@ -82,6 +85,11 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
                 <p className="whitespace-pre-wrap">{row.title ? `${row.title}\n${row.content}` : row.content}</p>
               </Row>
             )}
+            {row.parent_post_content && (
+              <Row label="Parent Post">
+                <p className="whitespace-pre-wrap text-muted-foreground">{row.parent_post_content}</p>
+              </Row>
+            )}
             {row.ai_summary && (
               <Row label="AI Summary">{row.ai_summary}</Row>
             )}
@@ -140,7 +148,7 @@ export function ExpandedPostRow({ row }: ExpandedPostRowProps) {
               <>
                 {Object.entries(row.custom_fields).map(([key, value]) => (
                   <Row key={key} label={key.replace(/_/g, ' ')}>
-                    <span className="capitalize">{formatFieldValue(value)}</span>
+                    <FieldValue value={value} />
                   </Row>
                 ))}
               </>
@@ -185,11 +193,66 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-function formatFieldValue(value: unknown): string {
-  if (value === null || value === undefined) return '\u2014';
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (Array.isArray(value)) return value.join(', ');
-  return String(value);
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Renders a custom-field value. Primitives and string arrays render inline;
+ * objects and arrays-of-objects render as a collapsible dict expander instead
+ * of stringifying to "[object Object]".
+ */
+function FieldValue({ value }: { value: unknown }): React.ReactNode {
+  if (value === null || value === undefined) return <span>{'\u2014'}</span>;
+  if (typeof value === 'boolean') return <span>{value ? 'Yes' : 'No'}</span>;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span>{'\u2014'}</span>;
+    if (!value.some(isPlainObject)) {
+      return <span className="capitalize">{value.map(String).join(', ')}</span>;
+    }
+    return <DictExpander value={value} summary={`${value.length} item${value.length === 1 ? '' : 's'}`} />;
+  }
+  if (isPlainObject(value)) {
+    return <DictExpander value={value} summary="{\u2026}" />;
+  }
+  return <span className="capitalize">{String(value)}</span>;
+}
+
+function DictExpander({ value, summary }: { value: Record<string, unknown> | unknown[]; summary: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex w-fit items-center gap-1 text-accent-vibrant hover:underline"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <span>{summary}</span>
+      </button>
+      {open && (
+        <div className="mt-1 border-l border-border pl-2">
+          <DictTree value={value} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DictTree({ value }: { value: Record<string, unknown> | unknown[] }) {
+  const entries: [string, unknown][] = Array.isArray(value)
+    ? value.map((v, i) => [String(i + 1), v])
+    : Object.entries(value);
+  return (
+    <div className="flex flex-col gap-0.5 font-mono text-[11px]">
+      {entries.map(([k, v]) => (
+        <div key={k} className="flex gap-1">
+          <span className="shrink-0 font-semibold text-muted-foreground">{k}:</span>
+          <span className="min-w-0 text-foreground/90"><FieldValue value={v} /></span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function parseMediaRefs(raw?: string | MediaRef[]): MediaRef[] | undefined {
