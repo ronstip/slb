@@ -145,9 +145,12 @@ gcloud iam service-accounts create sl-worker \
     --display-name="SL Workers" --project="$PROJECT_ID" 2>/dev/null || true
 
 # API service account roles
+# storage.objectAdmin (not just objectViewer): the alert "Send test" path runs the
+# widget render IN-PROCESS in sl-api and uploads the PNG to the media bucket, so the
+# API SA needs write — mirrors the worker SA. Read-only here caused 403 on test sends.
 for ROLE in roles/aiplatform.user roles/bigquery.dataEditor roles/bigquery.jobUser \
     roles/datastore.user roles/cloudtasks.enqueuer roles/secretmanager.secretAccessor \
-    roles/storage.objectViewer; do
+    roles/storage.objectAdmin; do
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
         --member="serviceAccount:$API_SA" --role="$ROLE" --condition=None --quiet 2>/dev/null
 done
@@ -294,7 +297,7 @@ gcloud run services update sl-api \
 # collection-completion evaluator can snapshot widgets into visual emails.
 gcloud run services update sl-worker \
     --region "$REGION" \
-    --update-env-vars "API_SERVICE_URL=$API_URL,CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA,RENDER_SERVICE_URL=$RENDER_URL,RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-},ALERT_RENDER_SECRET=${ALERT_RENDER_SECRET:-},SENDGRID_API_KEY=${SENDGRID_API_KEY:-}" \
+    --update-env-vars "API_SERVICE_URL=$API_URL,FRONTEND_URL=$FRONTEND_URL,CLOUD_TASKS_SERVICE_ACCOUNT=$API_SA,RENDER_SERVICE_URL=$RENDER_URL,RENDER_SERVICE_TOKEN=${RENDER_SERVICE_TOKEN:-},ALERT_RENDER_SECRET=${ALERT_RENDER_SECRET:-},SENDGRID_API_KEY=${SENDGRID_API_KEY:-}" \
     --quiet
 
 # Allow the API service account to invoke the worker (for Cloud Tasks)
