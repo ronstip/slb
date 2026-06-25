@@ -258,6 +258,14 @@ class Settings(BaseSettings):
     # so turning this on is safe for every dashboard.
     dashboard_server_agg: bool = True
 
+    # Shared L2 for the dashboard response-bytes cache (GCS-backed). The
+    # in-process bytes cache is per-instance, so a fresh Cloud Run instance
+    # (burst / cold start / post-deploy) starts empty and pays the full
+    # BigQuery cold miss. The L2 lets any instance serve a body another instance
+    # already built (~100ms GCS read vs ~14s rebuild). Best-effort: a GCS error
+    # silently degrades to L1-only. Kill switch in case GCS misbehaves.
+    dashboard_cache_l2: bool = True
+
     # Dev-only kill switch for the OngoingScheduler daemon. In development the
     # scheduler auto-dispatches due recurring agents (and runs stale-pipeline
     # recovery), which fires real collection pipelines without user action.

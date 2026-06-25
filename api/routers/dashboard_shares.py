@@ -34,9 +34,10 @@ from api.services.dashboard_aggregate import (
     layout_fully_covered,
 )
 from api.services.dashboard_response import (
-    cached_gzip_response,
+    cached_gzip_response_async,
     gzipped_json_response,
     share_cache_key,
+    store_encoded_l2,
 )
 from api.services.dashboard_scope import apply_report_scope
 from api.services.dashboard_service import (
@@ -480,7 +481,8 @@ async def get_shared_dashboard(
         },
         server_agg_enabled,
     )
-    warm = cached_gzip_response(cache_key, request.headers.get("accept-encoding", ""))
+    accept_encoding = request.headers.get("accept-encoding", "")
+    warm = await cached_gzip_response_async(cache_key, accept_encoding)
     if warm is not None:
         return warm
 
@@ -578,13 +580,15 @@ async def get_shared_dashboard(
         body["serverComplete"] = fully_covered
 
     # Store under the SAME key computed before aggregation (gzip-capable clients);
-    # the next warm hit short-circuits at `cached_gzip_response` above. The key
-    # folds in the share metadata (title/layout/filter config/reportConfig) ON TOP
-    # OF the data freshness stamp + slim, because those change the body but NOT the
-    # stamp - keying only on the stamp would serve a stale layout after an edit.
-    return gzipped_json_response(
-        body, cache_key, request.headers.get("accept-encoding", "")
-    )
+    # the next warm hit short-circuits at `cached_gzip_response_async` above. The
+    # key folds in the share metadata (title/layout/filter config/reportConfig) ON
+    # TOP OF the data freshness stamp + slim, because those change the body but NOT
+    # the stamp - keying only on the stamp would serve a stale layout after an edit.
+    response = gzipped_json_response(body, cache_key, accept_encoding)
+    # Mirror the freshly-built body to the shared GCS L2 so a sibling instance
+    # (burst / cold start) serves it without re-running this BigQuery cold miss.
+    await store_encoded_l2(cache_key, accept_encoding)
+    return response
 
 
 @router.post("/public/{token}/post-details")
