@@ -244,6 +244,74 @@ def test_heatmap_widget_is_covered(client):
     assert body["widgetData"]["heat"]["groupedCategorical"]["labels"] == ["twitter", "youtube"]
 
 
+def test_warm_bytes_cache_skips_aggregation(client, monkeypatch):
+    # A warm gzip-bytes cache hit must short-circuit BEFORE the server-agg engine
+    # runs - otherwise every warm hit re-aggregates the full post set (the 10K-post
+    # `wc26brands` recompute that kept warm shares at ~3s). The cache key is fully
+    # determined by stamp + share metadata, all known before aggregation.
+    from api.services import dashboard_response
+
+    dashboard_response.clear_encoded()
+    calls = {"n": 0}
+    real = ds_router.build_widget_data_map
+
+    def _spy(posts, layout):
+        calls["n"] += 1
+        return real(posts, layout)
+
+    monkeypatch.setattr(ds_router, "build_widget_data_map", _spy)
+
+    # First request: cold bytes cache -> aggregation runs once, body is cached.
+    r1 = client.get("/dashboard/shares/public/tok1?slim=1&agg=server")
+    assert r1.status_code == 200
+    assert calls["n"] == 1
+
+    # Second identical request: warm bytes cache -> aggregation must NOT run again.
+    r2 = client.get("/dashboard/shares/public/tok1?slim=1&agg=server")
+    assert r2.status_code == 200
+    assert calls["n"] == 1, "aggregation re-ran on a warm bytes-cache hit"
+
+    # The short-circuited body is identical to the freshly-built one.
+    assert r1.json() == r2.json()
+
+
+def test_l2_serves_cold_instance_without_aggregation(client, monkeypatch):
+    # The GCS L2 lets a FRESH instance (empty in-process L1) serve a body a
+    # sibling already built, instead of re-aggregating + re-querying BigQuery
+    # (the ~14s cross-instance cold miss). Fake GCS with an in-memory dict.
+    from api.services import dashboard_response
+
+    store: dict[str, bytes] = {}
+    monkeypatch.setattr(dashboard_response, "l2_get", lambda k: store.get(k))
+    monkeypatch.setattr(dashboard_response, "l2_set", store.__setitem__)
+    dashboard_response.clear_encoded()
+
+    calls = {"n": 0}
+    real = ds_router.build_widget_data_map
+
+    def _spy(posts, layout):
+        calls["n"] += 1
+        return real(posts, layout)
+
+    monkeypatch.setattr(ds_router, "build_widget_data_map", _spy)
+
+    # First request on "instance 1": cold L1 + cold L2 -> aggregate once, fill
+    # L1, and (awaited) mirror the body to the L2.
+    r1 = client.get("/dashboard/shares/public/tok1?slim=1&agg=server")
+    assert r1.status_code == 200
+    assert calls["n"] == 1
+    assert len(store) == 1, "body should have been written to the L2"
+
+    # Simulate a fresh instance: wipe L1 but keep the shared L2.
+    dashboard_response.clear_encoded()
+
+    # Second request on "instance 2": L1 miss -> L2 HIT -> must NOT re-aggregate.
+    r2 = client.get("/dashboard/shares/public/tok1?slim=1&agg=server")
+    assert r2.status_code == 200
+    assert calls["n"] == 1, "an L2 hit must skip aggregation on a cold instance"
+    assert r2.json() == r1.json()
+
+
 def test_post_mode_table_ships_as_feed(client):
     # #5: a post-mode table sorted by a numeric column ships a bounded post-id
     # feed and (with only static siblings) trips the omit gate.

@@ -258,6 +258,20 @@ class Settings(BaseSettings):
     # so turning this on is safe for every dashboard.
     dashboard_server_agg: bool = True
 
+    # Shared L2 for the dashboard response-bytes cache (GCS-backed). The
+    # in-process bytes cache is per-instance, so a fresh Cloud Run instance
+    # (burst / cold start / post-deploy) starts empty and pays the full
+    # BigQuery cold miss. The L2 lets any instance serve a body another instance
+    # already built (~100ms GCS read vs ~14s rebuild). Best-effort: a GCS error
+    # silently degrades to L1-only. Kill switch in case GCS misbehaves.
+    dashboard_cache_l2: bool = True
+
+    # Dev-only kill switch for the OngoingScheduler daemon. In development the
+    # scheduler auto-dispatches due recurring agents (and runs stale-pipeline
+    # recovery), which fires real collection pipelines without user action.
+    # Off by default so a local backend stays quiet unless explicitly opted in.
+    enable_dev_scheduler: bool = False
+
     frontend_url: str = "http://localhost:5174"
 
     # CORS - comma-separated allowed origins
@@ -282,8 +296,21 @@ class Settings(BaseSettings):
 
     # Email notifications (SendGrid)
     sendgrid_api_key: str = ""
-    sendgrid_from_email: str = "ronnstip@gmail.com"
-    sendgrid_from_name: str = "SLB"
+    sendgrid_from_email: str = "alerts@scolto.com"
+    sendgrid_from_name: str = "Scolto"
+
+    # Visual alert rendering — headless PNG snapshots of dashboard widgets for
+    # alert emails (and, later, Slack/Teams/WhatsApp). All three empty → alerts
+    # silently fall back to the text/post-list email body, so this is safe to
+    # leave unset in dev.
+    #   render_service_url   – Node+Playwright render service (POST /render)
+    #   render_service_token – shared bearer the worker sends / the service checks
+    #   alert_render_secret  – HMAC key for the short-lived embed token that lets
+    #                          the headless browser fetch ONE widget's data with
+    #                          no user login
+    render_service_url: str = ""
+    render_service_token: str = ""
+    alert_render_secret: str = ""
 
     # WhatsApp channel (spec docs/whatsapp-channel-impl-spec.md §5).
     # api service needs app_secret + verify_token (webhook); worker service

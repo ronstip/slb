@@ -26,6 +26,7 @@ from workers.enrichment.schema import (
     ElementFieldDef,
     EnrichmentResult,
     MediaRef,
+    ParentContext,
     PostData,
     ReferencedPost,
 )
@@ -174,6 +175,64 @@ REFERENCED_POST_BLOCK_TEMPLATE = """\
 Context - this post is a {ref_type_label} of @{ref_author} who said:
   "{ref_content}"
 {ref_media_note}
+"""
+
+# ---------------------------------------------------------------------------
+# Comment enrichment prompt (separate from the post path).
+#
+# A comment is enriched in light of its PARENT post. The request is structured
+# for Gemini implicit prefix caching:
+#   - system_instruction (COMMENT_SYSTEM_INSTRUCTION) is identical across the
+#     whole agent batch  -> cached once for all comments + parents.
+#   - the PARENT block (COMMENT_PARENT_BLOCK) is identical across all sibling
+#     comments of one parent -> cached across the thread.
+#   - the comment's own text/media come LAST -> the only variable suffix.
+# The comment worker submits comments ORDERED BY parent so siblings hit the
+# warm cache window. Posts are untouched by all of this.
+COMMENT_SYSTEM_INSTRUCTION = """\
+Your job is to analyze a single social media COMMENT (a reply in a thread). Judge the comment in light of the PARENT post it replies to, which is provided first as context.
+
+Task under analysis: "{enrichment_context}"
+Use this ONLY as the yardstick for judging relevance. It is NOT a hint that the task's subject, brands, or entities appear in this comment. Judge every field from what the comment itself shows (read in light of its parent).
+
+The PARENT post is CONTEXT ONLY - use it to resolve what a terse comment refers to (e.g. which hotel/entity an answer like "filthy" or "great, highly recommend" is about, and which aspect). Analyze the COMMENT, not the parent. Do not score the parent's sentiment or extract the parent's entities unless the comment itself carries them.
+
+Fields of the analysis:
+- context: the background the comment operates in, inferred from the comment + its parent. Keep it minimal when signal is thin.
+- ai_summary: a short summary of what the comment says and the verdict/opinion it expresses.
+- language: ISO code of the comment language (e.g. en, es, he)
+- sentiment: the comment author's sentiment toward the entity/subject they are addressing. Positive: support/praise/recommendation. Neutral: ambiguous, ambivalent, or factual. Negative: criticism, complaint, or a warning to avoid.
+- emotion: primary emotion (joy/anger/frustration/excitement/disappointment/surprise/trust/fear/neutral)
+- entities: brands, products, people, places named in the comment (or unambiguously referred to from the parent).
+- themes: topic themes the comment raises.
+- content_type: the type/category of the comment.
+- relevance_reason: 1-2 sentences citing the SPECIFIC signal in THIS comment that connects it to - or fails to connect it to - the task. Write this BEFORE deciding is_related_to_task.
+- is_related_to_task: decide strictly from relevance_reason. A comment carries its OWN relevance: an off-topic, spam, or purely social reply ("lol", tagging a friend) under a relevant parent is NOT related. True only if the comment itself meaningfully addresses the task.
+- detected_brands: brands you can DIRECTLY observe named in the comment. Empty list if none.
+- channel_type: classify the comment author's account ("official"/"media"/"influencer"/"ugc").
+
+When you name an entity in a custom field, use its FULL, canonical name (not an abbreviation, nickname, or partial), so the same entity aggregates cleanly across comments.
+
+Grounding: base each field on what the comment actually says (read with the parent for reference). When signal is thin, prefer empty values (empty list, `neutral`, null) over a plausible guess.
+
+IMPORTANT: All output fields MUST be in English, regardless of the comment's original language."""
+
+# Cacheable leading block - identical across all sibling comments of one parent.
+COMMENT_PARENT_BLOCK_TEMPLATE = """\
+PARENT POST (context only - the comment below is replying to this):
+  Summary: {parent_ai_summary}
+{parent_context_line}
+"""
+
+# Variable suffix - the comment's own content.
+COMMENT_ITEM_TEMPLATE = """\
+Comment to analyze:
+  Platform: {platform}
+  Author: {channel_handle}
+  Posted at: {posted_at}
+  Content: {content}
+  Media:
+
 """
 
 _MEDIA_RESOLUTION_MAP = {
@@ -418,6 +477,58 @@ def _render_referenced_post_block(ref: ReferencedPost | None) -> str:
     )
 
 
+def _render_comment_system_instruction(
+    enrichment_context: str | None,
+    custom_fields: list[CustomFieldDef] | None,
+) -> str:
+    """Render the comment-path system_instruction: static task body + custom
+    field section, identical across the whole batch so Gemini caches it once."""
+    text = COMMENT_SYSTEM_INSTRUCTION.format(
+        enrichment_context=enrichment_context or "N/A",
+    )
+    if custom_fields:
+        custom_section = _build_custom_fields_prompt(custom_fields)
+        # Inject before the trailing IMPORTANT marker, mirroring the post path.
+        text = text.replace(
+            "\nIMPORTANT: All output fields",
+            f"{custom_section}\n\nIMPORTANT: All output fields",
+        )
+    return text
+
+
+def _build_comment_content_parts(
+    post: PostData,
+    skip_video: bool = False,
+) -> list[types.Part]:
+    """Build content parts for a single COMMENT: parent block (cacheable across
+    siblings) + the comment's own text + media. Static instructions live in the
+    system_instruction, NOT here."""
+    settings = get_settings()
+    parts: list[types.Part] = []
+
+    pc = post.parent_context
+    if pc is not None:
+        ctx_line = f"  {pc.parent_context}" if pc.parent_context else ""
+        parts.append(types.Part.from_text(text=COMMENT_PARENT_BLOCK_TEMPLATE.format(
+            parent_ai_summary=pc.parent_ai_summary or "(none)",
+            parent_context_line=ctx_line,
+        )))
+
+    parts.append(types.Part.from_text(text=COMMENT_ITEM_TEMPLATE.format(
+        platform=post.platform,
+        channel_handle=post.channel_handle or "unknown",
+        posted_at=post.posted_at or "unknown",
+        content=post.content or "",
+    )))
+
+    for ref in post.media_refs[: settings.enrichment_max_media_per_post]:
+        part = _build_media_part(ref, post.post_id, skip_video, settings)
+        if part is not None:
+            parts.append(part)
+
+    return parts
+
+
 def _build_media_part(
     ref: MediaRef,
     post_id: str,
@@ -455,8 +566,17 @@ def _build_media_part(
 def _build_config(
     custom_fields: list[CustomFieldDef] | None = None,
     content_types: list[str] | None = None,
+    system_instruction: str | None = None,
+    enable_search: bool | None = None,
 ) -> types.GenerateContentConfig:
-    """Build GenerateContentConfig from settings, with optional dynamic schema."""
+    """Build GenerateContentConfig from settings, with optional dynamic schema.
+
+    `system_instruction` (comment path) moves the static instruction body out of
+    the per-item content so it caches across the whole batch. `enable_search`
+    overrides `settings.enrichment_search` per-call (comments pass False - the
+    parent context is their grounding, web search adds cost + hallucination
+    surface). When None, the global setting is used.
+    """
     settings = get_settings()
 
     media_res = _MEDIA_RESOLUTION_MAP.get(
@@ -464,8 +584,9 @@ def _build_config(
     )
     thinking = _THINKING_LEVEL_MAP.get(settings.enrichment_thinking_level)
 
+    use_search = settings.enrichment_search if enable_search is None else enable_search
     tools = []
-    if settings.enrichment_search:
+    if use_search:
         tools.append(types.Tool(google_search=types.GoogleSearch()))
 
     response_schema = _build_response_schema(custom_fields, content_types)
@@ -477,6 +598,7 @@ def _build_config(
         response_schema=response_schema,
         media_resolution=media_res,
         tools=tools or None,
+        system_instruction=system_instruction or None,
     )
     # Only set thinking_config if the level is explicitly configured
     # (some models like gemini-3-flash-preview don't support it)
@@ -525,6 +647,7 @@ def _enrich_single_post(
     post: PostData,
     custom_fields: list[CustomFieldDef] | None = None,
     enrichment_context: str | None = None,
+    comment_mode: bool = False,
 ) -> tuple[str, EnrichmentResult | None]:
     """Enrich a single post. Returns (post_id, result) or (post_id, None) on failure.
 
@@ -539,7 +662,10 @@ def _enrich_single_post(
     no text-only fallback: a post without its video is not worth enriching.
     """
     settings = get_settings()
-    parts = _build_content_parts(post, custom_fields, enrichment_context=enrichment_context)
+    if comment_mode:
+        parts = _build_comment_content_parts(post)
+    else:
+        parts = _build_content_parts(post, custom_fields, enrichment_context=enrichment_context)
     contents = types.Content(role="user", parts=parts)
     semaphore = _get_global_semaphore()
     general_limiter = _get_general_rate_limiter()
@@ -641,6 +767,7 @@ def enrich_posts(
     custom_fields: list[CustomFieldDef] | None = None,
     enrichment_context: str | None = None,
     content_types: list[str] | None = None,
+    comment_mode: bool = False,
 ) -> list[tuple[str, EnrichmentResult]]:
     """Enrich a batch of posts via Gemini API.
 
@@ -648,6 +775,11 @@ def enrich_posts(
     is read from settings / env vars. custom_fields is per-collection runtime
     data passed from the collection config. content_types is the per-agent
     closed vocabulary for the content_type field.
+
+    When `comment_mode` is True the batch is COMMENTS: each PostData carries its
+    own `parent_context`; the static task body moves into a cached
+    system_instruction and Google Search is disabled. The same EnrichmentResult
+    schema is produced. Submit comments ordered by parent for warm prefix cache.
 
     Returns list of (post_id, EnrichmentResult) for successfully enriched posts.
     Failed posts are logged and skipped.
@@ -664,7 +796,14 @@ def enrich_posts(
         http_options=types.HttpOptions(timeout=300_000),  # 300s max per call - video analysis can take >120s
     )
     model = settings.enrichment_model
-    config = _build_config(custom_fields, content_types)
+    if comment_mode:
+        config = _build_config(
+            custom_fields, content_types,
+            system_instruction=_render_comment_system_instruction(enrichment_context, custom_fields),
+            enable_search=False,
+        )
+    else:
+        config = _build_config(custom_fields, content_types)
 
     # Log media availability so we can verify videos reach Gemini
     n_images = sum(
@@ -692,7 +831,7 @@ def enrich_posts(
     # streaming path does.
     with ContextAwareThreadPoolExecutor(max_workers=settings.enrichment_concurrency) as executor:
         futures = {
-            executor.submit(_enrich_single_post, client, model, config, post, custom_fields, enrichment_context): post
+            executor.submit(_enrich_single_post, client, model, config, post, custom_fields, enrichment_context, comment_mode): post
             for post in posts
         }
 

@@ -33,6 +33,8 @@ from api.middleware.request_id import RequestIDMiddleware
 from api.rate_limiting import limiter
 from api.routers import admin as admin_router
 from api.routers import agents as agents_router
+from api.routers import alert_render as alert_render_router
+from api.routers import alerts as alerts_router
 from api.routers import artifact_shares as artifact_shares_router
 from api.routers import artifacts as artifacts_router
 from api.routers import auth as auth_router
@@ -94,7 +96,7 @@ async def lifespan(app_: FastAPI):
     # I/O and used to block startup for tens of seconds on every reload.
     asyncio.create_task(_bg_cleanup())
 
-    if settings.is_dev:
+    if settings.is_dev and settings.enable_dev_scheduler:
         from api.scheduler import OngoingScheduler
         scheduler = OngoingScheduler()
         scheduler.start()
@@ -162,10 +164,14 @@ app.include_router(feed_links_router.router)
 app.include_router(auth_router.router)
 app.include_router(orgs_router.router)
 app.include_router(media_router.router)
+# Ungated: the headless alert renderer authenticates with a scoped render token,
+# not a Firebase session (see api/routers/alert_render.py).
+app.include_router(alert_render_router.router)
 app.include_router(health_router.router)
 app.include_router(collections_router.router, dependencies=_gated)
 app.include_router(feed_router.router, dependencies=_gated)
 app.include_router(agents_router.router, dependencies=_gated)
+app.include_router(alerts_router.router, dependencies=_gated)
 app.include_router(posts_router.router, dependencies=_gated)
 app.include_router(chat_router.router)
 app.include_router(internal_router.router)

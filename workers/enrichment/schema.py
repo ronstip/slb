@@ -35,8 +35,26 @@ class ReferencedPost(BaseModel):
     media_refs: list[MediaRef] = []
 
 
+class ParentContext(BaseModel):
+    """Parent-post context for enriching a COMMENT.
+
+    A comment is enriched in light of the post it replies to: the parent's
+    `ai_summary` (+ optional `context`) is injected so a terse answer ("filthy",
+    "great, recommend") resolves to the right entity/aspect. Distinct from
+    `ReferencedPost` (quote/reply hydration) - this is the comment->parent link
+    and is rendered as the cacheable leading block of the comment request.
+    """
+
+    parent_ai_summary: str
+    parent_context: str = ""
+
+
 class PostData(BaseModel):
-    """Input data for enrichment - everything the LLM needs to analyze a post."""
+    """Input data for enrichment - everything the LLM needs to analyze a post.
+
+    Also carries a single comment for the comment-enrichment path: set `content`
+    to the comment text and `parent_context` to its parent post's summary.
+    """
 
     post_id: str
     platform: str
@@ -48,6 +66,10 @@ class PostData(BaseModel):
     search_keyword: str | None = None
     media_refs: list[MediaRef] = []
     referenced_post: ReferencedPost | None = None
+    # Per-item parent context, set ONLY when enriching a comment. The batch-level
+    # `enrichment_context` (the task) is shared; the parent differs per comment,
+    # so it must ride on the item, not the batch arg.
+    parent_context: ParentContext | None = None
 
 
 CustomFieldType = Literal[

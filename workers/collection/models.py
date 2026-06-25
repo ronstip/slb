@@ -62,6 +62,8 @@ class Comment:
     commented_at: datetime
     channel_id: str | None = None
     content: str | None = None
+    comment_url: str | None = None
+    post_type: str = "comment"
     root_comment_id: str | None = None
     likes: int | None = None
     shares: int | None = None

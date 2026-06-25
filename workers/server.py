@@ -218,6 +218,71 @@ async def run_whatsapp_inbound_handler(request: Request):
         return {"status": "error", "error": str(e)}
 
 
+@app.post("/comments/enrich")
+async def enrich_comments_handler(request: Request):
+    """Enrich a post's comments (or a whole collection's) with parent context,
+    writing to enriched_comments (mirrors /comments/run)."""
+    body = await request.json()
+    collection_id = body.get("collection_id", "")
+    post_id = body.get("post_id", "")
+
+    logger.info("Starting comment enrichment (post=%s, collection=%s)", post_id, collection_id)
+    cost_token = _bind_cost_context_from_collection(collection_id)
+    try:
+        from workers.comments_enrichment.worker import (
+            run_comment_enrichment,
+            run_comment_enrichment_for_post,
+        )
+
+        if post_id:
+            run_comment_enrichment_for_post(post_id, collection_id)
+        else:
+            run_comment_enrichment(collection_id)
+        logger.info("Comment enrichment completed (post=%s, collection=%s)", post_id, collection_id)
+        return {"status": "ok"}
+    except Exception as e:
+        logger.exception("Comment enrichment failed (post=%s, collection=%s)", post_id, collection_id)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("worker", "comments_enrichment")
+            scope.set_tag("collection_id", collection_id)
+            scope.set_tag("post_id", post_id)
+            sentry_sdk.capture_exception(e)
+        return {"status": "error", "error": str(e)}
+    finally:
+        _reset_cost_context(cost_token)
+
+
+@app.post("/alerts/evaluate")
+async def evaluate_alerts_handler(request: Request):
+    """Evaluate the agent's alerts against a finished collection run.
+
+    Primary trigger is inline at pipeline completion; this endpoint exists for
+    manual re-runs and a future scheduled sweep. Dedup makes re-invocation safe.
+    """
+    body = await request.json()
+    collection_id = body.get("collection_id", "")
+    if not collection_id:
+        return JSONResponse(status_code=400, content={"error": "collection_id required"})
+
+    logger.info("Starting alert evaluation for collection %s", collection_id)
+    cost_token = _bind_cost_context_from_collection(collection_id)
+    try:
+        from api.deps import get_bq, get_fs
+        from workers.alerts.evaluator import evaluate_alerts_for_collection
+
+        result = evaluate_alerts_for_collection(collection_id, bq=get_bq(), fs=get_fs())
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.exception("Alert evaluation failed for %s", collection_id)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("worker", "alerts")
+            scope.set_tag("collection_id", collection_id)
+            sentry_sdk.capture_exception(e)
+        return {"status": "error", "collection_id": collection_id, "error": str(e)}
+    finally:
+        _reset_cost_context(cost_token)
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

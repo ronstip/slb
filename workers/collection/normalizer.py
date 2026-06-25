@@ -86,6 +86,8 @@ def comment_to_bq_row(comment: Comment, post_id: str, agent_id: str | None) -> d
         "channel_handle": comment.channel_handle,
         "channel_id": comment.channel_id,
         "content": comment.content,
+        "comment_url": comment.comment_url,
+        "post_type": comment.post_type,
         "commented_at": comment.commented_at.isoformat() if comment.commented_at else None,
         "likes": comment.likes,
         "shares": comment.shares,

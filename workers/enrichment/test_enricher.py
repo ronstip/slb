@@ -159,6 +159,78 @@ def test_youtube_url_part_omitted_when_video_skipped():
 
 
 # ---------------------------------------------------------------------------
+# Comment enrichment path: parent context + cache-friendly prompt split.
+# ---------------------------------------------------------------------------
+
+from workers.enrichment.enricher import (  # noqa: E402
+    COMMENT_SYSTEM_INSTRUCTION,
+    _build_comment_content_parts,
+    _build_config,
+    _render_comment_system_instruction,
+)
+from workers.enrichment.schema import ParentContext  # noqa: E402
+
+
+def _comment_post() -> PostData:
+    return PostData(
+        post_id="c1", platform="facebook", channel_handle="dana",
+        content="Leonardo Club - everything was filthy, avoid",
+        parent_context=ParentContext(
+            parent_ai_summary="Asking which Dead Sea hotel is worst and why.",
+            parent_context="A recommendation-request thread.",
+        ),
+    )
+
+
+def test_post_data_default_parent_context_is_none():
+    pd = PostData(post_id="9002", platform="facebook", content="hi")
+    assert pd.parent_context is None
+
+
+def test_comment_parts_lead_with_parent_block_then_comment():
+    parts = _build_comment_content_parts(_comment_post())
+    texts = [getattr(p, "text", None) for p in parts]
+    # First part is the parent block; it carries the parent summary.
+    assert "PARENT POST" in texts[0]
+    assert "which Dead Sea hotel is worst" in texts[0]
+    # Second part is the comment itself.
+    assert "Comment to analyze" in texts[1]
+    assert "filthy" in texts[1]
+
+
+def test_comment_content_parts_exclude_static_instructions():
+    # The static task body lives in system_instruction, NOT in the per-item
+    # content - this is what makes the prefix cacheable across siblings.
+    parts = _build_comment_content_parts(_comment_post())
+    joined = " ".join(getattr(p, "text", "") or "" for p in parts)
+    assert "Your job is to analyze" not in joined
+    assert "Fields of the analysis" not in joined
+
+
+def test_comment_system_instruction_holds_task_and_custom_fields():
+    from workers.enrichment.schema import CustomFieldDef
+
+    cf = [CustomFieldDef(name="hotel_mentions", description="hotels referenced", type="list[str]")]
+    si = _render_comment_system_instruction("hotel reputation in Israel", cf)
+    assert "hotel reputation in Israel" in si
+    assert "hotel_mentions" in si            # custom field injected
+    assert si.rstrip().endswith("original language.")  # IMPORTANT stays last
+
+
+def test_build_config_comment_mode_sets_system_instruction_and_disables_search():
+    si = _render_comment_system_instruction("task", None)
+    config = _build_config(None, None, system_instruction=si, enable_search=False)
+    assert config.system_instruction == si
+    assert config.tools is None  # grounding off for comments
+
+
+def test_build_config_posts_path_unchanged_no_system_instruction():
+    # Posts must not regress: default config carries no system_instruction.
+    config = _build_config(None, None)
+    assert config.system_instruction is None
+
+
+# ---------------------------------------------------------------------------
 # list[object] custom field - schema validation + dynamic model build
 # ---------------------------------------------------------------------------
 

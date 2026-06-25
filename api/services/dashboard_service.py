@@ -29,7 +29,7 @@ from api.services.dashboard_cache import get_core, set_core
 
 logger = logging.getLogger(__name__)
 
-MAX_ROWS = 10000
+MAX_ROWS = 50000
 
 # Display-only post fields read ONLY for the bounded set of posts actually on
 # screen - the embed-gallery thumbnail (`media_refs`), a table's expanded row
@@ -95,23 +95,30 @@ async def get_or_build_core(
     posts_sql, posts_params = build_dashboard_sql(collection_ids, agent_id, MAX_ROWS + 1)
     kpis_sql, kpis_params = build_dashboard_kpis_sql(collection_ids, agent_id)
     topics_sql, topics_params = build_topics_sql(agent_id)
+    comments_sql, comments_params = build_comments_sql(collection_ids, agent_id, MAX_ROWS + 1)
 
-    rows, kpi_rows, topic_rows, name_rows = await asyncio.gather(
+    rows, kpi_rows, topic_rows, name_rows, comment_rows = await asyncio.gather(
         asyncio.to_thread(bq.query, posts_sql, posts_params),
         asyncio.to_thread(bq.query, kpis_sql, kpis_params),
         asyncio.to_thread(bq.query, topics_sql, topics_params),
         asyncio.to_thread(
             bq.query, COLLECTION_NAMES_SQL, {"collection_ids": collection_ids}
         ),
+        # Comments are an optional parallel source (dataSource: comments/both).
+        # Fetched alongside posts/topics like topic_metrics; empty when the agent
+        # has no enriched_comments. scope_comments() tolerates the missing table
+        # at deploy time only after the migration runs - falls back to [] on error.
+        _query_or_empty(bq, comments_sql, comments_params),
     )
     gather_ms = (time.perf_counter() - t0) * 1000
 
     truncated = len(rows) > MAX_ROWS
     if truncated:
         rows = rows[:MAX_ROWS]
+    comment_rows = comment_rows[:MAX_ROWS]
 
     ts = time.perf_counter()
-    core = assemble_dashboard_core(rows, topic_rows, kpi_rows, name_rows, truncated)
+    core = assemble_dashboard_core(rows, topic_rows, kpi_rows, name_rows, truncated, comment_rows)
     serialize_ms = (time.perf_counter() - ts) * 1000
     set_core(agent_id, collection_ids, stamp, core)
     return core, False, gather_ms, serialize_ms
@@ -155,6 +162,19 @@ SELECT collection_id, original_question
 FROM social_listening.collections
 WHERE collection_id IN UNNEST(@collection_ids)
 """
+
+
+async def _query_or_empty(bq, sql: str | None, params: dict | None) -> list[dict]:
+    """Run a query in a thread, returning [] on None sql or any error. Used for
+    the optional comments source so a missing scope_comments TVF (pre-migration)
+    or an agent with no comments never breaks the dashboard."""
+    if not sql:
+        return []
+    try:
+        return await asyncio.to_thread(bq.query, sql, params)
+    except Exception:
+        logger.exception("comments source query failed; returning empty")
+        return []
 
 
 # ─── TVF-backed SQL builders ────────────────────────────────────────
@@ -217,6 +237,54 @@ def build_dashboard_sql(
     FROM social_listening.scope_posts(@agent_id) sp
     LEFT JOIN topic_membership tm USING (post_id)
     WHERE sp.collection_id IN UNNEST(@collection_ids)
+    LIMIT {max_rows}
+    """
+    return sql, {"agent_id": agent_id, "collection_ids": collection_ids}
+
+
+def build_comments_sql(
+    collection_ids: list[str],
+    agent_id: str | None,
+    max_rows: int,
+) -> tuple[str | None, dict | None]:
+    """Return (sql, params) for the comment rows query, or (None, None) when no
+    agent context. Projects the SAME post-shaped columns as build_dashboard_sql
+    (comment_id aliased to post_id) so a `dataSource: comments` widget reuses the
+    post aggregation path unchanged. Comments aren't clustered, so topic_ids is
+    always empty.
+    """
+    if not agent_id:
+        return None, None
+
+    sql = f"""
+    SELECT
+        sc.comment_id AS post_id,
+        sc.collection_id,
+        sc.platform,
+        sc.channel_handle,
+        sc.posted_at,
+        sc.title,
+        sc.content,
+        sc.post_url,
+        sc.sentiment,
+        sc.emotion,
+        sc.themes,
+        sc.entities,
+        sc.language,
+        sc.content_type,
+        sc.custom_fields,
+        sc.ai_summary,
+        sc.context,
+        sc.detected_brands,
+        sc.channel_type,
+        sc.media_refs,
+        CAST([] AS ARRAY<STRING>) AS topic_ids,
+        COALESCE(sc.likes, 0) AS like_count,
+        COALESCE(sc.views, 0) AS view_count,
+        COALESCE(sc.comments_count, 0) AS comment_count,
+        COALESCE(sc.shares, 0) AS share_count
+    FROM social_listening.scope_comments(@agent_id) sc
+    WHERE sc.collection_id IN UNNEST(@collection_ids)
     LIMIT {max_rows}
     """
     return sql, {"agent_id": agent_id, "collection_ids": collection_ids}
@@ -469,6 +537,7 @@ def assemble_dashboard_core(
     kpi_rows: list[dict],
     name_rows: list[dict],
     truncated: bool,
+    comment_rows: list[dict] | None = None,
 ) -> dict:
     """Assemble the cacheable, jsonable dashboard core shared by both endpoints.
 
@@ -482,6 +551,9 @@ def assemble_dashboard_core(
     return {
         "posts": [build_post_response(r).model_dump() for r in rows],
         "topics": [build_topic_response(r).model_dump() for r in topic_rows],
+        # Comment rows are post-shaped (comment_id aliased to post_id) so they
+        # reuse build_post_response and the frontend post aggregation path.
+        "comments": [build_post_response(r).model_dump() for r in (comment_rows or [])],
         "kpis": _kpis_dict(kpi_rows),
         "collection_names": _collection_names_map(name_rows),
         "truncated": truncated,

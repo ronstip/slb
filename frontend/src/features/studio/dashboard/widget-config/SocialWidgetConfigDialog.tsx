@@ -142,6 +142,10 @@ interface SocialWidgetConfigDialogProps {
   mode?: 'add' | 'edit';
   allPosts: DashboardPost[];
   filteredPosts: DashboardPost[];
+  /** Comment rows (post-shaped). `allComments` gates the source toggle's
+   *  Comments/Both options; `filteredComments` drives the comment preview. */
+  allComments?: DashboardPost[];
+  filteredComments?: DashboardPost[];
   availableOptions: FilterOptions;
   onSave: (widget: SocialDashboardWidget) => void;
   onClose: () => void;
@@ -166,6 +170,8 @@ export function SocialWidgetConfigDialog({
   mode = 'edit',
   allPosts,
   filteredPosts,
+  allComments,
+  filteredComments,
   availableOptions,
   onSave,
   onClose,
@@ -186,6 +192,8 @@ export function SocialWidgetConfigDialog({
       mode={mode}
       allPosts={allPosts}
       filteredPosts={filteredPosts}
+      allComments={allComments}
+      filteredComments={filteredComments}
       availableOptions={availableOptions}
       onSave={onSave}
       onClose={onClose}
@@ -252,6 +260,8 @@ function SocialWidgetConfigDialogInner({
   widget,
   mode = 'edit',
   filteredPosts,
+  allComments = [],
+  filteredComments = [],
   availableOptions,
   onSave,
   onClose,
@@ -266,6 +276,7 @@ function SocialWidgetConfigDialogInner({
   const dataSource: DataSource = draft.dataSource ?? 'posts';
   const isTopics = dataSource === 'topics';
   const topicsAvailable = Boolean(agentId);
+  const commentsAvailable = allComments.length > 0;
 
   // ── Drag state ──
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -409,12 +420,26 @@ function SocialWidgetConfigDialogInner({
     setDraft((prev) => ({ ...prev, tableConfig }));
   };
 
-  const previewPosts = useMemo(
-    () => applyWidgetFilters(filteredPosts, draft.filters),
-    [filteredPosts, draft.filters],
-  );
+  // Preview over the widget's selected source. Comments are post-shaped, so the
+  // post-vocabulary preview aggregations and the inner renderer below work on
+  // them unchanged.
+  const previewPosts = useMemo(() => {
+    const base = dataSource === 'comments'
+      ? filteredComments
+      : dataSource === 'both'
+        ? [...filteredPosts, ...filteredComments]
+        : filteredPosts;
+    return applyWidgetFilters(base, draft.filters);
+  }, [dataSource, filteredPosts, filteredComments, draft.filters]);
 
-  const previewWidget: SocialDashboardWidget = { ...draft, x: 0, y: 0, w: 6, h: 6 };
+  // The inner renderer re-derives its source from `dataSource`; since
+  // `previewPosts` already carries the selected comment/both rows, present them
+  // to it as a plain posts source so it renders them directly (topics keep their
+  // own prop-driven path).
+  const previewWidget: SocialDashboardWidget = {
+    ...draft, x: 0, y: 0, w: 6, h: 6,
+    dataSource: dataSource === 'comments' || dataSource === 'both' ? 'posts' : draft.dataSource,
+  };
 
   const isTextMode = draft.aggregation === 'text';
   const isEmbedMode = draft.aggregation === 'embeds';
@@ -626,15 +651,20 @@ function SocialWidgetConfigDialogInner({
                   <div className="flex items-center gap-3">
                     <Label className="text-xs w-24 shrink-0">Data Source</Label>
                     <div className="flex items-center gap-1.5">
-                      {(['posts', 'topics'] as const).map((src) => {
-                        const disabled = src === 'topics' && !topicsAvailable;
+                      {(['posts', 'topics', 'comments', 'both'] as const).map((src) => {
+                        const disabled =
+                          (src === 'topics' && !topicsAvailable)
+                          || ((src === 'comments' || src === 'both') && !commentsAvailable);
+                        const disabledTitle = src === 'topics'
+                          ? 'Topics require an agent context on this dashboard'
+                          : 'This agent has no enriched comments yet';
                         return (
                           <button
                             key={src}
                             type="button"
                             disabled={disabled}
                             onClick={() => updateDataSource(src)}
-                            title={disabled ? 'Topics require an agent context on this dashboard' : undefined}
+                            title={disabled ? disabledTitle : undefined}
                             className={cn(
                               'rounded-md border px-2.5 py-1 text-xs font-medium transition-all capitalize',
                               dataSource === src

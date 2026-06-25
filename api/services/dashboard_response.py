@@ -25,6 +25,7 @@ serve a stale layout after an owner edit. See
 docs/handoff-dashboard-payload-scalability.md.
 """
 
+import asyncio
 import gzip
 import hashlib
 import threading
@@ -35,6 +36,8 @@ import orjson
 from cachetools import TTLCache
 from fastapi import Response
 from fastapi.responses import ORJSONResponse
+
+from api.services.dashboard_cache_l2 import l2_get, l2_set
 
 # Level 6 ~matches level 9's ratio on JSON (2.65MB vs 2.62MB on the real slim
 # payload) at ~40% less CPU. The compress runs once per (data, config) on a
@@ -150,6 +153,62 @@ def share_cache_key(
     return "share|" + stable_hash(token, stamp, bool(slim), metadata, bool(agg_enabled))
 
 
+def _gzip_response(body: bytes) -> Response:
+    """Wrap already-gzipped bytes in a Response with the headers that stop
+    GZipMiddleware from re-compressing them."""
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={
+            "Content-Encoding": "gzip",
+            "Content-Length": str(len(body)),
+            "Vary": "Accept-Encoding",
+        },
+    )
+
+
+async def cached_gzip_response_async(
+    cache_key: str, accept_encoding: str
+) -> Response | None:
+    """Two-level warm-body lookup: in-process L1, then GCS L2 (run off-loop).
+
+    Lets a handler short-circuit BEFORE building (and aggregating) the payload:
+    when the client accepts gzip and the key is warm in either tier, the stored
+    compressed body is everything we need. On an L1 miss it consults the shared
+    GCS L2 so a fresh instance can serve a body another instance already built
+    instead of rebuilding it from BigQuery; an L2 hit warms L1 for next time.
+    The GCS read runs in a thread so it never blocks the event loop. Returns
+    None when the client can't take gzip or neither tier has the body - the
+    caller must then build the payload and call :func:`gzipped_json_response`.
+    """
+    if "gzip" not in accept_encoding.lower():
+        return None
+    body = get_encoded(cache_key)
+    if body is None:
+        body = await asyncio.to_thread(l2_get, cache_key)
+        if body is not None:
+            set_encoded(cache_key, body)  # warm L1 from L2
+    if body is None:
+        return None
+    return _gzip_response(body)
+
+
+async def store_encoded_l2(cache_key: str, accept_encoding: str) -> None:
+    """Mirror the just-built L1 body to the GCS L2, off the event loop.
+
+    Called after a miss-fill: ``gzipped_json_response`` has already stored the
+    compressed body in L1 under this key, so we read it back and push it to GCS
+    for sibling instances. Awaited (the write is ~50ms and the request that
+    triggered it already paid the multi-second miss), best-effort inside l2_set.
+    """
+    if "gzip" not in accept_encoding.lower():
+        return
+    body = get_encoded(cache_key)
+    if body is None:
+        return
+    await asyncio.to_thread(l2_set, cache_key, body)
+
+
 def gzipped_json_response(payload: dict, cache_key: str, accept_encoding: str) -> Response:
     """JSON response that serves a cached gzip body to gzip-capable clients.
 
@@ -163,13 +222,5 @@ def gzipped_json_response(payload: dict, cache_key: str, accept_encoding: str) -
         if body is None:
             body = gzip.compress(orjson.dumps(payload), compresslevel=_GZIP_LEVEL)
             set_encoded(cache_key, body)
-        return Response(
-            content=body,
-            media_type="application/json",
-            headers={
-                "Content-Encoding": "gzip",
-                "Content-Length": str(len(body)),
-                "Vary": "Accept-Encoding",
-            },
-        )
+        return _gzip_response(body)
     return ORJSONResponse(payload)

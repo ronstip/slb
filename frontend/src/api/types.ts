@@ -263,6 +263,7 @@ export interface FeedPost {
   collection_id?: string;
   is_retweet?: boolean | null;
   is_quote?: boolean | null;
+  parent_post_content?: string | null;
 }
 
 export interface FeedKpiBreakdownEntry {
@@ -310,6 +311,9 @@ export interface MultiFeedParams {
   /** When set, the feed scopes posts via the agent's scope_posts TVF - picks
    *  enrichment rows for this agent (not the latest cross-agent row). */
   agent_id?: string;
+  /** Data source: 'posts' (default), 'comments' (scope_comments), or 'both'
+   *  (union). Agent-scoped path only. */
+  source?: 'posts' | 'comments' | 'both';
   /** Request full-window KPI aggregates alongside the (possibly truncated)
    *  posts. Agent-scoped path only. */
   include_kpis?: boolean;
@@ -624,6 +628,9 @@ export interface TopicMetric {
 export interface DashboardDataResponse {
   posts: DashboardPost[];
   topics?: TopicMetric[];
+  /** Post-shaped comment rows (from scope_comments) for dataSource:
+   *  comments/both widgets. Empty when the agent has no enriched comments. */
+  comments?: DashboardPost[];
   collection_names: Record<string, string>;
   truncated: boolean;
   kpis?: DashboardKpis;
@@ -675,6 +682,8 @@ export interface BriefingMetaResponse {
 export interface SharedDashboardDataResponse {
   posts: DashboardPost[];
   topics?: TopicMetric[];
+  /** Post-shaped comment rows for dataSource: comments/both widgets. */
+  comments?: DashboardPost[];
   collection_names: Record<string, string>;
   truncated: boolean;
   meta: {

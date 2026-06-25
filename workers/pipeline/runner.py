@@ -1946,3 +1946,9 @@ class PipelineRunner:
             update_kwargs["error_message"] = msg
 
         self.fs.update_collection_status(self.collection_id, **update_kwargs)
+
+        # NOTE: dynamic-alert evaluation is intentionally NOT here. An agent run
+        # fans out into one collection per source, so firing per-collection sent
+        # one (deduped) email per sub-collection. Alerts now fire ONCE per run,
+        # across all the run's collections, from
+        # workers/agent_continuation.py::check_agent_completion (all_complete branch).

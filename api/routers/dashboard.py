@@ -142,12 +142,22 @@ async def get_dashboard_data(
     if request.slim:
         posts = strip_detail_fields(posts)
 
+    # Comments are an optional parallel source (dataSource: comments/both). Apply
+    # the SAME report-level transform (canonicalization of e.g. hotel names lives
+    # in the explorer report layer, per design) and slim treatment as posts.
+    comments = core.get("comments", [])
+    if comments:
+        if config is not None:
+            comments = transform_posts(comments, config)
+        if request.slim:
+            comments = strip_detail_fields(comments)
+
     # Return the cached/assembled core directly (already matches
     # DashboardDataResponse) via orjson, skipping a second per-row validation.
     # Gzip-capable clients are served the compressed body from the
     # response-bytes cache (keyed by data freshness + config + slim), so a warm
     # hit skips both orjson and gzip - the bulk of warm CPU on a large payload.
-    body = {**core, "posts": posts}
+    body = {**core, "posts": posts, "comments": comments}
     cache_key = data_cache_key(
         agent_id, request.collection_ids, stamp, config, request.slim
     )

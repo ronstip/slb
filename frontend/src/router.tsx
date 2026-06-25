@@ -81,6 +81,9 @@ const RefundPage = lazy(() =>
 const ManifestoPage = lazy(() =>
   import('./legal/ManifestoPage.tsx').then((m) => ({ default: m.ManifestoPage })),
 );
+const AlertWidgetEmbed = lazy(() =>
+  import('./features/embed/AlertWidgetEmbed.tsx').then((m) => ({ default: m.AlertWidgetEmbed })),
+);
 
 function FullScreenSpinner() {
   return (
@@ -120,6 +123,7 @@ const PrivacyPageRoute = withSuspense(PrivacyPage);
 const TermsPageRoute = withSuspense(TermsPage);
 const RefundPageRoute = withSuspense(RefundPage);
 const ManifestoPageRoute = withSuspense(ManifestoPage);
+const AlertWidgetEmbedRoute = withSuspense(AlertWidgetEmbed);
 
 /**
  * Registers the react-router `navigate` function with the API client so
@@ -265,6 +269,13 @@ export const router = createBrowserRouter([
       {
         path: '/shared/:token',
         element: <SharedDashboardPageRoute />,
+      },
+      {
+        // Headless render target for visual alert emails. Public (the page
+        // authenticates with a scoped render token) and chrome-less, so it
+        // must live OUTSIDE AuthGate.
+        path: '/embed/alert-widget',
+        element: <AlertWidgetEmbedRoute />,
       },
       {
         // Public - InviteHandler manages its own anon vs signed-in branches

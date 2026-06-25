@@ -323,6 +323,114 @@ class FirestoreClient:
         doc_ref.update(fields)
         logger.debug("Updated agent %s: %s", agent_id, list(fields.keys()))
 
+    # --- Alert methods (dynamic per-agent email alerts) ---
+    #
+    # An alert is a saved filter (the dashboard `SocialWidgetFilters` object)
+    # attached to an agent. When a collection run finishes, newly-collected
+    # posts are matched against every enabled alert; matches email the
+    # recipients. Dedup is per-alert: the `alerted_posts` subcollection records
+    # every post_id already notified so re-collected/overlapping posts never
+    # alert twice.
+
+    def _alert_to_dict(self, doc) -> dict:
+        data = doc.to_dict() or {}
+        data["alert_id"] = doc.id
+        for key in ("created_at", "updated_at", "last_triggered_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def create_alert(self, alert_id: str, data: dict) -> None:
+        now = datetime.now(timezone.utc)
+        data.setdefault("created_at", now)
+        data.setdefault("updated_at", now)
+        data.setdefault("enabled", True)
+        data.setdefault("trigger_count", 0)
+        data.setdefault("last_match_count", 0)
+        data.setdefault("last_triggered_at", None)
+        self._db.collection("alerts").document(alert_id).set(data)
+        logger.info("Created alert %s for agent %s", alert_id, data.get("agent_id"))
+
+    def get_alert(self, alert_id: str) -> dict | None:
+        doc = self._db.collection("alerts").document(alert_id).get()
+        if not doc.exists:
+            return None
+        return self._alert_to_dict(doc)
+
+    def list_alerts_for_agent(self, agent_id: str) -> list[dict]:
+        docs = (
+            self._db.collection("alerts")
+            .where("agent_id", "==", agent_id)
+            .stream()
+        )
+        alerts = [self._alert_to_dict(d) for d in docs]
+        # Newest first; created_at is an ISO string after _alert_to_dict.
+        alerts.sort(key=lambda a: a.get("created_at") or "", reverse=True)
+        return alerts
+
+    def list_enabled_alerts_for_agent(self, agent_id: str) -> list[dict]:
+        docs = (
+            self._db.collection("alerts")
+            .where("agent_id", "==", agent_id)
+            .where("enabled", "==", True)
+            .stream()
+        )
+        return [self._alert_to_dict(d) for d in docs]
+
+    def update_alert(self, alert_id: str, **fields) -> None:
+        fields.setdefault("updated_at", datetime.now(timezone.utc))
+        self._db.collection("alerts").document(alert_id).update(fields)
+        logger.debug("Updated alert %s: %s", alert_id, list(fields.keys()))
+
+    def delete_alert(self, alert_id: str) -> None:
+        # Best-effort cleanup of the dedup subcollection, then the doc itself.
+        sub = self._db.collection("alerts").document(alert_id).collection("alerted_posts")
+        for batch_docs in self._chunk((d.id for d in sub.stream()), 400):
+            batch = self._db.batch()
+            for pid in batch_docs:
+                batch.delete(sub.document(pid))
+            batch.commit()
+        self._db.collection("alerts").document(alert_id).delete()
+        logger.info("Deleted alert %s", alert_id)
+
+    @staticmethod
+    def _chunk(iterable, size: int):
+        chunk: list = []
+        for item in iterable:
+            chunk.append(item)
+            if len(chunk) >= size:
+                yield chunk
+                chunk = []
+        if chunk:
+            yield chunk
+
+    def filter_unseen_post_ids(self, alert_id: str, post_ids: list[str]) -> list[str]:
+        """Return the subset of `post_ids` this alert has NOT already notified.
+
+        Order-preserving, de-duplicated. Reads at most one Firestore doc per
+        candidate - callers pass only filter-matched ids, which are bounded by
+        the per-email cap path, so this stays cheap."""
+        sub = self._db.collection("alerts").document(alert_id).collection("alerted_posts")
+        seen_input: set[str] = set()
+        unseen: list[str] = []
+        for pid in post_ids:
+            if pid in seen_input:
+                continue
+            seen_input.add(pid)
+            if not sub.document(pid).get().exists:
+                unseen.append(pid)
+        return unseen
+
+    def mark_posts_alerted(self, alert_id: str, post_ids: list[str]) -> None:
+        """Record post_ids as already-notified for this alert (dedup ledger)."""
+        sub = self._db.collection("alerts").document(alert_id).collection("alerted_posts")
+        ts = datetime.now(timezone.utc)
+        for batch_ids in self._chunk(iter(set(post_ids)), 400):
+            batch = self._db.batch()
+            for pid in batch_ids:
+                batch.set(sub.document(pid), {"alerted_at": ts})
+            batch.commit()
+
     def get_stuck_agents(self, stale_minutes: int = 10) -> list[dict]:
         """Find agents stuck in any inconsistent state.
 
