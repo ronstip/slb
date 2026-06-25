@@ -59,6 +59,7 @@ from api.routers import settings as settings_router
 from api.routers import share_html as share_html_router
 from api.routers import topics as topics_router
 from api.routers import waitlist as waitlist_router
+from api.routers import whatsapp as whatsapp_router
 from api.services.startup_tasks import cleanup_stuck_collections
 from config.settings import get_settings
 
@@ -175,6 +176,8 @@ app.include_router(posts_router.router, dependencies=_gated)
 app.include_router(chat_router.router)
 app.include_router(internal_router.router)
 app.include_router(waitlist_router.router)
+# WhatsApp webhook — no auth (Meta-signed via X-Hub-Signature-256, like billing).
+app.include_router(whatsapp_router.router)
 # Mounted last because its routes (`/shared/{token}`, `/shared/briefing/{token}`,
 # `/shared/artifact/{token}`, `/og-image/{type}/{token}.png`) are hit via
 # Firebase Hosting rewrite to serve crawler-friendly HTML; ordering doesn't

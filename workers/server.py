@@ -192,6 +192,32 @@ async def run_comments_handler(request: Request):
         _reset_cost_context(cost_token)
 
 
+@app.post("/whatsapp/inbound")
+async def run_whatsapp_inbound_handler(request: Request):
+    """Handle a WhatsApp webhook payload enqueued by the API webhook.
+
+    Always returns 200 (worker contract) — the handler's own `wamid` dedup
+    makes a Cloud Tasks retry safe anyway.
+    """
+    body = await request.json()
+    payload = body.get("payload") or {}
+    try:
+        import asyncio
+
+        from workers.whatsapp.handler import process_inbound
+
+        # Off the event loop: process_inbound is blocking and the Concierge
+        # opens its own event loop (asyncio.run), which can't run on this one.
+        result = await asyncio.to_thread(process_inbound, payload)
+        return result
+    except Exception as e:
+        logger.exception("WhatsApp inbound worker failed")
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("worker", "whatsapp")
+            sentry_sdk.capture_exception(e)
+        return {"status": "error", "error": str(e)}
+
+
 @app.post("/comments/enrich")
 async def enrich_comments_handler(request: Request):
     """Enrich a post's comments (or a whole collection's) with parent context,
