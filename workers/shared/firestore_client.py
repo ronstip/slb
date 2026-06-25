@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from google.cloud import firestore
 
@@ -795,6 +795,292 @@ class FirestoreClient:
     def save_session(self, session_id: str, data: dict) -> None:
         doc_ref = self._db.collection("sessions").document(session_id)
         doc_ref.set(data, merge=True)
+
+    # --- Channel / WhatsApp conversation methods (spec §4) ---
+    #
+    # Conversations are User-owned, channel-tagged threads (durable). For
+    # WhatsApp, a random conv_id is paired with a `wa_active_conversation/{e164}`
+    # pointer so the same number always maps to its one live conversation, and
+    # Attachment can re-parent in place (phase 2) without renaming docs.
+
+    def get_conversation(self, conv_id: str) -> dict | None:
+        doc = self._db.collection("conversations").document(conv_id).get()
+        if not doc.exists:
+            return None
+        data = doc.to_dict()
+        data["conv_id"] = doc.id
+        for key in ("created_at", "updated_at", "last_inbound_at", "purge_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def get_or_create_wa_conversation(
+        self, wa_id: str, uid: str | None = None, org_id: str | None = None
+    ) -> dict:
+        """Return the active WhatsApp conversation for a number, creating one
+        (random conv_id + `wa_active_conversation` pointer) if none exists.
+
+        A **bound** number (``uid`` given) is born `attached` (Concierge,
+        never the lobby — ADR 0001); an **unbound** number is born `lobby`
+        (Scripted) with a 30-day `purge_at` TTL. The returned dict always
+        carries `conv_id`.
+        """
+        ptr_ref = self._db.collection("wa_active_conversation").document(wa_id)
+        ptr = ptr_ref.get()
+        if ptr.exists:
+            conv_id = (ptr.to_dict() or {}).get("conv_id")
+            if conv_id:
+                existing = self.get_conversation(conv_id)
+                if existing:
+                    return existing
+
+        conv_ref = self._db.collection("conversations").document()
+        now = datetime.now(timezone.utc)
+        bound = uid is not None
+        data = {
+            "user_id": uid,
+            "org_id": org_id,
+            "channel": "whatsapp",
+            "wa_id": wa_id,
+            "attachment_state": "attached" if bound else "lobby",
+            "responder": "concierge" if bound else "scripted",
+            "last_inbound_at": None,
+            "window_open": False,
+            "session_id": None,
+            "purge_at": None if bound else now + timedelta(days=30),
+            "created_at": now,
+            "updated_at": now,
+        }
+        conv_ref.set(data)
+        ptr_ref.set({"conv_id": conv_ref.id, "wa_id": wa_id, "updated_at": now})
+        logger.info(
+            "Created WhatsApp conversation %s for %s (%s)",
+            conv_ref.id, wa_id, "attached" if bound else "lobby",
+        )
+        data["conv_id"] = conv_ref.id
+        return data
+
+    def get_active_conversation(self, wa_id: str) -> dict | None:
+        """Return the live conversation a number points at, or None."""
+        ptr = self._db.collection("wa_active_conversation").document(wa_id).get()
+        conv_id = (ptr.to_dict() or {}).get("conv_id") if ptr.exists else None
+        return self.get_conversation(conv_id) if conv_id else None
+
+    def append_channel_message(self, conv_id: str, msg: dict) -> bool:
+        """Create `conversations/{conv_id}/messages/{wamid}` if absent.
+
+        Returns True if newly written, False if it already existed — this IS
+        the `wamid` dedup gate (spec §4): the worker must skip all side effects
+        when it returns False.
+        """
+        from google.api_core.exceptions import AlreadyExists
+
+        wamid = msg["wamid"]
+        ref = (
+            self._db.collection("conversations")
+            .document(conv_id)
+            .collection("messages")
+            .document(wamid)
+        )
+        try:
+            ref.create(msg)
+            return True
+        except AlreadyExists:
+            return False
+
+    def index_outbound_message(self, wamid: str, conv_id: str) -> None:
+        """Map an outbound `wamid` to its conversation so a later Meta status
+        receipt (which carries only the wamid) can find the message (spec §8a)."""
+        self._db.collection("wa_outbound_index").document(wamid).set(
+            {"conv_id": conv_id}
+        )
+
+    def get_outbound_conversation(self, wamid: str) -> str | None:
+        doc = self._db.collection("wa_outbound_index").document(wamid).get()
+        return (doc.to_dict() or {}).get("conv_id") if doc.exists else None
+
+    def get_message(self, conv_id: str, wamid: str) -> dict | None:
+        doc = (
+            self._db.collection("conversations")
+            .document(conv_id)
+            .collection("messages")
+            .document(wamid)
+            .get()
+        )
+        return doc.to_dict() if doc.exists else None
+
+    def update_message_status(
+        self, conv_id: str, wamid: str, status: str, error=None, ts=None
+    ) -> None:
+        fields: dict = {"status": status}
+        if error is not None:
+            fields["error"] = error
+        if ts is not None:
+            fields["status_at"] = ts
+        (
+            self._db.collection("conversations")
+            .document(conv_id)
+            .collection("messages")
+            .document(wamid)
+            .update(fields)
+        )
+
+    def set_window(
+        self, conv_id: str, window_open: bool, last_inbound_at=None
+    ) -> None:
+        """Set the Service-Window state on a conversation (spec §3a)."""
+        fields: dict = {
+            "window_open": window_open,
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if last_inbound_at is not None:
+            fields["last_inbound_at"] = last_inbound_at
+        self._db.collection("conversations").document(conv_id).update(fields)
+
+    # --- WhatsApp identity / binding / consent (spec §4, phase 2) ---
+
+    def bind_wa_number(self, uid: str, e164: str, org_id: str | None = None) -> None:
+        """Bind a verified number to a User: write the resolver index doc +
+        append to `users/{uid}.wa_numbers`. Doc-id == E.164 means the resolver
+        is a single keyed read with no composite index."""
+        now = datetime.now(timezone.utc)
+        self._db.collection("wa_number_index").document(e164).set(
+            {"uid": uid, "org_id": org_id, "bound_at": now}
+        )
+        # Read-modify-write the array (not ArrayUnion): the per-entry `verified_at`
+        # differs on each bind, so ArrayUnion would NOT dedupe a re-link of the
+        # same number — it would append a duplicate. Drop any existing entry for
+        # this e164, then add the fresh one. Binds are rare + single-user.
+        doc = self._db.collection("users").document(uid).get()
+        nums = (doc.to_dict() or {}).get("wa_numbers", []) if doc.exists else []
+        kept = [n for n in nums if n.get("e164") != e164]
+        kept.append({"e164": e164, "verified_at": now})
+        self._db.collection("users").document(uid).update({"wa_numbers": kept})
+        logger.info("Bound WhatsApp number %s to user %s", e164, uid)
+
+    def unbind_wa_number(self, e164: str) -> None:
+        """Remove the resolver index for a number (a later inbound re-enters
+        the lobby)."""
+        self._db.collection("wa_number_index").document(e164).delete()
+
+    def remove_wa_number_from_user(self, uid: str, e164: str) -> None:
+        """Prune one `{e164, ...}` entry from `users/{uid}.wa_numbers`.
+
+        ArrayRemove needs the exact element, so we read-modify-write the array
+        (matching on `e164`) rather than guess the stored shape (spec §11.2)."""
+        doc = self._db.collection("users").document(uid).get()
+        nums = (doc.to_dict() or {}).get("wa_numbers", []) if doc.exists else []
+        kept = [n for n in nums if n.get("e164") != e164]
+        self._db.collection("users").document(uid).update({"wa_numbers": kept})
+
+    # --- WhatsApp number verification (attachment OTP, spec §11) ---
+
+    def put_wa_verification(self, e164: str, data: dict) -> None:
+        """Write/overwrite the pending verification doc for a number.
+        `wa_verifications/{e164}` carries `code_hash` + TTL + send/attempt
+        counters. Firestore TTL on `expires_at` reaps stale docs."""
+        self._db.collection("wa_verifications").document(e164).set(data)
+
+    def get_wa_verification(self, e164: str) -> dict | None:
+        doc = self._db.collection("wa_verifications").document(e164).get()
+        return doc.to_dict() if doc.exists else None
+
+    def delete_wa_verification(self, e164: str) -> None:
+        self._db.collection("wa_verifications").document(e164).delete()
+
+    def resolve_wa_number(self, e164: str) -> dict | None:
+        """Resolver read: `{uid, org_id}` for a bound number, else None (Lobby)."""
+        doc = self._db.collection("wa_number_index").document(e164).get()
+        if not doc.exists:
+            return None
+        return doc.to_dict()
+
+    def set_wa_opt_out(self, uid: str, opted_out: bool) -> None:
+        """Set a User's business-initiated consent (STOP → True, START → False)."""
+        self._db.collection("users").document(uid).update(
+            {
+                "wa_opt_out": opted_out,
+                "wa_opt_out_at": datetime.now(timezone.utc) if opted_out else None,
+            }
+        )
+
+    def get_wa_opt_out(self, uid: str) -> bool:
+        """True iff the User has opted out of business-initiated messaging."""
+        doc = self._db.collection("users").document(uid).get()
+        return bool((doc.to_dict() or {}).get("wa_opt_out")) if doc.exists else False
+
+    # --- WhatsApp conversation lifecycle (spec §3b) ---
+
+    def set_attachment_state(self, conv_id: str, state: str) -> None:
+        self._db.collection("conversations").document(conv_id).update(
+            {"attachment_state": state, "updated_at": datetime.now(timezone.utc)}
+        )
+
+    def set_conversation_responder(self, conv_id: str, responder: str) -> None:
+        self._db.collection("conversations").document(conv_id).update(
+            {"responder": responder, "updated_at": datetime.now(timezone.utc)}
+        )
+
+    def set_conversation_session(self, conv_id: str, session_id: str) -> None:
+        """Pin the live ADK Session id on a conversation (Concierge, spec §6).
+        Set on the Concierge's first turn, reused after."""
+        self._db.collection("conversations").document(conv_id).update(
+            {"session_id": session_id, "updated_at": datetime.now(timezone.utc)}
+        )
+
+    def attach_conversation_identity(
+        self, conv_id: str, uid: str, org_id: str | None
+    ) -> None:
+        """Re-parent a lobby conversation to a User in place (spec §8.2):
+        stamp identity, flip to `attached`, swap responder to `concierge`.
+        Message history is retained (no doc rename, no orphaning)."""
+        self._db.collection("conversations").document(conv_id).update(
+            {
+                "user_id": uid,
+                "org_id": org_id,
+                "attachment_state": "attached",
+                "responder": "concierge",
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        logger.info("Re-parented conversation %s to user %s", conv_id, uid)
+
+    def list_orphaned_lobbies(self, now=None) -> list[dict]:
+        """Lobby conversations past their `purge_at` TTL (spec §3b)."""
+        cutoff = now or datetime.now(timezone.utc)
+        out: list[dict] = []
+        try:
+            docs = (
+                self._db.collection("conversations")
+                .where("attachment_state", "==", "lobby")
+                .stream()
+            )
+            for doc in docs:
+                data = doc.to_dict() or {}
+                purge_at = data.get("purge_at")
+                if purge_at and hasattr(purge_at, "timestamp"):
+                    if purge_at.replace(tzinfo=timezone.utc) < cutoff:
+                        data["conv_id"] = doc.id
+                        out.append(data)
+        except Exception:
+            logger.warning("Failed to list orphaned lobbies", exc_info=True)
+        return out
+
+    def delete_conversation(self, conv_id: str) -> None:
+        """Delete a conversation, its `messages` subcollection, and the
+        `wa_active_conversation` pointer (orphan purge)."""
+        conv_ref = self._db.collection("conversations").document(conv_id)
+        snap = conv_ref.get()
+        if snap.exists:
+            wa_id = (snap.to_dict() or {}).get("wa_id")
+            if wa_id:
+                ptr = self._db.collection("wa_active_conversation").document(wa_id)
+                if (ptr.get().to_dict() or {}).get("conv_id") == conv_id:
+                    ptr.delete()
+        for msg in conv_ref.collection("messages").stream():
+            msg.reference.delete()
+        conv_ref.delete()
+        logger.info("Deleted conversation %s", conv_id)
 
     # --- User methods ---
 

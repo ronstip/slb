@@ -312,6 +312,22 @@ class Settings(BaseSettings):
     render_service_token: str = ""
     alert_render_secret: str = ""
 
+    # WhatsApp channel (spec docs/whatsapp-channel-impl-spec.md §5).
+    # api service needs app_secret + verify_token (webhook); worker service
+    # needs access_token + phone_number_id + business_account_id (outbound).
+    # All five empty = channel disabled. ⚠️ When wiring deploy, add these to
+    # BOTH deploy.yml AND deploy_prod.sh env blocks (env-truncation gotcha).
+    whatsapp_app_id: str = ""  # Meta App ID (reference; not used at runtime)
+    whatsapp_phone_number_id: str = ""
+    whatsapp_business_account_id: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_app_secret: str = ""
+    whatsapp_verify_token: str = ""
+    whatsapp_pin: str = ""  # two-step verify PIN (number registration only)
+    # Approved AUTHENTICATION template for self-serve number linking (§11.4).
+    # Empty + no access_token ⇒ verify-start degrades to a dev stub (logs the code).
+    whatsapp_otp_template: str = "wa_link_code"
+
     # Sentry error tracking (§C.1). Empty DSN = disabled (local dev default).
     # Sample rates default to 0.0 = errors-only, which keeps the Sentry free
     # plan from ever billing; raise them to experiment with tracing/profiling.

@@ -1,13 +1,14 @@
-import { User, Building2, Palette, CreditCard, Shield, LogOut } from 'lucide-react';
+import { User, Building2, Palette, CreditCard, Shield, MessageCircle, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { cn } from '../../lib/utils.ts';
 import { useAuth } from '../../auth/useAuth.ts';
 
-export type SettingsSection = 'account' | 'organization' | 'appearance' | 'usage' | 'privacy';
+export type SettingsSection = 'account' | 'organization' | 'channels' | 'appearance' | 'usage' | 'privacy';
 
 const NAV_ITEMS: { id: SettingsSection; label: string; icon: React.ElementType }[] = [
   { id: 'account', label: 'Account', icon: User },
   { id: 'organization', label: 'Organization', icon: Building2 },
+  { id: 'channels', label: 'Channels', icon: MessageCircle },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'usage', label: 'Credits & Usage', icon: CreditCard },
   { id: 'privacy', label: 'Privacy', icon: Shield },

@@ -39,6 +39,7 @@ from api.routers import artifact_shares as artifact_shares_router
 from api.routers import artifacts as artifacts_router
 from api.routers import auth as auth_router
 from api.routers import billing as billing_router
+from api.routers import channels as channels_router
 from api.routers import briefing as briefing_router
 from api.routers import briefing_shares as briefing_shares_router
 from api.routers import chat as chat_router
@@ -59,6 +60,7 @@ from api.routers import settings as settings_router
 from api.routers import share_html as share_html_router
 from api.routers import topics as topics_router
 from api.routers import waitlist as waitlist_router
+from api.routers import whatsapp as whatsapp_router
 from api.services.startup_tasks import cleanup_stuck_collections
 from config.settings import get_settings
 
@@ -147,6 +149,7 @@ _gated = [Depends(enforce_access)]
 
 # Include routers
 app.include_router(settings_router.router)
+app.include_router(channels_router.router, dependencies=_gated)
 app.include_router(billing_router.router)
 app.include_router(sessions_router.router, dependencies=_gated)
 app.include_router(admin_router.router)
@@ -175,6 +178,8 @@ app.include_router(posts_router.router, dependencies=_gated)
 app.include_router(chat_router.router)
 app.include_router(internal_router.router)
 app.include_router(waitlist_router.router)
+# WhatsApp webhook — no auth (Meta-signed via X-Hub-Signature-256, like billing).
+app.include_router(whatsapp_router.router)
 # Mounted last because its routes (`/shared/{token}`, `/shared/briefing/{token}`,
 # `/shared/artifact/{token}`, `/og-image/{type}/{token}.png`) are hit via
 # Firebase Hosting rewrite to serve crawler-friendly HTML; ordering doesn't

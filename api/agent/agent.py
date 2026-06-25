@@ -39,6 +39,8 @@ def create_agent(
     model_override: str | None = None,
     thinking_override: str | None = None,
     search_override: bool | None = None,
+    user_id: str | None = None,
+    org_id: str | None = None,
 ) -> LlmAgent:
     """Create an LlmAgent configured for the given mode.
 
@@ -70,6 +72,25 @@ def create_agent(
         )
         static_prompt = REPORT_EDITOR_STATIC_PROMPT
         dynamic_template = REPORT_EDITOR_DYNAMIC_PROMPT
+    elif mode == "concierge":
+        # Inject the user's recent agents into the system prompt at build time
+        # so the model skips the `list_agents` round-trip (latency fix). Safe
+        # per-user because the Concierge builds a fresh app per request and
+        # context caching is OFF — see create_app's caching note.
+        if user_id:
+            from api.agent.prompts.concierge_prompt import (
+                build_concierge_instruction,
+            )
+            static_prompt, dynamic_template = build_concierge_instruction(
+                user_id, org_id
+            )
+        else:
+            from api.agent.prompts.concierge_prompt import (
+                CONCIERGE_DYNAMIC_PROMPT,
+                CONCIERGE_STATIC_PROMPT,
+            )
+            static_prompt = CONCIERGE_STATIC_PROMPT
+            dynamic_template = CONCIERGE_DYNAMIC_PROMPT
     else:
         from api.agent.prompts.autonomous_prompt import (
             AUTONOMOUS_DYNAMIC_PROMPT,
@@ -159,6 +180,12 @@ def create_agent(
             "Co-author for the active report - adds, modifies, or removes "
             "widgets on the user's request."
         )
+    elif mode == "concierge":
+        name = "concierge"
+        description = (
+            "Cross-channel assistant serving the user across all their "
+            "monitoring agents over WhatsApp."
+        )
     else:
         name = "executor"
         description = (
@@ -232,9 +259,13 @@ def create_app(
     model_override: str | None = None,
     thinking_override: str | None = None,
     search_override: bool | None = None,
+    user_id: str | None = None,
+    org_id: str | None = None,
 ) -> App:
     """Create an App for the given mode."""
-    agent = create_agent(mode, model_override, thinking_override, search_override)
+    agent = create_agent(
+        mode, model_override, thinking_override, search_override, user_id, org_id
+    )
     # Context caching disabled: the App/Runner is a singleton shared across
     # all users. ContextCacheConfig caches the system instruction (including
     # dynamically injected per-user context from before_model_callback) and
