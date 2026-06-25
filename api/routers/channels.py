@@ -94,6 +94,12 @@ async def whatsapp_verify_start(
     settings = get_settings()
     send_otp, stubbed = _build_otp_sender(settings)
 
+    # In a real (non-dev) environment an unconfigured channel must NOT pretend
+    # to send — there's no code to deliver and nothing to echo. Fail loudly so
+    # the UI shows "unavailable" instead of a dead "code sent" (spec §11.4).
+    if stubbed and not getattr(settings, "is_dev", False):
+        raise HTTPException(status_code=503, detail="not_configured")
+
     # Capture the code so a dev stub run can echo it back (dev only — §11.4).
     captured: dict = {}
 

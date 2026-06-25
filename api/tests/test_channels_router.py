@@ -93,3 +93,22 @@ def test_start_number_bound_elsewhere_is_409(ctx):
     ctx.fs.bind_wa_number("other", NUM, org_id="o9")
     r = ctx.post("/me/channels/whatsapp/verify-start", json={"phone": NUM})
     assert r.status_code == 409 and r.json()["detail"] == "number_unavailable"
+
+
+def test_start_unconfigured_in_prod_is_503(monkeypatch):
+    """A non-dev environment with no access token must not fake a send (§11.4)."""
+    fs = FakeFirestore()
+    monkeypatch.setattr(channels_router, "get_fs", lambda: fs)
+    monkeypatch.setattr(
+        channels_router, "get_settings",
+        lambda: SimpleNamespace(
+            whatsapp_access_token="", whatsapp_phone_number_id="",
+            whatsapp_otp_template="wa_link_code", is_dev=False,  # prod, unconfigured
+        ),
+    )
+    app = FastAPI()
+    app.include_router(channels_router.router)
+    app.dependency_overrides[get_current_user] = _user
+    client = TestClient(app)
+    r = client.post("/me/channels/whatsapp/verify-start", json={"phone": NUM})
+    assert r.status_code == 503 and r.json()["detail"] == "not_configured"
