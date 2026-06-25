@@ -12,23 +12,22 @@ export interface ChannelsResponse {
   whatsapp: BoundWhatsAppNumber[];
 }
 
-export interface VerifyStartResponse {
-  status: string;
+export interface LinkStartResponse {
+  /** wa.me deep link prefilled with the one-time token — open to confirm. */
+  deep_link: string;
   expires_in: number;
-  /** Present only in dev when the channel is unconfigured (OTP send stubbed). */
-  dev_code?: string;
+  /** Present only in dev so local testing can craft the inbound by hand. */
+  dev_token?: string;
 }
 
 export function listChannels(): Promise<ChannelsResponse> {
   return apiGet<ChannelsResponse>('/me/channels');
 }
 
-export function startWhatsAppVerify(phone: string): Promise<VerifyStartResponse> {
-  return apiPost<VerifyStartResponse>('/me/channels/whatsapp/verify-start', { phone });
-}
-
-export function confirmWhatsAppVerify(phone: string, code: string): Promise<{ status: string; e164: string }> {
-  return apiPost('/me/channels/whatsapp/verify-confirm', { phone, code });
+/** Mint a link token + deep link. The user sends it from their own WhatsApp;
+ *  the number is bound on inbound (no OTP, no template — spec §11). */
+export function startWhatsAppLink(): Promise<LinkStartResponse> {
+  return apiPost<LinkStartResponse>('/me/channels/whatsapp/link-start', {});
 }
 
 export function unbindWhatsApp(phone: string): Promise<{ status: string; e164: string }> {

@@ -1,27 +1,18 @@
-import { useEffect, useState } from 'react';
-import { MessageCircle, Plus, Trash2, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { MessageCircle, Trash2, Loader2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button.tsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card.tsx';
-import { Input } from '../../../components/ui/input.tsx';
-import { Label } from '../../../components/ui/label.tsx';
 import { ApiError } from '../../../api/client.ts';
 import {
   listChannels,
-  startWhatsAppVerify,
-  confirmWhatsAppVerify,
+  startWhatsAppLink,
   unbindWhatsApp,
   type BoundWhatsAppNumber,
 } from '../../../api/endpoints/channels.ts';
 
 /** Map a backend `detail` code (ApiError body is JSON `{detail}`) to copy. */
 const ERROR_COPY: Record<string, string> = {
-  number_unavailable: 'That number is already linked to another account.',
-  too_many_numbers: 'You’ve reached the maximum number of linked numbers.',
-  cooldown: 'Please wait a moment before requesting another code.',
-  rate_limited: 'Too many codes requested for this number today. Try again later.',
-  send_failed: 'Could not send the code. Check the number and try again.',
-  invalid_code: 'That code is incorrect or has expired.',
   not_configured: 'WhatsApp linking isn’t available right now.',
 };
 
@@ -39,20 +30,27 @@ function formatNumber(e164: string): string {
   return e164.startsWith('+') ? e164 : `+${e164}`;
 }
 
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 3 * 60 * 1000;
+
 export function ChannelsSection() {
   const [numbers, setNumbers] = useState<BoundWhatsAppNumber[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Two-step add flow: 'idle' → 'code' (awaiting the OTP) .
-  const [step, setStep] = useState<'idle' | 'code'>('idle');
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Linking state: once we hand out a deep link we poll for the new binding.
+  const [deepLink, setDeepLink] = useState<string | null>(null);
+  const baselineRef = useRef(0);
+
+  const fetchNumbers = async (): Promise<BoundWhatsAppNumber[]> => {
+    const res = await listChannels();
+    setNumbers(res.whatsapp);
+    return res.whatsapp;
+  };
 
   const refresh = async () => {
     try {
-      const res = await listChannels();
-      setNumbers(res.whatsapp);
+      await fetchNumbers();
     } catch {
       toast.error('Could not load linked channels');
     } finally {
@@ -62,36 +60,37 @@ export function ChannelsSection() {
 
   useEffect(() => { void refresh(); }, []);
 
-  const handleStart = async () => {
-    if (!phone.trim()) return;
-    setBusy(true);
-    try {
-      const res = await startWhatsAppVerify(phone.trim());
-      setStep('code');
-      if (res.dev_code) {
-        toast.info(`Dev code: ${res.dev_code}`, { duration: 30000 });
-      } else {
-        toast.success('Code sent to WhatsApp');
+  // While a deep link is pending, poll for the inbound to land the binding.
+  useEffect(() => {
+    if (!deepLink) return;
+    const started = Date.now();
+    const id = setInterval(async () => {
+      try {
+        const list = await fetchNumbers();
+        if (list.length > baselineRef.current) {
+          clearInterval(id);
+          setDeepLink(null);
+          toast.success('WhatsApp number linked');
+        }
+      } catch { /* transient — keep polling */ }
+      if (Date.now() - started > POLL_TIMEOUT_MS) {
+        clearInterval(id);
+        setDeepLink(null);
       }
-    } catch (err) {
-      toast.error(errorMessage(err, 'Could not start verification'));
-    } finally {
-      setBusy(false);
-    }
-  };
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [deepLink]);
 
-  const handleConfirm = async () => {
-    if (!code.trim()) return;
+  const handleLink = async () => {
     setBusy(true);
     try {
-      await confirmWhatsAppVerify(phone.trim(), code.trim());
-      toast.success('WhatsApp number linked');
-      setStep('idle');
-      setPhone('');
-      setCode('');
-      await refresh();
+      baselineRef.current = numbers.length;
+      const res = await startWhatsAppLink();
+      setDeepLink(res.deep_link);
+      // Open WhatsApp prefilled; the user just hits send.
+      window.open(res.deep_link, '_blank', 'noopener');
     } catch (err) {
-      toast.error(errorMessage(err, 'Could not verify the code'));
+      toast.error(errorMessage(err, 'Could not start linking'));
     } finally {
       setBusy(false);
     }
@@ -108,11 +107,6 @@ export function ChannelsSection() {
     } finally {
       setBusy(false);
     }
-  };
-
-  const cancelAdd = () => {
-    setStep('idle');
-    setCode('');
   };
 
   return (
@@ -166,50 +160,43 @@ export function ChannelsSection() {
             </ul>
           )}
 
-          {/* Add flow */}
-          {step === 'idle' ? (
-            <div className="space-y-2">
-              <Label htmlFor="wa-phone">Add a number</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="wa-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+1 555 123 4567"
-                  className="max-w-xs"
-                  disabled={busy}
-                />
-                <Button onClick={handleStart} disabled={busy || !phone.trim()} size="sm">
-                  {busy ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-2 h-3.5 w-3.5" />}
-                  Send code
-                </Button>
+          {/* Add flow — open WhatsApp prefilled, send, we detect the inbound. */}
+          {deepLink ? (
+            <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Waiting for your WhatsApp message…
               </div>
               <p className="text-xs text-muted-foreground">
-                We’ll send a 6-digit code to that number on WhatsApp.
+                WhatsApp should have opened with a pre-filled message — just tap
+                send. If it didn’t open, use the button below. We’ll link the
+                number the moment your message arrives.
               </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label htmlFor="wa-code">Enter the code sent to {formatNumber(phone)}</Label>
               <div className="flex items-center gap-2">
-                <Input
-                  id="wa-code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="123456"
-                  inputMode="numeric"
-                  maxLength={6}
-                  className="max-w-[8rem]"
-                  disabled={busy}
-                />
-                <Button onClick={handleConfirm} disabled={busy || !code.trim()} size="sm">
-                  {busy && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-                  Verify
+                <Button asChild size="sm" variant="secondary">
+                  <a href={deepLink} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                    Open WhatsApp
+                  </a>
                 </Button>
-                <Button variant="ghost" size="sm" onClick={cancelAdd} disabled={busy}>
+                <Button variant="ghost" size="sm" onClick={() => setDeepLink(null)}>
                   Cancel
                 </Button>
               </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Button onClick={handleLink} disabled={busy} size="sm">
+                {busy ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <MessageCircle className="mr-2 h-3.5 w-3.5" />
+                )}
+                Link WhatsApp
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Opens WhatsApp with a one-time message to send us — no codes to type.
+              </p>
             </div>
           )}
         </CardContent>

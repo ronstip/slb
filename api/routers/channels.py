@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs
+from api.services.wa_linking import LinkError, start_link
 from api.services.wa_verification import (
     VerificationError,
     confirm_verification,
@@ -85,6 +86,27 @@ async def list_channels(user: CurrentUser = Depends(get_current_user)):
         for n in doc.get("wa_numbers", [])
     ]
     return {"whatsapp": numbers}
+
+
+@router.post("/me/channels/whatsapp/link-start")
+async def whatsapp_link_start(user: CurrentUser = Depends(get_current_user)):
+    """Mint a one-time link token and return a ``wa.me`` deep link (spec §11).
+
+    The User opens the link, sends the prefilled token from their own WhatsApp,
+    and the worker redeems it on inbound — no Meta template, no OTP. ``dev_token``
+    is echoed only in dev so local testing can craft the inbound by hand."""
+    settings = get_settings()
+    try:
+        out = start_link(
+            user.uid, user.org_id,
+            fs=get_fs(), business_number=settings.whatsapp_business_number,
+        )
+    except LinkError as e:
+        raise HTTPException(status_code=e.status, detail=e.code)
+    resp = {"deep_link": out["deep_link"], "expires_in": out["expires_in"]}
+    if getattr(settings, "is_dev", False):
+        resp["dev_token"] = out["token"]
+    return resp
 
 
 @router.post("/me/channels/whatsapp/verify-start")

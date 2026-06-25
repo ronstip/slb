@@ -324,7 +324,11 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = ""
     whatsapp_pin: str = ""  # two-step verify PIN (number registration only)
-    # Approved AUTHENTICATION template for self-serve number linking (§11.4).
+    # Dialable business number (E.164 digits, no '+') — the `wa.me/<number>`
+    # target for user-initiated deep-link linking (§11). Distinct from
+    # whatsapp_phone_number_id (Meta's opaque id, not dialable).
+    whatsapp_business_number: str = ""
+    # SUPERSEDED (§11.6): AUTHENTICATION template for the retired OTP link path.
     # Empty + no access_token ⇒ verify-start degrades to a dev stub (logs the code).
     whatsapp_otp_template: str = "wa_link_code"
 
