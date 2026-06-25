@@ -28,6 +28,11 @@ from workers.whatsapp.status import apply_status_update
 
 logger = logging.getLogger(__name__)
 
+LINK_SUCCESS_REPLY = (
+    "✅ You're connected! This number is now linked to your Scolto account. "
+    "Ask me anything about your agents and reports."
+)
+
 
 def process_inbound(
     payload: dict, *, fs=None, sender=None, resolver=None, run_fn=None
@@ -86,6 +91,20 @@ def process_inbound(
             logger.info("Consent %s for user %s", command, identity.uid)
             handled += 1
             continue  # no auto-reply to a consent command
+
+        # Lobby self-link (spec §11): an inbound carrying a valid link token binds
+        # this number to the token's User, then confirms in the open window.
+        if identity.kind == "lobby":
+            from api.services.wa_linking import redeem_link_token
+
+            result = redeem_link_token(msg.text, msg.wa_id, fs=fs)
+            if result.ok:
+                # Re-read: attach_number re-parented the conversation to attached.
+                conv = fs.get_conversation(conv_id) or conv
+                sender.send_text(conv_id, LINK_SUCCESS_REPLY)
+                logger.info("WhatsApp %s -> linked (user %s)", msg.wamid, result.uid)
+                handled += 1
+                continue
 
         responder = select_responder(conv, fs, run_fn=run_fn)
         ctx = ResponderContext(

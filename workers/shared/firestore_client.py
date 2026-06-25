@@ -973,6 +973,18 @@ class FirestoreClient:
         kept = [n for n in nums if n.get("e164") != e164]
         self._db.collection("users").document(uid).update({"wa_numbers": kept})
 
+    def put_wa_link_token(self, token_hash: str, data: dict) -> None:
+        """Store a one-time link token, keyed by its hash (raw token never
+        persisted). Single-use + short TTL on `expires_at` (spec §11)."""
+        self._db.collection("wa_link_tokens").document(token_hash).set(data)
+
+    def get_wa_link_token(self, token_hash: str) -> dict | None:
+        doc = self._db.collection("wa_link_tokens").document(token_hash).get()
+        return doc.to_dict() if doc.exists else None
+
+    def delete_wa_link_token(self, token_hash: str) -> None:
+        self._db.collection("wa_link_tokens").document(token_hash).delete()
+
     def detach_wa_conversation(self, wa_id: str) -> None:
         """Flip a number's active conversation back to the lobby on unbind.
 

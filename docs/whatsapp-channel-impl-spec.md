@@ -334,53 +334,65 @@ Start now, independent of the build: Meta business verification · phone-number 
 
 ## 11. Attachment UX — web self-serve number linking (promotes §9)
 
-Promotes the deferred "Sign-in/Attachment **UX**" seam (§9) to a designed feature. An already-logged-in web User links a WhatsApp number to their account by proving possession via a one-time code. This is the **only** Attachment entry point for now (ADR 0001: WhatsApp never bootstraps an account — the User exists first, then binds the number). The backend bind contract (`attach_number`, `bind_wa_number`) already exists and is reused unchanged; this section adds the verification layer in front of it and the UI.
+Promotes the deferred "Sign-in/Attachment **UX**" seam (§9) to a designed feature. An already-logged-in web User links a WhatsApp number to their account by proving possession. This is the **only** Attachment entry point for now (ADR 0001: WhatsApp never bootstraps an account — the User exists first, then binds the number). The backend bind contract (`attach_number`, `bind_wa_number`) already exists and is reused unchanged; this section adds the proof-of-possession layer in front of it and the UI.
+
+### 11.0 Direction — user-initiated (deep-link), not template OTP
+
+The proof-of-possession is **user-initiated**: the User opens a `wa.me` deep link prefilled with a one-time token and sends it to the Scolto business number. The inbound proves the User controls that number (it came *from* it); the token, minted against their authed session, names the account. The handler redeems the token in the **Lobby**, binds, and replies in the now-open Service Window.
+
+This deliberately replaces the earlier **web→user OTP-template** design (kept below as §11.6, *superseded*). The OTP path required Meta to message the User first, which outside a Service Window means a paid, Meta-approved **AUTHENTICATION** template (`wa_link_code`) — a cost + approval long-pole, and the reason linking was DOA in prod (`#132001 template does not exist`). The user-initiated direction needs **no template, no approval, no per-message cost**: the User's inbound opens a free 24h window and the confirm reply is plain text (`ScriptedResponder` slot).
 
 ### 11.1 Flow
 
 ```
-Web (Firebase-authed)                 API                              Meta
-  enter number ───────► POST /me/channels/whatsapp/verify-start
-                          • normalize E.164
-                          • reject if bound to ANOTHER user
-                          • rate-limit (§11.3)
-                          • mint 6-digit code, store hash+TTL
-                          • send AUTHENTICATION template ──────────► WA msg w/ code
-  enter code ──────────► POST /me/channels/whatsapp/verify-confirm
-                          • load verification doc
-                          • check expiry / attempts / hash
-                          • on match → attach_number(uid, e164, org_id)
-                          • delete verification doc
-  list / remove ───────► GET /me/channels · POST .../unbind
+Web (Firebase-authed)              API                          WhatsApp
+  click "Link WhatsApp" ─► POST /me/channels/whatsapp/link-start
+                            • mint one-time token (hash+TTL, uid, org_id)
+                            • build wa.me deep link to the business number
+                            • return { deep_link, expires_in }
+  open deep link ───────────────────────────────────────────► WA opens, text
+                            prefilled: "Link my Scolto account · <TOKEN>"
+  tap Send ─────────────────────────────────────────────────► inbound webhook
+                            handler (Lobby branch):
+                            • extract token candidates from msg.text
+                            • redeem: valid+unexpired → attach_number(uid, wa_id)
+                            • single-use: delete token; reply "✅ Connected"
+  poll GET /me/channels until the number appears
+  remove ──────────────► POST .../unbind
 ```
 
 ### 11.2 New surfaces
 
 | Layer | File | Notes |
 | --- | --- | --- |
-| API router | **new** `api/routers/channels.py` | registered in `api/main.py` alongside `settings_router` (gated). Pattern from `api/routers/settings.py`. |
-| Verify service | **new** `api/services/wa_verification.py` | mint/check OTP; sits in front of existing `api/services/wa_attachment.py::attach_number`. |
-| OTP send | reuse `channels/whatsapp/client.py::WhatsAppClient.send_template` | **raw client, NOT `OutboundSender`** — the OTP is auth infra, not conversation content; it must not be persisted to a conversation or gated by the Service Window. Built from `whatsapp_phone_number_id` + `whatsapp_access_token` settings (already present, already in the api env block). |
-| FS verification store | **new** `FirestoreClient` methods `put_wa_verification` / `get_wa_verification` / `delete_wa_verification` | `wa_verifications/{e164}` doc: `{uid, code_hash, expires_at, attempts, send_count, last_sent_at}`. TTL on `expires_at`. |
-| FS list | reuse `users.wa_numbers` (read) + existing `unbind_wa_number` (+ ArrayRemove the entry) | a `remove_wa_number_from_user(uid, e164)` helper for the array prune. |
-| Frontend endpoints | `frontend/src/api/endpoints/channels.ts` | `listChannels`, `startWhatsAppVerify`, `confirmWhatsAppVerify`, `unbindWhatsApp`. Pattern from `endpoints/settings.ts`. |
-| Frontend section | `frontend/src/features/settings/sections/ChannelsSection.tsx` + add `'channels'` to `SettingsSection`, `NAV_ITEMS`, `SECTION_TITLES`, render branch + the path-validation array in `SettingsPage.tsx`. | shadcn Card; two-step inline form (number → code); list of bound numbers w/ verified date + Disconnect. Icon `MessageCircle`. |
+| API router | `api/routers/channels.py` | adds `POST /me/channels/whatsapp/link-start`; keeps `GET /me/channels` + `.../unbind`. The OTP `verify-start`/`verify-confirm` endpoints remain (superseded, §11.6) but the UI no longer calls them. |
+| Linking service | **new** `api/services/wa_linking.py` | `start_link(uid, org_id) → {deep_link, expires_in}` and `redeem_link_token(text, wa_id) → RedeemResult`; sits in front of existing `api/services/wa_attachment.py::attach_number`. `extract_token_candidates(text)` is a pure helper. |
+| Confirm reply | reply via the normal Service Window (`OutboundSender.send_text`) — the User's inbound opened the window, so this is free-form, no template. |
+| FS token store | **new** `FirestoreClient` methods `put_wa_link_token` / `get_wa_link_token` / `delete_wa_link_token` | `wa_link_tokens/{token_hash}` doc: `{uid, org_id, expires_at, created_at}`. Keyed by **hash** (raw token never stored). Single-use (deleted on redeem). TTL on `expires_at`. |
+| Handler redeem | `workers/whatsapp/handler.py` | in the **Lobby** branch (identity.kind == "lobby"), before `ScriptedResponder`: extract token candidates, redeem the first that matches → `attach_number(uid, wa_id)` → success reply. No match → normal Lobby invite. |
+| Business number | **new** setting `whatsapp_business_number` (E.164 digits, no `+`) | the `wa.me/<number>` target. Distinct from `whatsapp_phone_number_id` (Meta's opaque id, not dialable). |
+| Frontend endpoints | `frontend/src/api/endpoints/channels.ts` | `listChannels`, `startWhatsAppLink`, `unbindWhatsApp`. |
+| Frontend section | `frontend/src/features/settings/sections/ChannelsSection.tsx` | shadcn Card; "Link WhatsApp" → opens the deep link → polls `listChannels` until the number appears; list of bound numbers w/ Disconnect. Icon `MessageCircle`. No number-entry or code-entry fields. |
 
 ### 11.3 Security (the real surface)
 
-OTP-over-WhatsApp is an **SMS-pumping-equivalent abuse vector** — each send costs money and a template send is window-independent (it reaches any number). Gates, all enforced server-side in the verify service:
+The abuse surface is **inverted vs OTP**: we never message an arbitrary number, so there is no SMS-pumping / cost vector. The risk is a stolen/guessed token binding the wrong account. Gates, all server-side:
 
-- **Code:** 6 digits, **hashed at rest** (never store/log plaintext), 10-minute expiry, **max 5 confirm attempts** then the doc is burned.
-- **Ownership guard:** `verify-start` rejects a number already in `wa_number_index` under a *different* `uid` (returns a neutral "can't be linked" — don't disclose which account). Same-uid re-link is allowed (idempotent).
-- **Rate limits per number:** ≥60s cooldown between sends; **max 5 sends / 24h** (`send_count` + `last_sent_at` on the verification doc). Exceeded → 429.
-- **Per-user cap:** bound-number ceiling (e.g. 5) to bound the array.
-- **Neutral responses / constant-ish work:** confirm returns the same shape for wrong-code vs expired vs no-doc (avoid enumeration); always 200/400 by class, never leak whether a number is registered elsewhere.
-- **Auth:** both endpoints require the Firebase `CurrentUser`; the `uid` comes from the token, never from the request body.
+- **Token:** ≥50 bits of entropy from an unambiguous alphabet (no `0/O/1/I`), **hashed at rest** (doc id = SHA-256 of `token`; raw token never stored/logged), **10-minute expiry**, **single-use** (deleted on redeem).
+- **Possession is intrinsic:** the inbound proves control of the number; the token names the User. We bind exactly that `(uid, wa_id)` pair — never a number from the request body.
+- **Ownership guard:** redeem refuses if `wa_id` is already in `wa_number_index` under a *different* `uid` (reply is neutral; don't disclose the other account). Same-uid re-link is idempotent.
+- **Per-user cap:** bound-number ceiling (`MAX_NUMBERS_PER_USER`) checked at redeem to bound the array.
+- **Self-limiting mint:** no outbound-cost vector, so no SMS-pumping risk; tokens are single-use + 10-min TTL + auth-gated, which caps churn without an explicit cooldown.
+- **Auth:** `link-start` requires the Firebase `CurrentUser`; `uid`/`org_id` come from the token, never the request body. Redeem runs in the worker with no user session — its trust root is the inbound number + the link token.
 
-### 11.4 Template (parallel op — long pole)
+### 11.4 No template, no approval
 
-Needs an approved Meta **AUTHENTICATION**-category template with one body variable (the code) — add to the §10 template-approval list (days of lead time). Until approved, `verify-start` short-circuits to a `503 not_configured` when `whatsapp_access_token`/template name is unset, so the UI degrades gracefully (and dev/local can stub the send). Template name in a new `whatsapp_otp_template` setting.
+The confirm reply is an ordinary Service-Window text (the User's inbound opened the window), so this path needs **no Meta template and no approval** — it works the moment the code ships. `whatsapp_business_number` (the dialable `wa.me` target) is the only new config.
 
 ### 11.5 Out of scope (still deferred)
 
-Step-up `sensitive_actions` (ADR 0001) · admin-driven binding · org-shared numbers · SMS fallback · changing the email-first signup itself. A successful bind here yields exactly the same `attached` state and re-parented lobby thread that §8.2 already specifies — no new conversation-state behavior.
+Step-up `sensitive_actions` (ADR 0001) · admin-driven binding · org-shared numbers · changing the email-first signup itself. A successful bind here yields exactly the same `attached` state and re-parented lobby thread that §8.2 already specifies — no new conversation-state behavior.
+
+### 11.6 Superseded — web→user OTP template (do not build)
+
+The original §11 sent a 6-digit code to the number via an approved **AUTHENTICATION** template (`whatsapp_otp_template`, default `wa_link_code`), confirmed via `verify-start`/`verify-confirm` + `api/services/wa_verification.py`. It is retained in code (endpoints + service + tests) but **unused by the UI** and not on the critical path. Removal is a follow-up. Reason for retirement: it requires Meta template approval + paid window-independent sends and was non-functional in prod (no approved `wa_link_code`); §11.0 replaces it with a template-free, user-initiated deep link.

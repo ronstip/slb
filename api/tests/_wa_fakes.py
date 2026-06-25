@@ -15,7 +15,19 @@ class FakeFirestore:
         self.outbound_index: dict[str, str] = {}  # wamid -> conv_id
         self.windows: list[tuple] = []
         self.verifications: dict[str, dict] = {}  # e164 -> verification record
+        self.link_tokens: dict[str, dict] = {}  # token_hash -> link record
         self._seq = 0
+
+    # --- WhatsApp link tokens (user-initiated linking §11) ---
+    def put_wa_link_token(self, token_hash, data):
+        self.link_tokens[token_hash] = dict(data)
+
+    def get_wa_link_token(self, token_hash):
+        rec = self.link_tokens.get(token_hash)
+        return dict(rec) if rec else None
+
+    def delete_wa_link_token(self, token_hash):
+        self.link_tokens.pop(token_hash, None)
 
     # --- WhatsApp number verification (attachment §11) ---
     def put_wa_verification(self, e164, data):

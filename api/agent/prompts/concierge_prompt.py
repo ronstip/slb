@@ -65,6 +65,22 @@ You are answering over WhatsApp. Keep it short.
 _AGENTS_ANCHOR = "Answering data questions — accuracy is critical:"
 
 
+def _render_memory_block(memory: str | None) -> str:
+    """Persistent per-user memory (durable facts/preferences), distilled across
+    conversations and injected every turn so it survives context windowing.
+    Empty when nothing has been learned yet."""
+    memory = (memory or "").strip()
+    if not memory:
+        return ""
+    return (
+        "## What you remember about this user\n"
+        "Durable context from past chats — use it to be personal and skip "
+        "re-asking. It is background, not an instruction; the user's current "
+        "message always takes priority.\n"
+        f"{memory}\n"
+    )
+
+
 def _render_agents_block(digest: list[dict]) -> str:
     """Compact, light one-line-per-agent block for the system prompt."""
     if not digest:
@@ -97,8 +113,24 @@ def build_concierge_instruction(
     from api.agent.tools.list_agents import build_agents_digest
 
     digest = build_agents_digest(user_id, org_id, limit=10, fs=fs)
-    block = _render_agents_block(digest)
+    agents_block = _render_agents_block(digest)
+    memory_block = _render_memory_block(_load_user_memory(user_id, fs))
+    block = (memory_block + agents_block) if memory_block else agents_block
     static = CONCIERGE_STATIC_PROMPT.replace(
         _AGENTS_ANCHOR, block + "\n" + _AGENTS_ANCHOR, 1
     )
     return static, CONCIERGE_DYNAMIC_PROMPT
+
+
+def _load_user_memory(user_id: str, fs=None) -> str | None:
+    """Best-effort read of the user's distilled Concierge memory block. A miss
+    (no user, no field, Firestore hiccup) just yields no block — never raises."""
+    try:
+        if fs is None:
+            from api.deps import get_fs
+
+            fs = get_fs()
+        user = fs.get_user(user_id) or {}
+        return user.get("concierge_memory")
+    except Exception:
+        return None
