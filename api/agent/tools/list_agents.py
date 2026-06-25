@@ -50,22 +50,57 @@ def list_agents(tool_context: ToolContext = None) -> dict:
     org_id = state.get("org_id")
 
     agents = _list_agents(user_id, org_id)
+    compact = _compact_agents(agents)
+    return {"status": "success", "agent_count": len(compact), "agents": compact}
 
+
+def _compact_agents(agents: list[dict], current_user_id: str | None = None) -> list[dict]:
+    """Map raw agent docs to compact rows, sorted most-recently-active first.
+
+    Single source of truth for the digest shape shared by the ``list_agents``
+    tool and the Concierge prompt builder. ``current_user_id`` lets the
+    read-only path (``fs.list_user_agents``, which doesn't stamp ``is_owner``)
+    derive ownership from the doc's ``user_id``; the service path already sets
+    ``is_owner`` so it's used as-is when present.
+    """
     compact = [
         {
             "agent_id": a.get("agent_id"),
             "title": a.get("title", ""),
             "status": a.get("status", "unknown"),
             "last_active_at": _last_active_at(a),
-            "is_owner": a.get("is_owner", True),
+            "is_owner": (
+                (a.get("user_id") == current_user_id)
+                if current_user_id is not None
+                else a.get("is_owner", True)
+            ),
             "owner_label": a.get("owner_label"),
         }
         for a in agents
     ]
     # Most recently active first; agents with no timestamp at all sort last.
     compact.sort(key=lambda a: a["last_active_at"] or "", reverse=True)
+    return compact
 
-    return {"status": "success", "agent_count": len(compact), "agents": compact}
+
+def build_agents_digest(
+    user_id: str, org_id: str | None, limit: int = 10, fs=None
+) -> list[dict]:
+    """Read-only digest of the user's most-recently-active agents (own +
+    org-shared), truncated to ``limit``. Used to inject agents into the
+    Concierge system prompt at build time so it can skip the ``list_agents``
+    tool round-trip.
+
+    Deliberately uses the read-only ``fs.list_user_agents`` path — NOT the
+    service-layer ``list_agents`` (which runs ``reconcile_user_org_membership``,
+    a write) — because this runs on every Concierge turn.
+    """
+    if fs is None:
+        from api.deps import get_fs
+
+        fs = get_fs()
+    agents = fs.list_user_agents(user_id, org_id)
+    return _compact_agents(agents, current_user_id=user_id)[:limit]
 
 
 def _last_active_at(agent: dict):

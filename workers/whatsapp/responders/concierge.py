@@ -84,7 +84,15 @@ async def _run_concierge_async(user, conversation, text) -> tuple[str, str]:
     session.state["user_id"] = user.uid
     session.state["org_id"] = user.org_id
 
-    app = create_app(mode="concierge")
+    # Inject the user's recent agents into the prompt (skips the `list_agents`
+    # round-trip) and cap thinking — WhatsApp has a tighter latency budget than
+    # web chat. Both are scoped to this single per-request app.
+    app = create_app(
+        mode="concierge",
+        thinking_override="low",
+        user_id=user.uid,
+        org_id=user.org_id,
+    )
     runner = Runner(app=app, session_service=session_service)
 
     content = types.Content(role="user", parts=[types.Part.from_text(text=text)])
