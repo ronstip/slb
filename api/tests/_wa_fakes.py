@@ -2,7 +2,7 @@
 — leading underscore). Backs the real handler/sender/resolver/status code so
 tests exercise production logic without Firestore or network."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 class FakeFirestore:
@@ -86,6 +86,16 @@ class FakeFirestore:
     def get_active_conversation(self, wa_id):
         cid = self.pointers.get(wa_id)
         return self.conversations.get(cid) if cid else None
+
+    def detach_wa_conversation(self, wa_id):
+        conv = self.get_active_conversation(wa_id)
+        if not conv:
+            return
+        conv.update({
+            "user_id": None, "org_id": None,
+            "attachment_state": "lobby", "responder": "scripted",
+            "purge_at": datetime.now(timezone.utc) + timedelta(days=30),
+        })
 
     def append_channel_message(self, conv_id, msg):
         key = (conv_id, msg["wamid"])

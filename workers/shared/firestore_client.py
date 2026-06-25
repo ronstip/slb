@@ -973,6 +973,28 @@ class FirestoreClient:
         kept = [n for n in nums if n.get("e164") != e164]
         self._db.collection("users").document(uid).update({"wa_numbers": kept})
 
+    def detach_wa_conversation(self, wa_id: str) -> None:
+        """Flip a number's active conversation back to the lobby on unbind.
+
+        Deleting the resolver index alone is not enough: the live conversation
+        (keyed by the `wa_active_conversation` pointer) keeps its
+        `attached`/`concierge`/`user_id` state, and `select_responder` is
+        state-driven — so a later inbound would meet the stale Concierge, never
+        the Scripted lobby. Reset it in place (history is retained) and give it
+        the same 30-day lobby TTL a fresh lobby conversation gets."""
+        conv = self.get_active_conversation(wa_id)
+        if not conv:
+            return
+        now = datetime.now(timezone.utc)
+        self._db.collection("conversations").document(conv["conv_id"]).update({
+            "user_id": None,
+            "org_id": None,
+            "attachment_state": "lobby",
+            "responder": "scripted",
+            "purge_at": now + timedelta(days=30),
+            "updated_at": now,
+        })
+
     # --- WhatsApp number verification (attachment OTP, spec §11) ---
 
     def put_wa_verification(self, e164: str, data: dict) -> None:

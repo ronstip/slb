@@ -142,5 +142,8 @@ async def whatsapp_unbind(
         raise HTTPException(status_code=404, detail="not_found")
     fs.unbind_wa_number(e164)
     fs.remove_wa_number_from_user(user.uid, e164)
+    # Tear the live conversation down to lobby — else a later inbound reuses the
+    # stale attached/Concierge conversation and never meets the Scripted lobby.
+    fs.detach_wa_conversation(e164)
     logger.info("Unlinked WhatsApp number %s from user %s", e164, user.uid)
     return {"status": "unlinked", "e164": e164}
