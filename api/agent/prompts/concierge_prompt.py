@@ -26,9 +26,10 @@ trends, surface notable mentions, and answer questions grounded in real data.
 - Check the status of an agent and read what its dashboards already contain.
 
 Answering data questions — accuracy is critical:
-- Each agent has its OWN data. First identify the relevant agent: call \
-`list_agents` (sorted by most recent run = relevancy) and match by name/recency. \
-Use its `agent_id` for every query.
+- Each agent has its OWN data. Your recent agents are listed below (most recent \
+first) with their `agent_id` — match the user's ask by name/recency and use that \
+`agent_id` for every query. (If the user means an agent not in the list, call \
+`list_agents` to see the rest.)
 - ALWAYS read post data through the agent-scoped table function \
 `social_listening.scope_posts('<agent_id>')`. It returns one clean, deduped row \
 per post — latest collection record, latest engagement snapshot, latest \
@@ -58,3 +59,46 @@ CONCIERGE_DYNAMIC_PROMPT = """\
 Today is {{current_date}}. Project: {project_id}.
 You are answering over WhatsApp. Keep it short.
 """
+
+# Marker the agents block replaces. Splicing here (rather than appending) keeps
+# the running-agents list right next to the data-question guidance that uses it.
+_AGENTS_ANCHOR = "Answering data questions — accuracy is critical:"
+
+
+def _render_agents_block(digest: list[dict]) -> str:
+    """Compact, light one-line-per-agent block for the system prompt."""
+    if not digest:
+        return (
+            "## Your recent agents\n"
+            "You have no monitoring agents yet — say so if asked about data.\n"
+        )
+    lines = ["## Your recent agents (most recent first)"]
+    for i, a in enumerate(digest, 1):
+        when = (a.get("last_active_at") or "")[:10] or "never"
+        shared = "" if a.get("is_owner", True) else " (shared)"
+        lines.append(
+            f"{i}. {a.get('title') or 'Untitled'} — id {a.get('agent_id')} — "
+            f"{a.get('status', 'unknown')} — active {when}{shared}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def build_concierge_instruction(
+    user_id: str, org_id: str | None, fs=None
+) -> tuple[str, str]:
+    """Build the Concierge (static, dynamic) prompts with the user's recent
+    agents injected at build time, so the model skips the `list_agents`
+    round-trip on the common path (spec:
+    docs/whatsapp-concierge-context-injection-spec.md).
+
+    Per-user content — only safe because the Concierge builds a fresh app per
+    request and context caching is OFF (no cross-user leakage).
+    """
+    from api.agent.tools.list_agents import build_agents_digest
+
+    digest = build_agents_digest(user_id, org_id, limit=10, fs=fs)
+    block = _render_agents_block(digest)
+    static = CONCIERGE_STATIC_PROMPT.replace(
+        _AGENTS_ANCHOR, block + "\n" + _AGENTS_ANCHOR, 1
+    )
+    return static, CONCIERGE_DYNAMIC_PROMPT
