@@ -14,7 +14,24 @@ class FakeFirestore:
         self.users: dict[str, dict] = {}
         self.outbound_index: dict[str, str] = {}  # wamid -> conv_id
         self.windows: list[tuple] = []
+        self.verifications: dict[str, dict] = {}  # e164 -> verification record
         self._seq = 0
+
+    # --- WhatsApp number verification (attachment §11) ---
+    def put_wa_verification(self, e164, data):
+        self.verifications[e164] = dict(data)
+
+    def get_wa_verification(self, e164):
+        rec = self.verifications.get(e164)
+        return dict(rec) if rec else None
+
+    def delete_wa_verification(self, e164):
+        self.verifications.pop(e164, None)
+
+    def remove_wa_number_from_user(self, uid, e164):
+        user = self.users.get(uid)
+        if user and "wa_numbers" in user:
+            user["wa_numbers"] = [n for n in user["wa_numbers"] if n.get("e164") != e164]
 
     # identity / consent
     def resolve_wa_number(self, e164):
@@ -22,7 +39,13 @@ class FakeFirestore:
 
     def bind_wa_number(self, uid, e164, org_id=None):
         self.number_index[e164] = {"uid": uid, "org_id": org_id}
-        self.users.setdefault(uid, {}).setdefault("wa_numbers", []).append({"e164": e164})
+        nums = self.users.setdefault(uid, {}).setdefault("wa_numbers", [])
+        # Dedupe by e164 (mirror the real client): a re-link replaces, not appends.
+        nums[:] = [n for n in nums if n.get("e164") != e164]
+        nums.append({"e164": e164})
+
+    def unbind_wa_number(self, e164):
+        self.number_index.pop(e164, None)
 
     def set_wa_opt_out(self, uid, opted_out):
         self.users.setdefault(uid, {})["wa_opt_out"] = opted_out

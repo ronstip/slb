@@ -39,6 +39,7 @@ from api.routers import artifact_shares as artifact_shares_router
 from api.routers import artifacts as artifacts_router
 from api.routers import auth as auth_router
 from api.routers import billing as billing_router
+from api.routers import channels as channels_router
 from api.routers import briefing as briefing_router
 from api.routers import briefing_shares as briefing_shares_router
 from api.routers import chat as chat_router
@@ -148,6 +149,7 @@ _gated = [Depends(enforce_access)]
 
 # Include routers
 app.include_router(settings_router.router)
+app.include_router(channels_router.router, dependencies=_gated)
 app.include_router(billing_router.router)
 app.include_router(sessions_router.router, dependencies=_gated)
 app.include_router(admin_router.router)

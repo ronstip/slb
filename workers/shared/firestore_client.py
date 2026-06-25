@@ -947,17 +947,46 @@ class FirestoreClient:
         self._db.collection("wa_number_index").document(e164).set(
             {"uid": uid, "org_id": org_id, "bound_at": now}
         )
-        from google.cloud.firestore_v1 import transforms
-
-        self._db.collection("users").document(uid).update(
-            {"wa_numbers": transforms.ArrayUnion([{"e164": e164, "verified_at": now}])}
-        )
+        # Read-modify-write the array (not ArrayUnion): the per-entry `verified_at`
+        # differs on each bind, so ArrayUnion would NOT dedupe a re-link of the
+        # same number — it would append a duplicate. Drop any existing entry for
+        # this e164, then add the fresh one. Binds are rare + single-user.
+        doc = self._db.collection("users").document(uid).get()
+        nums = (doc.to_dict() or {}).get("wa_numbers", []) if doc.exists else []
+        kept = [n for n in nums if n.get("e164") != e164]
+        kept.append({"e164": e164, "verified_at": now})
+        self._db.collection("users").document(uid).update({"wa_numbers": kept})
         logger.info("Bound WhatsApp number %s to user %s", e164, uid)
 
     def unbind_wa_number(self, e164: str) -> None:
         """Remove the resolver index for a number (a later inbound re-enters
         the lobby)."""
         self._db.collection("wa_number_index").document(e164).delete()
+
+    def remove_wa_number_from_user(self, uid: str, e164: str) -> None:
+        """Prune one `{e164, ...}` entry from `users/{uid}.wa_numbers`.
+
+        ArrayRemove needs the exact element, so we read-modify-write the array
+        (matching on `e164`) rather than guess the stored shape (spec §11.2)."""
+        doc = self._db.collection("users").document(uid).get()
+        nums = (doc.to_dict() or {}).get("wa_numbers", []) if doc.exists else []
+        kept = [n for n in nums if n.get("e164") != e164]
+        self._db.collection("users").document(uid).update({"wa_numbers": kept})
+
+    # --- WhatsApp number verification (attachment OTP, spec §11) ---
+
+    def put_wa_verification(self, e164: str, data: dict) -> None:
+        """Write/overwrite the pending verification doc for a number.
+        `wa_verifications/{e164}` carries `code_hash` + TTL + send/attempt
+        counters. Firestore TTL on `expires_at` reaps stale docs."""
+        self._db.collection("wa_verifications").document(e164).set(data)
+
+    def get_wa_verification(self, e164: str) -> dict | None:
+        doc = self._db.collection("wa_verifications").document(e164).get()
+        return doc.to_dict() if doc.exists else None
+
+    def delete_wa_verification(self, e164: str) -> None:
+        self._db.collection("wa_verifications").document(e164).delete()
 
     def resolve_wa_number(self, e164: str) -> dict | None:
         """Resolver read: `{uid, org_id}` for a bound number, else None (Lobby)."""

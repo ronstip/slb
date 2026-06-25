@@ -324,6 +324,9 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = ""
     whatsapp_pin: str = ""  # two-step verify PIN (number registration only)
+    # Approved AUTHENTICATION template for self-serve number linking (§11.4).
+    # Empty + no access_token ⇒ verify-start degrades to a dev stub (logs the code).
+    whatsapp_otp_template: str = "wa_link_code"
 
     # Sentry error tracking (§C.1). Empty DSN = disabled (local dev default).
     # Sample rates default to 0.0 = errors-only, which keeps the Sentry free
