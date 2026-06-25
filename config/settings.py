@@ -290,11 +290,13 @@ class Settings(BaseSettings):
     # needs access_token + phone_number_id + business_account_id (outbound).
     # All five empty = channel disabled. ⚠️ When wiring deploy, add these to
     # BOTH deploy.yml AND deploy_prod.sh env blocks (env-truncation gotcha).
+    whatsapp_app_id: str = ""  # Meta App ID (reference; not used at runtime)
     whatsapp_phone_number_id: str = ""
     whatsapp_business_account_id: str = ""
     whatsapp_access_token: str = ""
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = ""
+    whatsapp_pin: str = ""  # two-step verify PIN (number registration only)
 
     # Sentry error tracking (§C.1). Empty DSN = disabled (local dev default).
     # Sample rates default to 0.0 = errors-only, which keeps the Sentry free

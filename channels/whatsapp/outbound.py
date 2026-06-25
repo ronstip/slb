@@ -73,6 +73,10 @@ class WhatsAppOutboundSender(OutboundSender):
     ) -> SendResult:
         # Window-independent (a Template is exactly what's allowed outside the
         # window). The opt-out gate still applies.
+        # TODO(pacing, deferred 2026-06-25): GATE 3 — business-initiated quota.
+        # Pre-business-verification cap is 250 unique conversations/24h. Add a
+        # Firestore rolling-24h counter + configurable cap here before high-volume
+        # proactive alerts; see docs/whatsapp-local-testing.md §6.
         conv = self._fs.get_conversation(conversation_id) or {}
         if self._opted_out(conv):
             return SendResult(ok=False, blocked_reason="opted_out")
