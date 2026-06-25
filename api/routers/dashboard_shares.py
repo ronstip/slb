@@ -445,25 +445,15 @@ async def get_shared_dashboard(
         fs.get_collection_statuses, collection_ids
     )
     stamp = make_freshness_stamp(statuses_map.values())
-    core, cache_hit, gather_ms, serialize_ms = await get_or_build_core(
-        bq, agent_id, collection_ids, stamp
-    )
 
-    perf_logger.info(
-        "dashboard.share token=%s agent=%s cache=%s posts=%d gather_ms=%.0f serialize_ms=%.0f",
-        token, agent_id, "HIT" if cache_hit else "MISS",
-        len(core["posts"]), gather_ms, serialize_ms,
-    )
-
-    # Fire-and-forget telemetry update
-    asyncio.create_task(_record_access(fs, token))
-
-    # Compute the response-cache key NOW, before any aggregation. It depends only
-    # on the data freshness stamp + this share's metadata - all resolved above -
-    # so a warm gzip-bytes hit can short-circuit the entire server-agg engine.
-    # Without this, every warm hit re-aggregated the full post set (the ~3s on the
-    # 10K-post `wc26brands` share even on a core-cache HIT). The same key stores
-    # the body on a miss below, so the two must stay byte-identical.
+    # Compute the response-cache key NOW, before touching BigQuery. It depends
+    # only on the data freshness stamp + this share's metadata (all resolved
+    # above), so a warm gzip-bytes hit - in this instance's L1 OR the shared GCS
+    # L2 - short-circuits the ENTIRE pipeline: no core build, no BigQuery, no
+    # aggregation. The same key stores the body on a miss below, so the two must
+    # stay byte-identical. (The check MUST precede get_or_build_core: a fresh
+    # instance's core L1 is empty, so building it first would pay the ~14s BQ
+    # cold miss before the L2 could spare it.)
     settings = get_settings()
     server_agg_enabled = settings.dashboard_server_agg and agg not in ("client", "off")
     cache_key = share_cache_key(
@@ -482,9 +472,23 @@ async def get_shared_dashboard(
         server_agg_enabled,
     )
     accept_encoding = request.headers.get("accept-encoding", "")
+
+    # Fire-and-forget telemetry update (every request, warm or cold).
+    asyncio.create_task(_record_access(fs, token))
+
     warm = await cached_gzip_response_async(cache_key, accept_encoding)
     if warm is not None:
         return warm
+
+    # Cold for this exact body: build (or reuse the cached) core, then aggregate.
+    core, cache_hit, gather_ms, serialize_ms = await get_or_build_core(
+        bq, agent_id, collection_ids, stamp
+    )
+    perf_logger.info(
+        "dashboard.share token=%s agent=%s cache=%s posts=%d gather_ms=%.0f serialize_ms=%.0f",
+        token, agent_id, "HIT" if cache_hit else "MISS",
+        len(core["posts"]), gather_ms, serialize_ms,
+    )
 
     # Apply the report-level transform (canonicalization + computed fields) so a
     # shared link shows the same canonical numbers as the owner's interactive
