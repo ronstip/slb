@@ -81,6 +81,25 @@ def test_confirm_wrong_code_is_400(ctx):
     assert r.status_code == 400 and r.json()["detail"] == "invalid_code"
 
 
+def test_unbind_detaches_active_conversation_back_to_lobby(ctx):
+    # Link, then simulate the live attached (Concierge) conversation for the number.
+    code = ctx.post("/me/channels/whatsapp/verify-start", json={"phone": NUM}).json()["dev_code"]
+    ctx.post("/me/channels/whatsapp/verify-confirm", json={"phone": NUM, "code": code})
+    conv = ctx.fs.get_or_create_wa_conversation(NUM, uid="u1", org_id="o1")
+    assert conv["responder"] == "concierge" and conv["attachment_state"] == "attached"
+
+    # Unbind must tear the conversation down to lobby so a later inbound meets
+    # the Scripted lobby, not the stale Concierge bound to the old user.
+    r = ctx.post("/me/channels/whatsapp/unbind", json={"phone": NUM})
+    assert r.status_code == 200
+
+    live = ctx.fs.get_active_conversation(NUM)
+    assert live is not None
+    assert live["responder"] == "scripted"
+    assert live["attachment_state"] == "lobby"
+    assert live["user_id"] is None
+
+
 def test_unbind_number_not_owned_is_404(ctx):
     ctx.fs.bind_wa_number("other", NUM, org_id="o9")
     r = ctx.post("/me/channels/whatsapp/unbind", json={"phone": NUM})
