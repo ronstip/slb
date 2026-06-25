@@ -105,6 +105,13 @@ def client(monkeypatch):
     monkeypatch.setattr(ds_router, "get_fs", lambda: fs)
     monkeypatch.setattr(ds_router, "get_bq", lambda: object())
 
+    # Keep tests hermetic + fast: no real GCS L2 round-trips. The L2-specific
+    # test re-patches these with an in-memory store.
+    from api.services import dashboard_response
+
+    monkeypatch.setattr(dashboard_response, "l2_get", lambda _k: None)
+    monkeypatch.setattr(dashboard_response, "l2_set", lambda _k, _b: None)
+
     async def _fake_core(_bq, _agent_id, _cids, _stamp):
         core = {
             "posts": [dict(p) for p in _POSTS],
