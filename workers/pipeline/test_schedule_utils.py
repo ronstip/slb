@@ -103,10 +103,20 @@ def test_not_due_when_status_completed():
     assert is_recurring_agent_due(_agent(status="completed"), NOW) is False
 
 
-def test_not_due_when_status_failed():
-    # A failed agent is not auto-retried on schedule (avoids hourly-retrying a
-    # genuinely broken agent). Resume is a manual action.
-    assert is_recurring_agent_due(_agent(status="failed"), NOW) is False
+def test_due_when_status_failed_recurring_self_heals():
+    # A failed recurring agent IS schedulable again at its next slot: a single
+    # bad run (provider outage, analysis crash) must not de-schedule it forever.
+    # Cadence is enforced by next_run_at (advanced at dispatch), so this retries
+    # once per slot, NOT every scheduler tick. See agent_service.dispatch_agent_run
+    # (early next_run_at advance) and docs/bugs/api-recurring-schedule-failed-deschedules.md.
+    assert is_recurring_agent_due(_agent(status="failed"), NOW) is True
+
+
+def test_not_due_when_failed_but_next_run_in_future():
+    # The cadence guard still holds for failed agents: a failed run whose
+    # next_run_at was advanced to the future waits a full slot before retrying
+    # (this is what prevents the feared hourly retry of a genuinely-broken agent).
+    assert is_recurring_agent_due(_agent(status="failed", next_run_at=FUTURE), NOW) is False
 
 
 def test_not_due_when_paused():
