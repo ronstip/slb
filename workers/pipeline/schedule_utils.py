@@ -7,13 +7,21 @@ where this logic was duplicated.
 import re
 from datetime import datetime, timedelta, timezone
 
-# A recurring agent rests at "success" after a normal run (set by
-# agent_continuation); "None" covers never-run agents. Every other status means
-# the agent is mid-run, archived, or failed — none of which should auto-start a
-# new run. (Deliberately an allowlist: broadening it to also reschedule
-# "failed"/legacy "completed" agents resurrects dormant agents and hourly-
-# retries genuinely-broken ones — see docs/bugs/api-recurring-schedule-never-fires.md.)
-SCHEDULABLE_STATUSES = frozenset({None, "success"})
+# Statuses from which a recurring agent may start its NEXT scheduled run:
+#   - "success" — rests here after a normal run (set by agent_continuation)
+#   - None       — never-run agent
+#   - "failed"   — a single bad run (provider outage, analysis crash) must NOT
+#                  de-schedule a recurring agent forever. It self-heals at its
+#                  next slot. Cadence is enforced by next_run_at (advanced up
+#                  front in dispatch_agent_run, before any guard/failure), so a
+#                  genuinely-broken agent retries once PER SLOT, never every tick.
+#                  See docs/bugs/api-recurring-schedule-failed-deschedules.md.
+# Still excluded: "running"/"executing"/etc (mid-run, prevents overlap),
+# "archived" (user-disabled), and legacy "completed" (would resurrect dormant
+# agents). The 5-min-tight-loop fear from the original allowlist
+# (docs/bugs/api-recurring-schedule-never-fires.md) is now handled by the
+# next_run_at advance, not by excluding "failed".
+SCHEDULABLE_STATUSES = frozenset({None, "success", "failed"})
 
 
 # A day schedule carries one or more clock times: "1d@09:00" (daily) or

@@ -782,6 +782,19 @@ def dispatch_agent_run(
     title = agent.get("title", "")
     agent_type = agent.get("agent_type", "one_shot")
 
+    # Advance the schedule up front, before any guard or failure below. next_run_at
+    # is the sole cadence lever (see workers/pipeline/schedule_utils): a recurring
+    # agent now stays schedulable after a FAILED run, so if next_run_at were only
+    # advanced on the happy path, a failed or empty run would leave it in the past
+    # and the agent would re-fire on every scheduler tick (~5 min) instead of once
+    # per slot. Advancing here guarantees a full cadence slot regardless of what
+    # happens next. See docs/bugs/api-recurring-schedule-failed-deschedules.md.
+    if agent_type == "recurring" and schedule.get("frequency"):
+        fs.update_agent(
+            agent_id,
+            next_run_at=compute_next_run_at(schedule["frequency"], datetime.now(timezone.utc)),
+        )
+
     if not sources:
         logger.warning("Agent %s has no sources defined", agent_id)
         return "", []
@@ -860,15 +873,10 @@ def dispatch_agent_run(
     todos = progress_automated_steps(fresh_todos, "collect_started", "in_progress")
     fs.update_agent(agent_id, todos=todos)
 
-    # Update agent-level denormalized collection_ids + next_run_at for recurring
-    now = datetime.now(timezone.utc)
-    update_fields: dict = {
-        "collection_ids": transforms.ArrayUnion(collection_ids),
-    }
-    if agent_type == "recurring" and schedule.get("frequency"):
-        update_fields["next_run_at"] = compute_next_run_at(schedule["frequency"], now)
-
-    fs.update_agent(agent_id, **update_fields)
+    # Update agent-level denormalized collection_ids. (next_run_at was already
+    # advanced up front, before the guards above, so the cadence survives a
+    # failed run — see the early advance near the top of this function.)
+    fs.update_agent(agent_id, collection_ids=transforms.ArrayUnion(collection_ids))
 
     logger.info("Dispatched agent %s run %s: created %d collections", agent_id, run_id, len(collection_ids))
     log_agent_activity(agent_id, f"Run dispatched - creating {len(collection_ids)} collection(s)", source="agent_service")
