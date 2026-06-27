@@ -1,6 +1,6 @@
 # Social Listening Platform — Context
 
-Glossary for the platform's core identity and the WhatsApp communication channel. Definitions only — no implementation detail.
+Glossary for the platform's core identity, the WhatsApp communication channel, and the Watch alerting system. Definitions only — no implementation detail.
 
 ## Language
 
@@ -63,6 +63,30 @@ A pre-approved message format, required for any message sent outside the **Servi
 **Opt-in / Opt-out**:
 A User's consent state for business-initiated messaging. **Opt-out** (e.g. a STOP keyword) must be honored immediately.
 
+### Alerting
+
+**Watch**:
+A user-owned monitor that fires a notification when a condition holds over a **Subject**'s `scope_posts`. Generalizes the old `Alert` (a saved dashboard filter emailed on run completion). `users/{uid}/watches/{id}`.
+_Avoid_: Alert (legacy/degenerate case), rule, notification (that's the output, not the watch).
+
+**Subject**:
+What a Watch monitors — `agents:[ids]`, `all_my_agents`, or `all_org_agents`, resolved at eval time (never a stored fan-out). Grain is `per_agent` (each agent judged independently) or `aggregate` (measure reduced across all subject agents into one verdict). A single-agent watch is the 1-element case; a portfolio watch is the many/dynamic case.
+_Avoid_: target, scope (reserved for `scope_posts`).
+
+**Trigger**:
+How a Watch decides to fire — exactly one of `structured` (a deterministic query over `scope_posts` → value/rows vs a condition; subsumes row-level events and aggregate thresholds/share-of-voice/spikes) or `semantic` (a per-run LLM judge of new content against an NL intent). A Watch never creates or mutates enrichment fields.
+_Avoid_: filter (that's one input to a structured trigger).
+
+**Detector**:
+The deterministic stage that evaluates a Trigger over `scope_posts` and emits a raw signal (value, crossings, group culprits, matching rows) with no LLM. Distinct from the agentic gate.
+
+**Watch-responder**:
+The lightweight agentic turn that runs only on a Detector signal: it judges materiality-against-history (replacing hard cooldown rules) and composes the notification, exiting with a `WatchVerdict`. Distinct from the **Concierge** and from a monitoring **Agent**.
+_Avoid_: "the alert bot."
+
+**Notifier**:
+The channel adapter that delivers a notification — `in_app` and `email` real, `whatsapp` stubbed. Operates on a channel-neutral payload.
+
 ## Relationships
 
 - A **User** belongs to exactly one **Organization**.
@@ -75,6 +99,9 @@ A User's consent state for business-initiated messaging. **Opt-out** (e.g. a STO
 - A **Conversation** has at most one live **Session** at a time, and only when an agent is answering.
 - An inbound message from a **bound** WhatsApp number starts or continues an **attached Conversation** directly (never a Lobby Conversation); binding is persistent trust, with no per-message login.
 - An inbound message from an **unbound** WhatsApp number creates a **Lobby Conversation**, which either undergoes **Attachment** to a User or is orphaned and purged.
+- A **User** owns many **Watches**; each Watch has one **Subject** resolving to one or more monitoring **Agents** the User can reach.
+- A **Watch** fires only after its **Detector** emits a signal; the **Watch-responder** then decides whether to notify and through which **Notifier**(s).
+- A **Watch** reads only existing enrichment (built-ins + `custom_fields`, incl `list[object]` fields) over `scope_posts`; it never creates or mutates enrichment fields.
 
 ## Flagged ambiguities
 

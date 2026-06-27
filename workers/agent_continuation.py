@@ -123,20 +123,25 @@ def check_agent_completion(collection_id: str) -> None:
     except Exception:
         logger.exception("Failed to progress automated todos for agent %s", agent_id)
 
-    # Dynamic alerts: evaluate the agent's alerts ONCE per run, across ALL of the
-    # run's collections. Hooked here (not per-collection in the pipeline) so a
-    # multi-collection agent run sends a single batched email instead of one per
-    # sub-collection. Runs last + guarded so alert/render latency can't delay or
+    # Run-triggered watches: evaluate every enabled `eval_on='run'` watch whose
+    # Subject covers this agent, ONCE, now that the run's posts are fully enriched.
+    # The per-watch alerted_posts ledger gives "new posts only" semantics across
+    # overlapping runs. Runs last + guarded so watch/render latency can't delay or
     # strand the continuation dispatched above.
     try:
-        from workers.alerts.evaluator import evaluate_alerts_for_agent_run
         from workers.shared.bq_client import BQClient
+        from workers.watches.runner import evaluate_watch_by_id
 
-        evaluate_alerts_for_agent_run(
-            agent_id, all_collection_ids, bq=BQClient(settings), fs=fs
-        )
+        bq = BQClient(settings)
+        for w in fs.list_run_watches_for_agent(agent_id):
+            try:
+                evaluate_watch_by_id(
+                    w["owner_uid"], w["watch_id"], bq=bq, fs=fs, trigger="run"
+                )
+            except Exception:
+                logger.exception("Watch %s run-eval failed for agent %s", w.get("watch_id"), agent_id)
     except Exception:
-        logger.exception("Alert evaluation failed for agent %s run", agent_id)
+        logger.exception("Run-watch evaluation failed for agent %s run", agent_id)
 
 
 def _delayed_fallback(agent_id: str, delay_seconds: int = 10) -> None:

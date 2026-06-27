@@ -39,8 +39,9 @@ const AgentArtifactsTab = lazy(() =>
 const AgentExplorerTab = lazy(() =>
   import('./tabs/AgentExplorerTab.tsx').then((m) => ({ default: m.AgentExplorerTab })),
 );
-const AgentAlertsTab = lazy(() =>
-  import('./tabs/AgentAlertsTab.tsx').then((m) => ({ default: m.AgentAlertsTab })),
+// The "Alerts" tab renders the Watch system (the unified alerting UI).
+const AgentWatchesTab = lazy(() =>
+  import('./tabs/AgentWatchesTab.tsx').then((m) => ({ default: m.AgentWatchesTab })),
 );
 
 function TabFallback() {
@@ -357,7 +358,7 @@ export function AgentDetailPage() {
                   startInEditMode={startInEditMode}
                 />
               )}
-              {activeTab === 'alerts' && <AgentAlertsTab task={task} />}
+              {activeTab === 'alerts' && <AgentWatchesTab task={task} />}
             </Suspense>
           )}
         </main>

@@ -81,8 +81,8 @@ const RefundPage = lazy(() =>
 const ManifestoPage = lazy(() =>
   import('./legal/ManifestoPage.tsx').then((m) => ({ default: m.ManifestoPage })),
 );
-const AlertWidgetEmbed = lazy(() =>
-  import('./features/embed/AlertWidgetEmbed.tsx').then((m) => ({ default: m.AlertWidgetEmbed })),
+const WatchWidgetEmbed = lazy(() =>
+  import('./features/embed/WatchWidgetEmbed.tsx').then((m) => ({ default: m.WatchWidgetEmbed })),
 );
 
 function FullScreenSpinner() {
@@ -123,7 +123,7 @@ const PrivacyPageRoute = withSuspense(PrivacyPage);
 const TermsPageRoute = withSuspense(TermsPage);
 const RefundPageRoute = withSuspense(RefundPage);
 const ManifestoPageRoute = withSuspense(ManifestoPage);
-const AlertWidgetEmbedRoute = withSuspense(AlertWidgetEmbed);
+const WatchWidgetEmbedRoute = withSuspense(WatchWidgetEmbed);
 
 /**
  * Registers the react-router `navigate` function with the API client so
@@ -271,11 +271,11 @@ export const router = createBrowserRouter([
         element: <SharedDashboardPageRoute />,
       },
       {
-        // Headless render target for visual alert emails. Public (the page
+        // Headless render target for visual watch emails. Public (the page
         // authenticates with a scoped render token) and chrome-less, so it
         // must live OUTSIDE AuthGate.
-        path: '/embed/alert-widget',
-        element: <AlertWidgetEmbedRoute />,
+        path: '/embed/watch-widget',
+        element: <WatchWidgetEmbedRoute />,
       },
       {
         // Public - InviteHandler manages its own anon vs signed-in branches

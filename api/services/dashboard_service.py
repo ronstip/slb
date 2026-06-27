@@ -353,6 +353,70 @@ def build_topics_sql(
     return sql, {"agent_id": agent_id}
 
 
+def build_scope_window_sql(
+    agent_id: str | None,
+    start_iso: str | None,
+    end_iso: str | None,
+    max_rows: int,
+) -> tuple[str | None, dict | None]:
+    """Return (sql, params) for the Watch detector's windowed read of an agent's
+    `scope_posts`, or (None, None) without agent context.
+
+    Time-windowed (by `posted_at`) instead of collection-scoped — a Watch reasons
+    over "the last 7 days" etc., not over one run's collections. Projects the same
+    numeric aliases as `build_dashboard_sql` (so the detector's field map is shared)
+    plus `save_count`, and the categorical/array enrichment fields the detector
+    groups/filters on. `scope_posts` is the only metric source by design (ADR-0005);
+    daily_metrics/entity_metrics are deliberately not used here.
+
+    `start_iso`/`end_iso` are passed as STRING params and wrapped in `TIMESTAMP()`
+    (the BQ client coerces datetimes to strings). None → unbounded on that side.
+    """
+    if not agent_id:
+        return None, None
+
+    params: dict = {"agent_id": agent_id}
+    where = []
+    if start_iso:
+        where.append("sp.posted_at >= TIMESTAMP(@start_iso)")
+        params["start_iso"] = start_iso
+    if end_iso:
+        where.append("sp.posted_at < TIMESTAMP(@end_iso)")
+        params["end_iso"] = end_iso
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    sql = f"""
+    SELECT
+        sp.post_id,
+        sp.collection_id,
+        sp.platform,
+        sp.channel_handle,
+        sp.posted_at,
+        sp.title,
+        sp.content,
+        sp.post_url,
+        sp.sentiment,
+        sp.emotion,
+        sp.themes,
+        sp.entities,
+        sp.language,
+        sp.content_type,
+        sp.custom_fields,
+        sp.ai_summary,
+        sp.detected_brands,
+        sp.channel_type,
+        COALESCE(sp.likes, 0) AS like_count,
+        COALESCE(sp.views, 0) AS view_count,
+        COALESCE(sp.comments_count, 0) AS comment_count,
+        COALESCE(sp.shares, 0) AS share_count,
+        COALESCE(sp.saves, 0) AS save_count
+    FROM social_listening.scope_posts(@agent_id) sp
+    {where_sql}
+    LIMIT {max_rows}
+    """
+    return sql, params
+
+
 def build_dashboard_kpis_sql(
     collection_ids: list[str],
     agent_id: str | None,

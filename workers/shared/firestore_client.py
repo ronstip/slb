@@ -323,76 +323,6 @@ class FirestoreClient:
         doc_ref.update(fields)
         logger.debug("Updated agent %s: %s", agent_id, list(fields.keys()))
 
-    # --- Alert methods (dynamic per-agent email alerts) ---
-    #
-    # An alert is a saved filter (the dashboard `SocialWidgetFilters` object)
-    # attached to an agent. When a collection run finishes, newly-collected
-    # posts are matched against every enabled alert; matches email the
-    # recipients. Dedup is per-alert: the `alerted_posts` subcollection records
-    # every post_id already notified so re-collected/overlapping posts never
-    # alert twice.
-
-    def _alert_to_dict(self, doc) -> dict:
-        data = doc.to_dict() or {}
-        data["alert_id"] = doc.id
-        for key in ("created_at", "updated_at", "last_triggered_at"):
-            if key in data and hasattr(data[key], "isoformat"):
-                data[key] = data[key].isoformat()
-        return data
-
-    def create_alert(self, alert_id: str, data: dict) -> None:
-        now = datetime.now(timezone.utc)
-        data.setdefault("created_at", now)
-        data.setdefault("updated_at", now)
-        data.setdefault("enabled", True)
-        data.setdefault("trigger_count", 0)
-        data.setdefault("last_match_count", 0)
-        data.setdefault("last_triggered_at", None)
-        self._db.collection("alerts").document(alert_id).set(data)
-        logger.info("Created alert %s for agent %s", alert_id, data.get("agent_id"))
-
-    def get_alert(self, alert_id: str) -> dict | None:
-        doc = self._db.collection("alerts").document(alert_id).get()
-        if not doc.exists:
-            return None
-        return self._alert_to_dict(doc)
-
-    def list_alerts_for_agent(self, agent_id: str) -> list[dict]:
-        docs = (
-            self._db.collection("alerts")
-            .where("agent_id", "==", agent_id)
-            .stream()
-        )
-        alerts = [self._alert_to_dict(d) for d in docs]
-        # Newest first; created_at is an ISO string after _alert_to_dict.
-        alerts.sort(key=lambda a: a.get("created_at") or "", reverse=True)
-        return alerts
-
-    def list_enabled_alerts_for_agent(self, agent_id: str) -> list[dict]:
-        docs = (
-            self._db.collection("alerts")
-            .where("agent_id", "==", agent_id)
-            .where("enabled", "==", True)
-            .stream()
-        )
-        return [self._alert_to_dict(d) for d in docs]
-
-    def update_alert(self, alert_id: str, **fields) -> None:
-        fields.setdefault("updated_at", datetime.now(timezone.utc))
-        self._db.collection("alerts").document(alert_id).update(fields)
-        logger.debug("Updated alert %s: %s", alert_id, list(fields.keys()))
-
-    def delete_alert(self, alert_id: str) -> None:
-        # Best-effort cleanup of the dedup subcollection, then the doc itself.
-        sub = self._db.collection("alerts").document(alert_id).collection("alerted_posts")
-        for batch_docs in self._chunk((d.id for d in sub.stream()), 400):
-            batch = self._db.batch()
-            for pid in batch_docs:
-                batch.delete(sub.document(pid))
-            batch.commit()
-        self._db.collection("alerts").document(alert_id).delete()
-        logger.info("Deleted alert %s", alert_id)
-
     @staticmethod
     def _chunk(iterable, size: int):
         chunk: list = []
@@ -404,32 +334,162 @@ class FirestoreClient:
         if chunk:
             yield chunk
 
-    def filter_unseen_post_ids(self, alert_id: str, post_ids: list[str]) -> list[str]:
-        """Return the subset of `post_ids` this alert has NOT already notified.
+    # --- Watch methods (agentic alerting; the one alerting system) ---
+    #
+    # A Watch is user-owned (`users/{uid}/watches/{watch_id}`) and monitors a
+    # Subject (one or more agents) — see docs/alerts/watch-system-spec.md, ADR-0005.
+    # Scheduler discovery is a collection-group query on `next_eval_at`; per-watch
+    # firing `state` (crossing/throttle) and an `alerted_posts` dedup ledger live on
+    # the doc/subcollection.
 
-        Order-preserving, de-duplicated. Reads at most one Firestore doc per
-        candidate - callers pass only filter-matched ids, which are bounded by
-        the per-email cap path, so this stays cheap."""
-        sub = self._db.collection("alerts").document(alert_id).collection("alerted_posts")
+    def _watches_col(self, uid: str):
+        return self._db.collection("users").document(uid).collection("watches")
+
+    @staticmethod
+    def _watch_to_dict(doc, uid: str) -> dict:
+        data = doc.to_dict() or {}
+        data["watch_id"] = doc.id
+        data["owner_uid"] = uid
+        for key in ("created_at", "updated_at", "last_fired_at", "next_eval_at"):
+            if key in data and hasattr(data[key], "isoformat"):
+                data[key] = data[key].isoformat()
+        return data
+
+    def create_watch(self, uid: str, watch_id: str, data: dict) -> None:
+        now = datetime.now(timezone.utc)
+        data.setdefault("created_at", now)
+        data.setdefault("updated_at", now)
+        data.setdefault("enabled", True)
+        data.setdefault("trigger_count", 0)
+        data.setdefault("last_fired_at", None)
+        data.setdefault("state", {})
+        # Due immediately on first scheduler pass unless the caller set a time.
+        data.setdefault("next_eval_at", now)
+        self._watches_col(uid).document(watch_id).set(data)
+        logger.info("Created watch %s for user %s", watch_id, uid)
+
+    def get_watch(self, uid: str, watch_id: str) -> dict | None:
+        doc = self._watches_col(uid).document(watch_id).get()
+        if not doc.exists:
+            return None
+        return self._watch_to_dict(doc, uid)
+
+    def list_watches_for_user(self, uid: str) -> list[dict]:
+        docs = self._watches_col(uid).stream()
+        watches = [self._watch_to_dict(d, uid) for d in docs]
+        watches.sort(key=lambda w: w.get("created_at") or "", reverse=True)
+        return watches
+
+    def update_watch(self, uid: str, watch_id: str, **fields) -> None:
+        fields.setdefault("updated_at", datetime.now(timezone.utc))
+        self._watches_col(uid).document(watch_id).update(fields)
+        logger.debug("Updated watch %s: %s", watch_id, list(fields.keys()))
+
+    def delete_watch(self, uid: str, watch_id: str) -> None:
+        doc_ref = self._watches_col(uid).document(watch_id)
+        sub = doc_ref.collection("alerted_posts")
+        for batch_ids in self._chunk((d.id for d in sub.stream()), 400):
+            batch = self._db.batch()
+            for pid in batch_ids:
+                batch.delete(sub.document(pid))
+            batch.commit()
+        doc_ref.delete()
+        logger.info("Deleted watch %s for user %s", watch_id, uid)
+
+    def get_due_watches(self, now: datetime | None = None) -> list[dict]:
+        """Return enabled, schedule-evaluated watches whose `next_eval_at` is past.
+
+        Collection-group query over every user's `watches` — returns only DUE docs
+        (indexed on next_eval_at), the same bounded shape as get_due_recurring_agents,
+        not a full-product scan.
+        """
+        now = now or datetime.now(timezone.utc)
+        try:
+            docs = (
+                self._db.collection_group("watches")
+                .where("enabled", "==", True)
+                .where("eval_on", "==", "schedule")
+                .where("next_eval_at", "<=", now)
+                .stream()
+            )
+            due = []
+            for doc in docs:
+                uid = doc.reference.parent.parent.id if doc.reference.parent.parent else None
+                if uid:
+                    due.append(self._watch_to_dict(doc, uid))
+            return due
+        except Exception as e:
+            logger.warning("Failed to query due watches: %s", e)
+            return []
+
+    def list_run_watches_for_agent(self, agent_id: str) -> list[dict]:
+        """Return enabled, run-evaluated watches whose Subject covers `agent_id`.
+
+        Collection-group over every user's `watches`, filtered to (enabled,
+        eval_on='run'); the subject-covers-agent test (mode != 'agents', or
+        agent_id in agent_ids) is done in Python because Firestore can't OR those.
+        Needs a collection-group composite index on (enabled, eval_on); wrapped so
+        a missing index degrades to "no run watches fire" rather than throwing into
+        the agent continuation.
+        """
+        try:
+            docs = (
+                self._db.collection_group("watches")
+                .where("enabled", "==", True)
+                .where("eval_on", "==", "run")
+                .stream()
+            )
+            out = []
+            for doc in docs:
+                uid = doc.reference.parent.parent.id if doc.reference.parent.parent else None
+                if not uid:
+                    continue
+                w = self._watch_to_dict(doc, uid)
+                subj = w.get("subject") or {}
+                if subj.get("mode") != "agents" or agent_id in (subj.get("agent_ids") or []):
+                    out.append(w)
+            return out
+        except Exception as e:
+            logger.warning("Failed to query run watches for agent %s: %s", agent_id, e)
+            return []
+
+    def watch_filter_unseen_post_ids(self, uid: str, watch_id: str, post_ids: list[str]) -> list[str]:
+        sub = self._watches_col(uid).document(watch_id).collection("alerted_posts")
         seen_input: set[str] = set()
         unseen: list[str] = []
         for pid in post_ids:
-            if pid in seen_input:
+            if not pid or pid in seen_input:
                 continue
             seen_input.add(pid)
             if not sub.document(pid).get().exists:
                 unseen.append(pid)
         return unseen
 
-    def mark_posts_alerted(self, alert_id: str, post_ids: list[str]) -> None:
-        """Record post_ids as already-notified for this alert (dedup ledger)."""
-        sub = self._db.collection("alerts").document(alert_id).collection("alerted_posts")
+    def watch_mark_posts_alerted(self, uid: str, watch_id: str, post_ids: list[str]) -> None:
+        sub = self._watches_col(uid).document(watch_id).collection("alerted_posts")
         ts = datetime.now(timezone.utc)
-        for batch_ids in self._chunk(iter(set(post_ids)), 400):
+        for batch_ids in self._chunk(iter({p for p in post_ids if p}), 400):
             batch = self._db.batch()
             for pid in batch_ids:
                 batch.set(sub.document(pid), {"alerted_at": ts})
             batch.commit()
+
+    def add_user_notification(self, uid: str, data: dict) -> str:
+        """Append a notification to the user's in-app feed and bump unread count.
+        Returns the new notification id."""
+        col = self._db.collection("users").document(uid).collection("notifications")
+        doc = col.document()
+        payload = dict(data)
+        payload["created_at"] = datetime.now(timezone.utc)
+        payload.setdefault("read", False)
+        doc.set(payload)
+        try:
+            self._db.collection("users").document(uid).set(
+                {"unread_notifications": firestore.Increment(1)}, merge=True
+            )
+        except Exception:  # noqa: BLE001 - counter is best-effort
+            logger.debug("unread_notifications increment failed for %s", uid)
+        return doc.id
 
     def get_stuck_agents(self, stale_minutes: int = 10) -> list[dict]:
         """Find agents stuck in any inconsistent state.

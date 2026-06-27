@@ -1,11 +1,13 @@
 /**
- * Headless render target for one alert widget.
+ * Headless render target for one watch widget.
  *
- * The render service (Node + Playwright) loads `/embed/alert-widget?token=…`,
+ * The render service (Node + Playwright) loads `/embed/watch-widget?token=…`,
  * waits for `window.__alertRenderReady`, and screenshots `#alert-widget-capture`.
  * There is no logged-in user here: the page authenticates to the API with the
- * opaque render token (scoped to one alert + widget) and renders the REAL
- * dashboard widget component, so the email image is pixel-identical to the app.
+ * opaque render token (scoped to one watch + widget + firing window) and renders
+ * the REAL dashboard widget component, so the email image is pixel-identical to
+ * the app. (Ported from AlertWidgetEmbed — keeps the same ready-signal contract
+ * the render service already waits on.)
  *
  * Not a normal app route — it carries no chrome and must stay outside AuthGate.
  */
@@ -17,8 +19,6 @@ import type { DashboardPost } from '../../api/types.ts';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-// One isolated client so the renderer's optional post-detail query works even
-// though this page mounts outside the app's provider tree.
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
@@ -26,7 +26,7 @@ const queryClient = new QueryClient({
 interface RenderPayload {
   widget: SocialDashboardWidget;
   posts: DashboardPost[];
-  alert_name: string;
+  watch_name: string;
   app_url: string;
 }
 
@@ -80,7 +80,7 @@ function WidgetCanvas({ payload, width, height }: { payload: RenderPayload; widt
   );
 }
 
-export function AlertWidgetEmbed() {
+export function WatchWidgetEmbed() {
   const [payload, setPayload] = useState<RenderPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,7 +95,7 @@ export function AlertWidgetEmbed() {
       (window as unknown as { __alertRenderError?: string }).__alertRenderError = 'missing token';
       return;
     }
-    const url = new URL(`${API_BASE}/alert-render/payload`, window.location.origin);
+    const url = new URL(`${API_BASE}/watch-render/payload`, window.location.origin);
     url.searchParams.set('token', token);
     fetch(url.toString(), { headers: { 'Content-Type': 'application/json' } })
       .then(async (res) => {

@@ -252,35 +252,32 @@ async def enrich_comments_handler(request: Request):
         _reset_cost_context(cost_token)
 
 
-@app.post("/alerts/evaluate")
-async def evaluate_alerts_handler(request: Request):
-    """Evaluate the agent's alerts against a finished collection run.
+@app.post("/watches/evaluate")
+async def evaluate_watch_handler(request: Request):
+    """Evaluate a single Watch (dispatched one task per due watch by the scheduler).
 
-    Primary trigger is inline at pipeline completion; this endpoint exists for
-    manual re-runs and a future scheduled sweep. Dedup makes re-invocation safe.
+    Isolated per watch: a failure here returns 200 with an error body so Cloud Tasks
+    doesn't retry-storm, and one watch can't block the others.
     """
     body = await request.json()
-    collection_id = body.get("collection_id", "")
-    if not collection_id:
-        return JSONResponse(status_code=400, content={"error": "collection_id required"})
+    uid = body.get("uid", "")
+    watch_id = body.get("watch_id", "")
+    if not uid or not watch_id:
+        return JSONResponse(status_code=400, content={"error": "uid and watch_id required"})
 
-    logger.info("Starting alert evaluation for collection %s", collection_id)
-    cost_token = _bind_cost_context_from_collection(collection_id)
     try:
         from api.deps import get_bq, get_fs
-        from workers.alerts.evaluator import evaluate_alerts_for_collection
+        from workers.watches.runner import evaluate_watch_by_id
 
-        result = evaluate_alerts_for_collection(collection_id, bq=get_bq(), fs=get_fs())
-        return {"status": "ok", **result}
+        result = evaluate_watch_by_id(uid, watch_id, bq=get_bq(), fs=get_fs())
+        return result
     except Exception as e:
-        logger.exception("Alert evaluation failed for %s", collection_id)
+        logger.exception("Watch evaluation failed for %s/%s", uid, watch_id)
         with sentry_sdk.new_scope() as scope:
-            scope.set_tag("worker", "alerts")
-            scope.set_tag("collection_id", collection_id)
+            scope.set_tag("worker", "watches")
+            scope.set_tag("watch_id", watch_id)
             sentry_sdk.capture_exception(e)
-        return {"status": "error", "collection_id": collection_id, "error": str(e)}
-    finally:
-        _reset_cost_context(cost_token)
+        return {"status": "error", "watch_id": watch_id, "error": str(e)}
 
 
 @app.get("/health")

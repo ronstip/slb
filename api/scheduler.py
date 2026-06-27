@@ -97,6 +97,51 @@ def _check_due_agents(fs, settings) -> None:
             logger.exception("Scheduler: failed to dispatch recurring agent %s", agent_id)
 
 
+def _check_due_watches(fs, settings) -> None:
+    """Dispatch a Cloud Task per due Watch (docs/alerts/watch-system-spec.md §6).
+
+    One task per watch keeps failures isolated. Each watch is 'claimed' by advancing
+    its next_eval_at on dispatch so an overlapping tick can't double-dispatch while the
+    eval is in flight; the evaluator then writes the authoritative next_eval_at.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    due = fs.get_due_watches()
+    if not due:
+        return
+    logger.info("Scheduler: %d watch(es) due", len(due))
+
+    now = datetime.now(timezone.utc)
+    for watch in due:
+        uid = watch.get("owner_uid")
+        watch_id = watch.get("watch_id")
+        if not uid or not watch_id:
+            continue
+        try:
+            # Claim: push next_eval_at out so a concurrent tick won't re-pick this up.
+            lease = now + timedelta(seconds=int(watch.get("eval_interval_sec") or 3600))
+            fs.update_watch(uid, watch_id, next_eval_at=lease)
+            _dispatch_watch_eval(fs, settings, uid, watch_id)
+        except Exception:
+            logger.exception("Scheduler: failed to dispatch watch %s/%s", uid, watch_id)
+
+
+def _dispatch_watch_eval(fs, settings, uid: str, watch_id: str) -> None:
+    """Dispatch (prod) or run inline (dev) a single watch evaluation."""
+    payload = {"uid": uid, "watch_id": watch_id}
+    if getattr(settings, "worker_service_url", None):
+        from api.services.cloud_tasks import dispatch_worker_task
+        dispatch_worker_task("/watches/evaluate", payload)
+        return
+    # Dev mode: run inline (no worker service configured).
+    from api.deps import get_bq
+    from workers.watches.runner import evaluate_watch_by_id
+    try:
+        evaluate_watch_by_id(uid, watch_id, bq=get_bq(), fs=fs)
+    except Exception:
+        logger.exception("Inline watch eval failed for %s/%s", uid, watch_id)
+
+
 def _dispatch_recurring_agent_run(fs, settings, agent_id: str, agent: dict) -> None:
     """Create new collections for a recurring agent run and dispatch pipelines."""
     from api.services.agent_service import dispatch_agent_run

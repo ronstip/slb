@@ -26,13 +26,19 @@ async def scheduler_tick():
     settings = get_settings()
     fs = get_fs()
 
-    from api.scheduler import _check_due_agents
+    from api.scheduler import _check_due_agents, _check_due_watches
     try:
         _check_due_agents(fs, settings)
     except Exception:
         # A failed tick shouldn't poison Cloud Scheduler retries - log and
         # return ok so the scheduler keeps its cadence.
         logger.exception("Scheduler tick: recurring agent check failed")
+
+    # Watch (agentic alerting) evaluation pass — independent of agent-run cadence.
+    try:
+        _check_due_watches(fs, settings)
+    except Exception:
+        logger.exception("Scheduler tick: watch check failed")
 
     # Recover agents stranded in 'running' after a continuation runtime
     # crash. Cloud Tasks' built-in retry handles in-flight failures, but

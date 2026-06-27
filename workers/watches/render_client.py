@@ -1,12 +1,14 @@
-"""Turn an alert's dashboard widgets into hosted PNG image URLs.
+"""Turn a watch's dashboard widgets into hosted PNG image URLs.
 
-For each widget: mint a scoped render token, ask the render service to
+For each widget: mint a scoped render token (carrying the firing window so the
+render reads the same rows the detector fired on), ask the render service to
 screenshot the chrome-less embed page, upload the PNG to the media bucket, and
 return its public ``/media/...`` URL. Any failure is logged and that widget is
 skipped — a broken render must never block the email (the caller falls back to
-the text body when no images come back).
+the markdown body when no images come back).
 
 Channel-agnostic by design: the same image URLs will feed Slack/Teams/WhatsApp.
+Ported from the legacy alert render client (alert_id → uid+watch_id).
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import uuid
 import requests
 
 from config.settings import get_settings
-from workers.alerts.render_token import mint_render_token
+from workers.watches.render_token import mint_render_token
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +42,19 @@ def _dims(widget: dict) -> tuple[int, int]:
     return _WIDTH, 580 if tall else 440
 
 
-def render_alert_widgets(alert_id: str, widgets: list[dict], *, gcs=None) -> list[dict]:
+def render_watch_widgets(
+    uid: str,
+    watch_id: str,
+    widgets: list[dict],
+    *,
+    win_start_iso: str | None,
+    win_end_iso: str | None,
+    gcs=None,
+) -> list[dict]:
     """Return ``[{title, image_url, width, height}, …]`` for renderable widgets.
 
     Empty when the feature is unconfigured (no render service / secret) or every
-    render failed — the caller then sends the text email.
+    render failed — the caller then sends the markdown email.
     """
     settings = get_settings()
     if not widgets or not settings.render_service_url or not settings.alert_render_secret:
@@ -63,9 +73,11 @@ def render_alert_widgets(alert_id: str, widgets: list[dict], *, gcs=None) -> lis
     out: list[dict] = []
     for idx, widget in enumerate(widgets):
         try:
-            token = mint_render_token(alert_id, idx)
+            token = mint_render_token(
+                uid, watch_id, idx, win_start_iso=win_start_iso, win_end_iso=win_end_iso
+            )
             width, height = _dims(widget)
-            embed_url = f"{frontend}/embed/alert-widget?token={token}&w={width}&h={height}"
+            embed_url = f"{frontend}/embed/watch-widget?token={token}&w={width}&h={height}"
             resp = requests.post(
                 render_url,
                 json={"url": embed_url, "width": width, "height": height},
@@ -74,7 +86,7 @@ def render_alert_widgets(alert_id: str, widgets: list[dict], *, gcs=None) -> lis
             )
             resp.raise_for_status()
             key = f"{idx}-{uuid.uuid4().hex[:8]}"
-            blob_path = gcs.upload_alert_render(alert_id, key, resp.content)
+            blob_path = gcs.upload_watch_render(uid, watch_id, key, resp.content)
             out.append(
                 {
                     "title": widget.get("title") or "",
@@ -85,14 +97,13 @@ def render_alert_widgets(alert_id: str, widgets: list[dict], *, gcs=None) -> lis
             )
         except requests.exceptions.ConnectionError:
             # Render service unreachable (e.g. not running in dev). Expected and
-            # recoverable — the caller falls back to the post feed. Warn, don't
-            # raise to Sentry.
+            # recoverable — the caller falls back to markdown. Warn, don't raise.
             logger.warning(
-                "Alert %s: render service unreachable at %s — falling back to text",
-                alert_id,
+                "Watch %s: render service unreachable at %s — falling back to markdown",
+                watch_id,
                 render_url,
             )
             return out
         except Exception:
-            logger.exception("Alert %s: widget %d render failed", alert_id, idx)
+            logger.exception("Watch %s: widget %d render failed", watch_id, idx)
     return out

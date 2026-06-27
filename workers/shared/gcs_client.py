@@ -80,17 +80,17 @@ class GCSClient:
         logger.debug("Uploaded media to %s", gcs_uri)
         return gcs_uri
 
-    def upload_alert_render(self, alert_id: str, key: str, png_bytes: bytes) -> str:
-        """Upload a rendered alert-widget PNG; return its blob path.
+    def upload_watch_render(self, uid: str, watch_id: str, key: str, png_bytes: bytes) -> str:
+        """Upload a rendered watch-widget PNG; return its blob path.
 
         Stored in the media bucket so the public ``GET /media/{path}`` proxy can
         serve it to email clients (no auth). The caller turns the returned path
         into an absolute ``/media/...`` URL.
         """
-        blob_path = f"alert-renders/{alert_id}/{key}.png"
+        blob_path = f"watch-renders/{uid}/{watch_id}/{key}.png"
         blob = self._bucket.blob(blob_path)
         blob.upload_from_file(BytesIO(png_bytes), content_type="image/png")
-        logger.debug("Uploaded alert render to gs://%s/%s", self._settings.gcs_media_bucket, blob_path)
+        logger.debug("Uploaded watch render to gs://%s/%s", self._settings.gcs_media_bucket, blob_path)
         return blob_path
 
     def download_from_url(
