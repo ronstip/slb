@@ -1065,7 +1065,7 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
       onConfigure={onConfigure}
       onRemove={onRemove}
       onDuplicate={onDuplicate}
-      containerHidden={!widgetContainerVisible(widget)}
+      containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}
     />
   );
 }
@@ -1076,7 +1076,7 @@ function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onD
     [posts, widget.filters],
   );
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialWordCloudWidget
         data={cloudData}
         onWordClick={onFilterToggle ? (v) => onFilterToggle('themes', v) : undefined}
@@ -1103,7 +1103,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     // EntityTable only when neither the widget nor the dimension has defaults.
     const tableConfig = widget.tableConfig ?? defaultTableConfigFor('entities');
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <ConfigurableTableWidget
           posts={posts}
           filters={widget.filters}
@@ -1115,7 +1115,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     );
   }
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialProgressListWidget
         data={listData}
         seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1134,7 +1134,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
   if (widget.chartType === 'table') {
     const tableConfig = widget.tableConfig ?? defaultTableConfigFor('channel_handle');
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <ConfigurableTableWidget
           posts={posts}
           filters={widget.filters}
@@ -1146,7 +1146,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
     );
   }
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialProgressListWidget
         data={listData}
         seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1303,7 +1303,7 @@ function CustomWidget({
 
   if (!config) {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
           Configure this widget to select a metric
         </div>
@@ -1323,14 +1323,14 @@ function CustomWidget({
         onConfigure={onConfigure}
         onRemove={onRemove}
         onDuplicate={onDuplicate}
-        containerHidden={!widgetContainerVisible(widget)}
+        containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}
       />
     );
   }
 
   if (widget.chartType === 'word-cloud') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <SocialWordCloudWidget
           data={cloudData}
           scale={widget.styleOverrides?.wordCloudScale}
@@ -1343,7 +1343,7 @@ function CustomWidget({
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <SocialProgressListWidget
           data={data ?? undefined}
           accent={widget.styleOverrides?.accent ?? widget.accent}
@@ -1369,7 +1369,7 @@ function CustomWidget({
           : undefined);
     if (tableConfig) {
       return (
-        <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+        <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
           <ConfigurableTableWidget
             posts={posts}
             filters={widget.filters}
@@ -1386,7 +1386,7 @@ function CustomWidget({
       );
     }
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <GenericTableView data={data ?? undefined} labelOverrides={widget.styleOverrides?.seriesLabels} />
       </SocialWidgetFrame>
     );
@@ -1394,7 +1394,7 @@ function CustomWidget({
 
   if (widget.chartType === 'heatmap') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <SocialHeatmapWidget
           data={data ?? undefined}
           accent={widget.styleOverrides?.accent ?? widget.accent}
@@ -1405,7 +1405,7 @@ function CustomWidget({
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialChartWidget
         chartType={widget.chartType}
         data={data ?? undefined}
@@ -1475,7 +1475,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <SocialProgressListWidget
           data={chartData ?? undefined}
           seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1485,7 +1485,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialChartWidget
         chartType={widget.chartType}
         data={chartData ?? undefined}
@@ -1667,7 +1667,7 @@ function MediaWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, o
       onDuplicate={onDuplicate}
       icon={widgetHeaderIcon(widget)}
       contentClassName={fullBleed ? 'p-0' : undefined}
-      containerHidden={!widgetContainerVisible(widget)}
+      containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}
     >
       <div
         className={`flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden ${
@@ -1774,6 +1774,7 @@ function EmbedsWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     onDuplicate,
     icon: widgetHeaderIcon(widget),
     containerHidden: !widgetContainerVisible(widget),
+    showWatermark: !!widget.showWatermark,
   };
 
   // Collection mode: a visual card gallery (grid or marquee) filling the frame.
@@ -1896,7 +1897,7 @@ const POST_TABLE_COLUMNS = postColumns<PostTableRow>({ summaryField: 'content', 
 function PostsTableWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
   const rows = useMemo(() => toPostTableRows(posts), [posts]);
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <DataTable
         data={rows}
         columns={POST_TABLE_COLUMNS}

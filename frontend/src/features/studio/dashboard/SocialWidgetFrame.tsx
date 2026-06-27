@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu.tsx';
 import { MoreVertical, Settings2, Trash2, Copy } from 'lucide-react';
+import { ScoltoMark, BRAND_NAME, BRAND_INK } from '../../../components/Logo.tsx';
 
 // Default titles the system assigns to un-renamed widgets. They read as
 // "unfinished" in a published brief, so we suppress them in read-only views
@@ -33,7 +34,38 @@ interface SocialWidgetFrameProps {
    *  In edit mode a dashed outline is kept so the (now invisible) card stays
    *  grabbable. */
   containerHidden?: boolean;
+  /** When true, overlay a small Scolto brand watermark (mark + wordmark) in the
+   *  top-right corner of the widget. Off by default; opt-in per widget via
+   *  the Style tab. Renders in every mode so the editor preview matches shares. */
+  showWatermark?: boolean;
   children: React.ReactNode;
+}
+
+// Small Scolto brand mark + wordmark, pinned to a widget's top-right corner.
+// pointer-events-none so it never intercepts clicks on the chart beneath it.
+function ScoltoWatermark() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute top-2 right-2.5 z-20 flex items-center gap-1 opacity-55"
+      style={{ color: BRAND_INK }}
+    >
+      <ScoltoMark size={12} />
+      <span
+        style={{
+          fontFamily: "'Fraunces', serif",
+          fontStyle: 'italic',
+          fontWeight: 400,
+          fontSize: 13,
+          letterSpacing: '-0.026em',
+          lineHeight: 1,
+          color: 'currentColor',
+        }}
+      >
+        {BRAND_NAME}
+      </span>
+    </div>
+  );
 }
 
 export function SocialWidgetFrame({
@@ -48,6 +80,7 @@ export function SocialWidgetFrame({
   figureText,
   contentClassName,
   containerHidden = false,
+  showWatermark = false,
   children,
 }: SocialWidgetFrameProps) {
   const trimmed = title?.trim() ?? '';
@@ -133,6 +166,10 @@ export function SocialWidgetFrame({
           </figcaption>
         )}
       </CardContent>
+      {/* Hidden in edit mode so it doesn't sit under the hover config menu
+          (same top-right corner). The config dialog's live preview renders
+          with isEditMode=false, so the toggle still previews there. */}
+      {showWatermark && !isEditMode && <ScoltoWatermark />}
     </Card>
   );
 }
