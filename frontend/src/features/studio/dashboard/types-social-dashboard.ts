@@ -34,7 +34,8 @@ export type SocialAggregation =
   | 'custom'
   | 'text'
   | 'embeds'
-  | 'media';
+  | 'media'
+  | 'html';
 
 export type SocialChartType =
   | 'bar'
@@ -1475,6 +1476,11 @@ export interface SocialDashboardWidget {
   tableConfig?: CustomTableConfig;
   /** Markdown body - set when aggregation === 'text' */
   markdownContent?: string;
+  /** Self-contained HTML snippet - set when aggregation === 'html'. Rendered
+   *  sanitized (DOMPurify, scripts/event-handlers/javascript: URLs stripped)
+   *  into a Shadow DOM so its CSS can't leak into the rest of the dashboard.
+   *  Authoring is super-admin-only; static content (no live data binding). */
+  htmlContent?: string;
   /** Post URLs to embed - set when aggregation === 'embeds' with
    *  `embedConfig.source === 'urls'` (or no embedConfig, the back-compat
    *  default). Mode (single vs carousel) is derived from length at render time. */
@@ -1606,6 +1612,7 @@ export const VALID_CHART_TYPES: Record<SocialAggregation, SocialChartType[]> = {
   'text': ['table'],
   'embeds': ['embed'],
   'media': ['embed'],
+  'html': ['embed'],
 };
 
 // ─── Aggregation metadata (for UI display) ────────────────────────────────────
@@ -1763,6 +1770,14 @@ export const AGGREGATION_META: Record<SocialAggregation, AggregationMeta> = {
     defaultChartType: 'embed',
     defaultTitle: 'Media',
     defaultSize: { w: 4, h: 6 },
+  },
+  'html': {
+    label: 'HTML / Embed',
+    description: 'Paste a self-contained HTML snippet - banners, CTAs, animated callouts',
+    icon: 'Code',
+    defaultChartType: 'embed',
+    defaultTitle: 'HTML',
+    defaultSize: { w: 6, h: 4 },
   },
 };
 

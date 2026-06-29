@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu.tsx';
 import { MoreVertical, Settings2, Trash2, Copy } from 'lucide-react';
+import { frameContentPadding, frameHeaderPaddingX } from './widget-container.ts';
 import { ScoltoMark, BRAND_NAME, BRAND_INK } from '../../../components/Logo.tsx';
 
 // Default titles the system assigns to un-renamed widgets. They read as
@@ -43,7 +44,9 @@ interface SocialWidgetFrameProps {
 
 // Small Scolto brand mark + wordmark, pinned to a widget's top-right corner.
 // pointer-events-none so it never intercepts clicks on the chart beneath it.
-function ScoltoWatermark() {
+// Exported so number-cards (which render their own Card, not the frame) can
+// reuse the exact same watermark.
+export function ScoltoWatermark() {
   return (
     <div
       aria-hidden
@@ -130,7 +133,7 @@ export function SocialWidgetFrame({
       )}
 
       {showHeader && (
-        <CardHeader className={`!flex flex-row items-start gap-2 space-y-0 shrink-0 pt-[13px] pb-[9px] px-[15px] !pb-[9px] ${
+        <CardHeader className={`!flex flex-row items-start gap-2 space-y-0 shrink-0 pt-[13px] pb-[9px] ${frameHeaderPaddingX(containerHidden)} !pb-[9px] ${
           isEditMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''
         }`}>
           {icon && showTitle && (
@@ -154,7 +157,7 @@ export function SocialWidgetFrame({
         </CardHeader>
       )}
 
-      <CardContent className={`flex-1 min-h-0 flex flex-col overflow-hidden ${contentClassName ?? 'px-[15px] pb-[15px] pt-[2px]'}`}>
+      <CardContent className={`flex-1 min-h-0 flex flex-col overflow-hidden ${frameContentPadding(containerHidden, contentClassName)}`}>
         <div className="flex-1 min-h-0 flex flex-col">{children}</div>
         {figureText && (
           <figcaption

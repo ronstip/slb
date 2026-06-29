@@ -20,7 +20,7 @@ describe('computeCloudFontRange', () => {
   it('keeps min proportional to (and below) max', () => {
     const { min, max } = computeCloudFontRange(400);
     expect(min).toBeLessThan(max);
-    expect(min).toBeCloseTo(max * 0.45, 5);
+    expect(min).toBeCloseTo(max * 0.18, 5);
   });
 
   it('applies the user scale multiplier', () => {

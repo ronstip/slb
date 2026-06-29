@@ -16,6 +16,7 @@ import { getCategoricalPalette } from '../../../lib/accent-colors.ts';
 import type { NumberSize } from './types-social-dashboard.ts';
 import { DEFAULT_NUMBER_SIZE } from './types-social-dashboard.ts';
 import { resolveSparklineEnabled } from './sparkline-visibility.ts';
+import { ScoltoWatermark } from './SocialWidgetFrame.tsx';
 
 const SIZE_STYLES: Record<NumberSize, {
   container: string;
@@ -82,6 +83,10 @@ interface SocialKpiCardProps {
   /** When true, drop the card surface + border + shadow so the metric floats
    *  transparently on the page. */
   containerHidden?: boolean;
+  /** When true, overlay the Scolto brand watermark in the top-right corner
+   *  (opt-in per widget via the Style tab). Hidden in edit mode so it doesn't
+   *  sit under the hover config menu. */
+  showWatermark?: boolean;
 }
 
 function Sparkline({ data, color, height }: { data: number[]; color: string; height: number }) {
@@ -127,7 +132,7 @@ function Sparkline({ data, color, height }: { data: number[]; color: string; hei
   );
 }
 
-export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, isEditMode, onConfigure, onRemove, onDuplicate, containerHidden = false }: SocialKpiCardProps) {
+export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, isEditMode, onConfigure, onRemove, onDuplicate, containerHidden = false, showWatermark = false }: SocialKpiCardProps) {
   const { theme } = useTheme();
   const isDark =
     theme === 'dark' ||
@@ -228,6 +233,9 @@ export function SocialKpiCard({ kpi, accent, kpiIndex = 0, size, showSparkline, 
           </div>
         )}
       </div>
+      {/* Brand watermark (opt-in). Hidden in edit mode so it doesn't collide
+          with the hover config menu in the same top-right corner. */}
+      {showWatermark && !isEditMode && <ScoltoWatermark />}
     </Card>
   );
 }

@@ -145,7 +145,7 @@ export function SocialDashboardGrid({
         // just scales the image/video to fit, so a small 2-row card is fine).
         minH: w.chartType === 'number-card' || w.aggregation === 'text'
           ? 1
-          : w.aggregation === 'embeds' || w.aggregation === 'media'
+          : w.aggregation === 'embeds' || w.aggregation === 'media' || w.aggregation === 'html'
             ? 2
             : 3,
         isDraggable: isEditMode && currentBreakpoint === 'lg',
