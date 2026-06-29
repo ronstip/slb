@@ -1523,6 +1523,10 @@ export interface SocialDashboardWidget {
    *  overrides that default so the user can frame a header or unframe any
    *  widget. */
   showContainer?: boolean;
+  /** Overlay a small Scolto brand watermark (mark + wordmark) in the widget's
+   *  top-right corner. Undefined → off. Opt-in per widget via the Style tab;
+   *  renders in every mode (editor preview + shared/Brief). */
+  showWatermark?: boolean;
   /** Widget stays in the layout but is excluded from view mode, shared
    *  dashboards, and PDF export. Edit mode renders it dimmed with a "Hidden"
    *  badge. Undefined → visible (legacy widgets have no key). Mirrors the

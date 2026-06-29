@@ -585,6 +585,9 @@ class SocialDashboardWidget(BaseModel):
     # survives the save round-trip into Firestore and reaches the shared/Brief
     # dashboard (extra='ignore' would otherwise drop them).
     showSparkline: bool | None = None
+    # Opt-in Scolto brand watermark overlaid on the rendered widget. Declared so
+    # it survives the save round-trip into Firestore and reaches shared/Brief.
+    showWatermark: bool | None = None
     trendDimension: AnyDimension | None = None
     trendTimeBucket: Literal["hour", "day", "week", "month"] | None = None
     trendCumulative: bool | None = None

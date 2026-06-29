@@ -134,6 +134,33 @@ function VisibilityToggle({
   );
 }
 
+// ── Scolto watermark toggle ──────────────────────────────────────────────────
+// Off by default. When on, the renderer overlays the Scolto mark + wordmark in
+// the widget's top-right corner (editor preview, view mode, shared/Brief).
+
+function WatermarkToggle({
+  draft,
+  onChange,
+}: {
+  draft: SocialDashboardWidget;
+  onChange: (show: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <Label className="text-xs">Scolto watermark</Label>
+        <p className="text-[11px] text-muted-foreground">
+          Overlay the Scolto logo in the top-right corner.
+        </p>
+      </div>
+      <Switch
+        checked={draft.showWatermark === true}
+        onCheckedChange={(on) => onChange(on)}
+      />
+    </div>
+  );
+}
+
 // ── Public wrapper ─────────────────────────────────────────────────────────────
 
 interface SocialWidgetConfigDialogProps {
@@ -598,6 +625,11 @@ function SocialWidgetConfigDialogInner({
                   onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
                 />
 
+                <WatermarkToggle
+                  draft={draft}
+                  onChange={(on) => setDraft((prev) => ({ ...prev, showWatermark: on ? true : undefined }))}
+                />
+
                 <Separator />
 
                 <div className="space-y-2">
@@ -849,6 +881,10 @@ function SocialWidgetConfigDialogInner({
                   <VisibilityToggle
                     draft={draft}
                     onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
+                  />
+                  <WatermarkToggle
+                    draft={draft}
+                    onChange={(on) => setDraft((prev) => ({ ...prev, showWatermark: on ? true : undefined }))}
                   />
                   <Separator />
                   <StyleTab
@@ -1555,6 +1591,11 @@ function MediaConfigPanel({
         onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
       />
 
+      <WatermarkToggle
+        draft={draft}
+        onChange={(on) => setDraft((prev) => ({ ...prev, showWatermark: on ? true : undefined }))}
+      />
+
       <Separator />
 
       {/* Source: Upload | URL */}
@@ -1794,6 +1835,11 @@ function EmbedConfigPanel({
       <VisibilityToggle
         draft={draft}
         onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
+      />
+
+      <WatermarkToggle
+        draft={draft}
+        onChange={(on) => setDraft((prev) => ({ ...prev, showWatermark: on ? true : undefined }))}
       />
 
       <Separator />
