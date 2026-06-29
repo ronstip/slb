@@ -1,4 +1,4 @@
-import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, Quote, Image, RectangleHorizontal, RectangleVertical, Filter, FilterX, Undo2, Redo2, SlidersHorizontal } from 'lucide-react';
+import { Pencil, Check, Plus, RotateCcw, Loader2, BarChart3, FileText, Quote, Image, Code, RectangleHorizontal, RectangleVertical, Filter, FilterX, Undo2, Redo2, SlidersHorizontal } from 'lucide-react';
 import { Button } from '../../../components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu.tsx';
+import { useAuth } from '../../../auth/useAuth.ts';
 import type { AddWidgetKind } from './SocialDashboardView.tsx';
 import type { DashboardOrientation } from './types-social-dashboard.ts';
 
@@ -50,6 +51,13 @@ export function SocialDashboardToolbar({
   canUndo,
   canRedo,
 }: SocialDashboardToolbarProps) {
+  // HTML / Embed widgets render arbitrary (sanitized) markup on public shared
+  // dashboards - a larger surface than markdown - so authoring is gated to
+  // super-admins. Editing an existing html widget is unaffected (this only
+  // hides the create entry). Must run before the early return below.
+  const { profile } = useAuth();
+  const canAddHtml = !!profile?.is_super_admin && !profile?.impersonation;
+
   if (!isEditMode) {
     return (
       <Button
@@ -156,6 +164,12 @@ export function SocialDashboardToolbar({
             <Image className="h-3.5 w-3.5" />
             Image / Video
           </DropdownMenuItem>
+          {canAddHtml && (
+            <DropdownMenuItem onClick={() => onAddWidget('html')} className="gap-2 text-xs">
+              <Code className="h-3.5 w-3.5" />
+              HTML / Embed
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <Button

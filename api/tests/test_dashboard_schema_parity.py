@@ -327,6 +327,32 @@ def test_widget_round_trip_preserves_manual_height():
     assert dumped["manualHeight"] is True
 
 
+def test_widget_round_trip_preserves_show_container():
+    """`showContainer` toggles a widget's card chrome (surface + border + shadow)
+    on/off. With `extra='ignore'`, a field missing from the Pydantic model is
+    dropped on save - so turning the container OFF would silently revert on
+    refresh (and never reach shared/Brief boards). It must round-trip, including
+    the explicit `False` value (the whole point of the toggle)."""
+    from api.routers.dashboard_schema import SocialDashboardWidget
+
+    payload = {
+        "i": "c1",
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4,
+        "aggregation": "custom",
+        "chartType": "bar",
+        "title": "Frameless chart",
+        "showContainer": False,
+    }
+    w = SocialDashboardWidget.model_validate(payload)
+    assert w.showContainer is False
+    # Serialized form must keep the field so it lands in Firestore + the share.
+    dumped = w.model_dump(exclude_none=True, by_alias=True)
+    assert dumped["showContainer"] is False
+
+
 def test_widget_round_trip_preserves_media_config():
     """A media widget persists its image/video source on `widget.media`. With
     `extra='ignore'`, a field missing from the Pydantic model is dropped on save
@@ -358,6 +384,31 @@ def test_widget_round_trip_preserves_media_config():
     dumped = w.model_dump(exclude_none=True, by_alias=True)
     assert dumped["media"]["uploadPath"] == "dashboard-media/user-1/abc123.png"
     assert dumped["media"]["kind"] == "image"
+
+
+def test_widget_round_trip_preserves_html_content():
+    """An html widget persists its snippet on `widget.htmlContent`. With
+    `extra='ignore'`, a field missing from the Pydantic model is dropped on save
+    - so reloading or sharing the dashboard would lose the HTML. It must
+    round-trip (same guarantee as `markdownContent` for text widgets)."""
+    from api.routers.dashboard_schema import SocialDashboardWidget
+
+    payload = {
+        "i": "h1",
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4,
+        "aggregation": "html",
+        "chartType": "embed",
+        "title": "Launch banner",
+        "htmlContent": "<style>@keyframes p{to{opacity:1}}</style><div>Hi</div>",
+    }
+    w = SocialDashboardWidget.model_validate(payload)
+    assert w.aggregation == "html"
+    assert w.htmlContent == "<style>@keyframes p{to{opacity:1}}</style><div>Hi</div>"
+    dumped = w.model_dump(exclude_none=True, by_alias=True)
+    assert dumped["htmlContent"] == "<style>@keyframes p{to{opacity:1}}</style><div>Hi</div>"
 
 
 def test_widget_round_trip_preserves_embed_config():

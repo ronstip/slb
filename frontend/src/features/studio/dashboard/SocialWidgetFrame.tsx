@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu.tsx';
 import { MoreVertical, Settings2, Trash2, Copy } from 'lucide-react';
+import { frameContentPadding, frameHeaderPaddingX } from './widget-container.ts';
 
 // Default titles the system assigns to un-renamed widgets. They read as
 // "unfinished" in a published brief, so we suppress them in read-only views
@@ -97,7 +98,7 @@ export function SocialWidgetFrame({
       )}
 
       {showHeader && (
-        <CardHeader className={`!flex flex-row items-start gap-2 space-y-0 shrink-0 pt-[13px] pb-[9px] px-[15px] !pb-[9px] ${
+        <CardHeader className={`!flex flex-row items-start gap-2 space-y-0 shrink-0 pt-[13px] pb-[9px] ${frameHeaderPaddingX(containerHidden)} !pb-[9px] ${
           isEditMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''
         }`}>
           {icon && showTitle && (
@@ -121,7 +122,7 @@ export function SocialWidgetFrame({
         </CardHeader>
       )}
 
-      <CardContent className={`flex-1 min-h-0 flex flex-col overflow-hidden ${contentClassName ?? 'px-[15px] pb-[15px] pt-[2px]'}`}>
+      <CardContent className={`flex-1 min-h-0 flex flex-col overflow-hidden ${frameContentPadding(containerHidden, contentClassName)}`}>
         <div className="flex-1 min-h-0 flex flex-col">{children}</div>
         {figureText && (
           <figcaption

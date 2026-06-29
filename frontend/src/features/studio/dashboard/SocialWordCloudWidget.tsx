@@ -14,7 +14,7 @@ interface SocialWordCloudWidgetProps {
 
 export function SocialWordCloudWidget({ data, onWordClick, scale, seriesColors, seriesLabels }: SocialWordCloudWidgetProps) {
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full w-full overflow-hidden">
       <ThemeCloud
         data={data}
         onWordClick={onWordClick}
