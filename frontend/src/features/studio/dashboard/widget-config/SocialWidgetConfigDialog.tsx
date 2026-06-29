@@ -134,6 +134,33 @@ function VisibilityToggle({
   );
 }
 
+// ── Scolto watermark toggle ──────────────────────────────────────────────────
+// Off by default. When on, the renderer overlays the Scolto mark + wordmark in
+// the widget's top-right corner (editor preview, view mode, shared/Brief).
+
+function WatermarkToggle({
+  draft,
+  onChange,
+}: {
+  draft: SocialDashboardWidget;
+  onChange: (show: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <Label className="text-xs">Scolto watermark</Label>
+        <p className="text-[11px] text-muted-foreground">
+          Overlay the Scolto logo in the top-right corner.
+        </p>
+      </div>
+      <Switch
+        checked={draft.showWatermark === true}
+        onCheckedChange={(on) => onChange(on)}
+      />
+    </div>
+  );
+}
+
 // ── Public wrapper ─────────────────────────────────────────────────────────────
 
 interface SocialWidgetConfigDialogProps {
@@ -209,11 +236,14 @@ export function SocialWidgetConfigDialog({
 
 // ── Preset → custom conversion ─────────────────────────────────────────────────
 
-function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
-  // Text, embed, and media widgets have no data/chart config - pass through untouched.
+export function toCustomDraft(widget: SocialDashboardWidget): SocialDashboardWidget {
+  // Content widgets (text/embed/media/html) have no data/chart config - pass
+  // through untouched. Any aggregation NOT listed here is coerced to a custom
+  // chart below, which would route a content widget to the wrong config UI.
   if (widget.aggregation === 'text') return widget;
   if (widget.aggregation === 'embeds') return widget;
   if (widget.aggregation === 'media') return widget;
+  if (widget.aggregation === 'html') return widget;
   // Preserve the preset's chart type if it was set - e.g. channels/entities
   // ship with `chartType: 'table'` and the rich table view should survive the
   // round-trip through the edit dialog. Without this, opening any 'channels'
@@ -444,6 +474,7 @@ function SocialWidgetConfigDialogInner({
   const isTextMode = draft.aggregation === 'text';
   const isEmbedMode = draft.aggregation === 'embeds';
   const isMediaMode = draft.aggregation === 'media';
+  const isHtmlMode = draft.aggregation === 'html';
 
   // MDXEditor portals its toolbar popups (block-type dropdown, link dialog)
   // into this host. Keeping it inside DialogContent puts the popups in the
@@ -505,6 +536,61 @@ function SocialWidgetConfigDialogInner({
               />
             ) : isMediaMode ? (
               <MediaConfigPanel draft={draft} setDraft={setDraft} />
+            ) : isHtmlMode ? (
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs w-24 shrink-0">Title</Label>
+                  <Input
+                    value={draft.title}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
+                    className="h-8 text-xs"
+                    placeholder="Widget title"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs w-24 shrink-0">Description</Label>
+                  <Input
+                    value={draft.description ?? ''}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value || undefined }))}
+                    className="h-8 text-xs"
+                    placeholder="Optional subtitle"
+                  />
+                </div>
+
+                <Separator />
+
+                <ContainerToggle
+                  draft={draft}
+                  onChange={(showContainer) => setDraft((prev) => ({ ...prev, showContainer }))}
+                />
+
+                <VisibilityToggle
+                  draft={draft}
+                  onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
+                />
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    HTML
+                  </Label>
+                  <Textarea
+                    value={draft.htmlContent ?? ''}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, htmlContent: e.target.value }))}
+                    className="font-mono text-xs min-h-[300px] resize-y"
+                    placeholder={'<div style="text-align:center">\n  <h2>Big launch</h2>\n</div>'}
+                    spellCheck={false}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Paste a self-contained HTML snippet. Inline CSS and{' '}
+                    <code>&lt;style&gt;</code> blocks (incl. <code>@keyframes</code>) are supported
+                    for animations. Scripts and event handlers are stripped - no JavaScript runs.
+                    The preview on the right updates as you type.
+                  </p>
+                </div>
+              </div>
             ) : isTextMode ? (
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
                 <div className="flex items-center gap-3">
@@ -537,6 +623,11 @@ function SocialWidgetConfigDialogInner({
                 <VisibilityToggle
                   draft={draft}
                   onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
+                />
+
+                <WatermarkToggle
+                  draft={draft}
+                  onChange={(on) => setDraft((prev) => ({ ...prev, showWatermark: on ? true : undefined }))}
                 />
 
                 <Separator />
@@ -790,6 +881,10 @@ function SocialWidgetConfigDialogInner({
                   <VisibilityToggle
                     draft={draft}
                     onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
+                  />
+                  <WatermarkToggle
+                    draft={draft}
+                    onChange={(on) => setDraft((prev) => ({ ...prev, showWatermark: on ? true : undefined }))}
                   />
                   <Separator />
                   <StyleTab
@@ -1496,6 +1591,11 @@ function MediaConfigPanel({
         onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
       />
 
+      <WatermarkToggle
+        draft={draft}
+        onChange={(on) => setDraft((prev) => ({ ...prev, showWatermark: on ? true : undefined }))}
+      />
+
       <Separator />
 
       {/* Source: Upload | URL */}
@@ -1735,6 +1835,11 @@ function EmbedConfigPanel({
       <VisibilityToggle
         draft={draft}
         onChange={(visible) => setDraft((prev) => ({ ...prev, hidden: visible ? undefined : true }))}
+      />
+
+      <WatermarkToggle
+        draft={draft}
+        onChange={(on) => setDraft((prev) => ({ ...prev, showWatermark: on ? true : undefined }))}
       />
 
       <Separator />

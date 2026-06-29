@@ -30,7 +30,8 @@ import {
 } from './dashboard-aggregations.ts';
 import { resolveSparklineEnabled, toCumulativeSeries } from './sparkline-visibility.ts';
 import { shouldAutoSizeWidget } from './text-card-sizing.ts';
-import { widgetContainerVisible } from './widget-container.ts';
+import { widgetContainerVisible, cardScrollWrapperClass, autoSizeBottomPadPx } from './widget-container.ts';
+import { sanitizeWidgetHtml } from './widget-html.ts';
 import type { ColumnDef } from '../../../components/DataTable/DataTable.tsx';
 import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
 import { BrandIcon } from '../../../components/BrandIcon.tsx';
@@ -1065,7 +1066,7 @@ function KpiWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplica
       onConfigure={onConfigure}
       onRemove={onRemove}
       onDuplicate={onDuplicate}
-      containerHidden={!widgetContainerVisible(widget)}
+      containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}
     />
   );
 }
@@ -1076,7 +1077,7 @@ function WordCloudWidget({ widget, posts, isEditMode, onConfigure, onRemove, onD
     [posts, widget.filters],
   );
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialWordCloudWidget
         data={cloudData}
         onWordClick={onFilterToggle ? (v) => onFilterToggle('themes', v) : undefined}
@@ -1103,7 +1104,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     // EntityTable only when neither the widget nor the dimension has defaults.
     const tableConfig = widget.tableConfig ?? defaultTableConfigFor('entities');
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <ConfigurableTableWidget
           posts={posts}
           filters={widget.filters}
@@ -1115,7 +1116,7 @@ function EntityWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     );
   }
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialProgressListWidget
         data={listData}
         seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1134,7 +1135,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
   if (widget.chartType === 'table') {
     const tableConfig = widget.tableConfig ?? defaultTableConfigFor('channel_handle');
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <ConfigurableTableWidget
           posts={posts}
           filters={widget.filters}
@@ -1146,7 +1147,7 @@ function ChannelWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDup
     );
   }
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialProgressListWidget
         data={listData}
         seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1303,7 +1304,7 @@ function CustomWidget({
 
   if (!config) {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
           Configure this widget to select a metric
         </div>
@@ -1323,14 +1324,14 @@ function CustomWidget({
         onConfigure={onConfigure}
         onRemove={onRemove}
         onDuplicate={onDuplicate}
-        containerHidden={!widgetContainerVisible(widget)}
+        containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}
       />
     );
   }
 
   if (widget.chartType === 'word-cloud') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <SocialWordCloudWidget
           data={cloudData}
           scale={widget.styleOverrides?.wordCloudScale}
@@ -1343,7 +1344,7 @@ function CustomWidget({
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <SocialProgressListWidget
           data={data ?? undefined}
           accent={widget.styleOverrides?.accent ?? widget.accent}
@@ -1369,7 +1370,7 @@ function CustomWidget({
           : undefined);
     if (tableConfig) {
       return (
-        <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+        <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
           <ConfigurableTableWidget
             posts={posts}
             filters={widget.filters}
@@ -1386,7 +1387,7 @@ function CustomWidget({
       );
     }
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <GenericTableView data={data ?? undefined} labelOverrides={widget.styleOverrides?.seriesLabels} />
       </SocialWidgetFrame>
     );
@@ -1394,7 +1395,7 @@ function CustomWidget({
 
   if (widget.chartType === 'heatmap') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <SocialHeatmapWidget
           data={data ?? undefined}
           accent={widget.styleOverrides?.accent ?? widget.accent}
@@ -1405,7 +1406,7 @@ function CustomWidget({
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} headerAction={headerAction} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialChartWidget
         chartType={widget.chartType}
         data={data ?? undefined}
@@ -1475,7 +1476,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
 
   if (widget.chartType === 'progress-list') {
     return (
-      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+      <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
         <SocialProgressListWidget
           data={chartData ?? undefined}
           seriesLabelOverrides={widget.styleOverrides?.seriesLabels}
@@ -1485,7 +1486,7 @@ function GenericChartWidget({ widget, posts, isEditMode, onConfigure, onRemove, 
   }
 
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <SocialChartWidget
         chartType={widget.chartType}
         data={chartData ?? undefined}
@@ -1523,7 +1524,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
     const MARGIN_Y_PX = 14; // keep in sync with SocialDashboardGrid MARGIN
     // Boxed cards add p-5 (40px vertical) chrome; frameless headers just need a
     // little breathing room below the last block.
-    const BOTTOM_PAD_PX = boxed ? 40 + 20 : 24;
+    const BOTTOM_PAD_PX = autoSizeBottomPadPx(boxed);
     // Trailing debounce: a single layout shift can fire the ResizeObserver many
     // times in a row (most notably while a web font swaps in and reflows the
     // headings taller, step by step). Measuring + onAutoSize on every callback
@@ -1608,7 +1609,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
         // can't shrink the content width, reflow the text, and oscillate the
         // measured height. Without it, classic (non-overlay) scrollbars cause an
         // infinite grow/shrink loop in the auto-size effect above.
-        <div className={`h-full overflow-y-auto [scrollbar-gutter:stable] ${boxed ? 'px-5 py-5' : ''}`}>
+        <div className={cardScrollWrapperClass(boxed)}>
           {/* Inner div is the natural-height content; outer wrapper provides
               the scrolling fallback if auto-size hasn't caught up yet. The
               `ref` is placed on the inner div so scrollHeight measures the
@@ -1627,6 +1628,208 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
       ) : (
         <div className="flex items-center justify-center h-full text-xs text-muted-foreground italic">
           Empty text card - click the gear to add markdown
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── HTML / Embed widget ───────────────────────────────────────────────────────
+// Renders a self-contained, super-admin-authored HTML snippet (banners, CTAs,
+// animated callouts). The markup is sanitized (DOMPurify - scripts/handlers/
+// javascript: URLs stripped, no JS runs) and injected into a Shadow DOM so its
+// CSS can't leak onto the rest of the dashboard. Like text/embed cards it
+// auto-fits its grid height to the rendered content. html2canvas-pro traverses
+// shadow roots, so it captures natively in the PNG/PDF export (no fallback).
+function HtmlWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize }: FrameProps) {
+  const content = widget.htmlContent ?? '';
+  const sanitized = useMemo(() => sanitizeWidgetHtml(content), [content]);
+  const boxed = widgetContainerVisible(widget);
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Inject the sanitized markup into a Shadow DOM. The base `<style>` keeps
+  // embedded media from overflowing the cell. Re-runs whenever the snippet
+  // changes; the shadow root is attached once and its content swapped.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+    shadow.innerHTML =
+      '<style>:host{display:block;max-width:100%}img,video,svg,canvas{max-width:100%;height:auto}</style>' +
+      sanitized;
+  }, [sanitized]);
+
+  // Auto-fit grid height to the rendered snippet (mirrors TextWidget). The host
+  // element's scrollHeight reflects the laid-out shadow content. Debounced to a
+  // trailing timeout so a font swap / animation reflow can't storm re-renders.
+  useEffect(() => {
+    if (!onAutoSize || !shouldAutoSizeWidget(widget) || !hostRef.current) return;
+    const ROW_HEIGHT_PX = 48;
+    const MARGIN_Y_PX = 14; // keep in sync with SocialDashboardGrid MARGIN
+    const BOTTOM_PAD_PX = autoSizeBottomPadPx(boxed);
+    let timer = 0;
+    const recompute = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (!hostRef.current) return;
+        const contentH = hostRef.current.scrollHeight;
+        const cellPx = contentH + BOTTOM_PAD_PX;
+        const targetH = Math.max(2, Math.ceil(cellPx / (ROW_HEIGHT_PX + MARGIN_Y_PX)));
+        const delta = targetH - widget.h;
+        if (delta >= 1 || delta <= -2) {
+          onAutoSize(widget.i, targetH);
+        }
+      }, 120);
+    };
+    const observer = new ResizeObserver(recompute);
+    observer.observe(hostRef.current);
+    recompute();
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+    };
+  }, [widget.i, widget.h, widget.manualHeight, sanitized, boxed, onAutoSize]);
+
+  // When the user manually sizes the widget, grid-row quantization (62 px/row)
+  // makes it impossible to land on a height that exactly fits the content:
+  // one row too few → scrollbar; one row too many → dead space.  Fix: zoom the
+  // shadow content to fill the container height exactly so either extreme is
+  // eliminated.  CSS `zoom` (layout-aware, unlike transform:scale) is reset
+  // before each measurement so scrollHeight always reflects the natural height.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!widget.manualHeight || !host) {
+      if (host) { host.style.zoom = ''; host.style.width = ''; }
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
+
+    let animId = 0;
+    const applyZoom = () => {
+      cancelAnimationFrame(animId);
+      animId = requestAnimationFrame(() => {
+        if (!hostRef.current || !containerRef.current) return;
+        const h = hostRef.current;
+        const c = containerRef.current;
+        // Reset zoom so scrollHeight gives the natural (unscaled) height.
+        // Reading scrollHeight after a style mutation forces a synchronous
+        // layout reflow, so the value is always up-to-date.
+        h.style.zoom = '';
+        h.style.width = '';
+        const naturalH = h.scrollHeight;
+        const containerH = c.clientHeight;
+        if (naturalH > 0 && containerH > 0) {
+          const ratio = containerH / naturalH;
+          // Only ever SHRINK (ratio < 1) to keep tall content from clipping.
+          // Never enlarge: `zoom > 1` scales the rendered content but does NOT
+          // widen the host's box, and the old `width:(100/zoom)%` companion
+          // actively narrowed it - together they left a dead strip on the right
+          // of every widget whose content already fit. When content fits we
+          // leave the host at its natural 100% width (cells are sized to the
+          // content, so there is no vertical gap either). `width` stays unset in
+          // both branches: the broken width compensation is gone for good.
+          h.style.zoom = ratio < 0.985 ? String(ratio) : '';
+        }
+      });
+    };
+
+    // Re-apply when the grid cell is resized (user drags the handle).
+    // Observing the container (not the host) avoids a feedback loop: zoom
+    // changes the host's layout size but not the container's clientHeight.
+    const obs = new ResizeObserver(applyZoom);
+    obs.observe(container);
+
+    // The first measurement after an edit happens before the snippet's custom
+    // fonts (Fraunces / Inter Tight) have loaded, so `naturalH` reflects the
+    // fallback metrics and the computed `width:(100/zoom)%` is stale once the
+    // font swaps - leaving the dead strip on the right the user reported. The
+    // container ResizeObserver can't catch this (the grid cell never changes
+    // size). Re-apply on font readiness, on any shadow-content mutation, and on
+    // a couple of trailing ticks (covers late <img> loads that don't mutate the
+    // DOM). All paths are idempotent: applyZoom resets then recomputes.
+    let fontsAlive = true;
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(() => { if (fontsAlive) applyZoom(); });
+    }
+    const shadow = host.shadowRoot;
+    const mo = shadow ? new MutationObserver(applyZoom) : null;
+    if (shadow && mo) mo.observe(shadow, { childList: true, subtree: true, attributes: true });
+    const t1 = window.setTimeout(applyZoom, 250);
+    const t2 = window.setTimeout(applyZoom, 700);
+    applyZoom();
+
+    return () => {
+      fontsAlive = false;
+      obs.disconnect();
+      mo?.disconnect();
+      clearTimeout(t1);
+      clearTimeout(t2);
+      cancelAnimationFrame(animId);
+      if (hostRef.current) { hostRef.current.style.zoom = ''; hostRef.current.style.width = ''; }
+    };
+  }, [widget.manualHeight, sanitized]);
+
+  // HTML widgets always clip overflow so neither a scrollbar (content too tall)
+  // nor the scrollbar-gutter reservation (phantom right-side strip) appears.
+  // Auto-size converges quickly; manual-size uses zoom to fill the cell exactly.
+  const wrapperClass = boxed
+    ? 'h-full overflow-hidden px-5 py-5'
+    : 'h-full overflow-hidden';
+
+  return (
+    <div
+      data-html-widget="1"
+      style={boxed ? { backgroundColor: 'var(--widget-surface)' } : undefined}
+      className={`h-full relative group ${
+        boxed
+          ? 'rounded-[14px] border border-border shadow-[0_1px_2px_rgba(35,30,22,0.04),0_1px_1px_rgba(35,30,22,0.03)] overflow-hidden'
+          : 'bg-transparent'
+      } ${
+        isEditMode ? `drag-handle cursor-grab active:cursor-grabbing ring-1 ring-dashed ring-primary/30${boxed ? '' : ' rounded-md'}` : ''
+      }`}
+    >
+      {isEditMode && (
+        <div
+          className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 bg-background/80 backdrop-blur-sm shadow-sm">
+                <MoreVertical className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onConfigure}>
+                <Settings2 className="h-3.5 w-3.5 mr-2" />
+                Configure
+              </DropdownMenuItem>
+              {onDuplicate && (
+                <DropdownMenuItem onClick={onDuplicate}>
+                  <Copy className="h-3.5 w-3.5 mr-2" />
+                  Duplicate
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={onRemove} className="text-destructive focus:text-destructive">
+                <Trash2 className="h-3.5 w-3.5 mr-2" />
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+
+      {content.trim() ? (
+        <div ref={containerRef} className={wrapperClass}>
+          {/* Shadow-DOM host: natural-height block; ref measures its content. */}
+          <div ref={hostRef} />
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-full text-xs text-muted-foreground italic">
+          Empty HTML card - click the gear to paste a snippet
         </div>
       )}
     </div>
@@ -1667,7 +1870,7 @@ function MediaWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, o
       onDuplicate={onDuplicate}
       icon={widgetHeaderIcon(widget)}
       contentClassName={fullBleed ? 'p-0' : undefined}
-      containerHidden={!widgetContainerVisible(widget)}
+      containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}
     >
       <div
         className={`flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden ${
@@ -1774,6 +1977,7 @@ function EmbedsWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDupl
     onDuplicate,
     icon: widgetHeaderIcon(widget),
     containerHidden: !widgetContainerVisible(widget),
+    showWatermark: !!widget.showWatermark,
   };
 
   // Collection mode: a visual card gallery (grid or marquee) filling the frame.
@@ -1896,7 +2100,7 @@ const POST_TABLE_COLUMNS = postColumns<PostTableRow>({ summaryField: 'content', 
 function PostsTableWidget({ widget, posts, isEditMode, onConfigure, onRemove, onDuplicate }: FrameProps & { posts: DashboardPost[] }) {
   const rows = useMemo(() => toPostTableRows(posts), [posts]);
   return (
-    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)}>
+    <SocialWidgetFrame title={widget.title} description={widget.description} figureText={widget.figureText} isEditMode={isEditMode} onConfigure={onConfigure} onRemove={onRemove} onDuplicate={onDuplicate} icon={widgetHeaderIcon(widget)} containerHidden={!widgetContainerVisible(widget)} showWatermark={!!widget.showWatermark}>
       <DataTable
         data={rows}
         columns={POST_TABLE_COLUMNS}
@@ -2039,6 +2243,9 @@ function SocialWidgetRendererImpl({
   }
   if (widget.aggregation === 'media') {
     return <MediaWidget {...frameProps} />;
+  }
+  if (widget.aggregation === 'html') {
+    return <HtmlWidget {...frameProps} />;
   }
   if (widget.aggregation === 'posts') {
     return <PostsTableWidget {...frameProps} posts={widgetPosts} />;

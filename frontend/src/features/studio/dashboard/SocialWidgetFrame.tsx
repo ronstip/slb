@@ -7,6 +7,8 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu.tsx';
 import { MoreVertical, Settings2, Trash2, Copy } from 'lucide-react';
+import { frameContentPadding, frameHeaderPaddingX } from './widget-container.ts';
+import { ScoltoMark, BRAND_NAME, BRAND_INK } from '../../../components/Logo.tsx';
 
 // Default titles the system assigns to un-renamed widgets. They read as
 // "unfinished" in a published brief, so we suppress them in read-only views
@@ -33,7 +35,40 @@ interface SocialWidgetFrameProps {
    *  In edit mode a dashed outline is kept so the (now invisible) card stays
    *  grabbable. */
   containerHidden?: boolean;
+  /** When true, overlay a small Scolto brand watermark (mark + wordmark) in the
+   *  top-right corner of the widget. Off by default; opt-in per widget via
+   *  the Style tab. Renders in every mode so the editor preview matches shares. */
+  showWatermark?: boolean;
   children: React.ReactNode;
+}
+
+// Small Scolto brand mark + wordmark, pinned to a widget's top-right corner.
+// pointer-events-none so it never intercepts clicks on the chart beneath it.
+// Exported so number-cards (which render their own Card, not the frame) can
+// reuse the exact same watermark.
+export function ScoltoWatermark() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute top-2 right-2.5 z-20 flex items-center gap-1 opacity-55"
+      style={{ color: BRAND_INK }}
+    >
+      <ScoltoMark size={12} />
+      <span
+        style={{
+          fontFamily: "'Fraunces', serif",
+          fontStyle: 'italic',
+          fontWeight: 400,
+          fontSize: 13,
+          letterSpacing: '-0.026em',
+          lineHeight: 1,
+          color: 'currentColor',
+        }}
+      >
+        {BRAND_NAME}
+      </span>
+    </div>
+  );
 }
 
 export function SocialWidgetFrame({
@@ -48,6 +83,7 @@ export function SocialWidgetFrame({
   figureText,
   contentClassName,
   containerHidden = false,
+  showWatermark = false,
   children,
 }: SocialWidgetFrameProps) {
   const trimmed = title?.trim() ?? '';
@@ -97,7 +133,7 @@ export function SocialWidgetFrame({
       )}
 
       {showHeader && (
-        <CardHeader className={`!flex flex-row items-start gap-2 space-y-0 shrink-0 pt-[13px] pb-[9px] px-[15px] !pb-[9px] ${
+        <CardHeader className={`!flex flex-row items-start gap-2 space-y-0 shrink-0 pt-[13px] pb-[9px] ${frameHeaderPaddingX(containerHidden)} !pb-[9px] ${
           isEditMode ? 'drag-handle cursor-grab active:cursor-grabbing' : ''
         }`}>
           {icon && showTitle && (
@@ -121,7 +157,7 @@ export function SocialWidgetFrame({
         </CardHeader>
       )}
 
-      <CardContent className={`flex-1 min-h-0 flex flex-col overflow-hidden ${contentClassName ?? 'px-[15px] pb-[15px] pt-[2px]'}`}>
+      <CardContent className={`flex-1 min-h-0 flex flex-col overflow-hidden ${frameContentPadding(containerHidden, contentClassName)}`}>
         <div className="flex-1 min-h-0 flex flex-col">{children}</div>
         {figureText && (
           <figcaption
@@ -133,6 +169,10 @@ export function SocialWidgetFrame({
           </figcaption>
         )}
       </CardContent>
+      {/* Hidden in edit mode so it doesn't sit under the hover config menu
+          (same top-right corner). The config dialog's live preview renders
+          with isEditMode=false, so the toggle still previews there. */}
+      {showWatermark && !isEditMode && <ScoltoWatermark />}
     </Card>
   );
 }

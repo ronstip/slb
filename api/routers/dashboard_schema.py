@@ -32,6 +32,7 @@ SocialAggregation = Literal[
     "text",
     "embeds",
     "media",
+    "html",
 ]
 
 SocialChartType = Literal[
@@ -187,6 +188,7 @@ VALID_CHART_TYPES: dict[str, tuple[str, ...]] = {
     "text": ("table",),
     "embeds": ("embed",),
     "media": ("embed",),
+    "html": ("embed",),
 }
 
 # Per-aggregation defaults - mirrors AGGREGATION_META in TS.
@@ -211,6 +213,7 @@ AGGREGATION_DEFAULTS: dict[str, dict] = {
     "text": {"chartType": "table", "title": "Text", "w": 6, "h": 3},
     "embeds": {"chartType": "embed", "title": "Embedded Posts", "w": 4, "h": 8},
     "media": {"chartType": "embed", "title": "Media", "w": 4, "h": 6},
+    "html": {"chartType": "embed", "title": "HTML", "w": 6, "h": 4},
 }
 
 GRID_COLS = 12
@@ -551,6 +554,10 @@ class SocialDashboardWidget(BaseModel):
     customConfig: CustomChartConfig | None = None
     tableConfig: CustomTableConfig | None = None
     markdownContent: str | None = None
+    # HTML-widget snippet (aggregation == 'html'). Declared so it survives
+    # extra='ignore' and round-trips into Firestore + shared/exported boards.
+    # Rendered sanitized (DOMPurify, scripts stripped) on the frontend.
+    htmlContent: str | None = None
     embedUrls: list[str] | None = None
     # Embed Posts widget config (collection-mode selection + layout). Declared so
     # it survives extra='ignore' and round-trips into Firestore + shared boards.
@@ -564,6 +571,11 @@ class SocialDashboardWidget(BaseModel):
     # Declared explicitly so it survives extra='ignore' and so update_dashboard
     # patches setting it are not reported as ignored_fields. Absent → visible.
     hidden: bool | None = None
+    # Whether the widget draws its container chrome (card surface + border +
+    # shadow). Declared explicitly so it survives extra='ignore' and round-trips
+    # into Firestore + shared dashboards instead of reverting on refresh. Absent
+    # → the per-widget default (visible, except a heading-only text widget).
+    showContainer: bool | None = None
     numberSize: Literal["small", "medium", "big"] | None = None
     # Set once the user manually resizes a text/embed card. Must be an explicit
     # field (not extra='ignore' drop) so the chosen height survives the save and
@@ -573,6 +585,9 @@ class SocialDashboardWidget(BaseModel):
     # survives the save round-trip into Firestore and reaches the shared/Brief
     # dashboard (extra='ignore' would otherwise drop them).
     showSparkline: bool | None = None
+    # Opt-in Scolto brand watermark overlaid on the rendered widget. Declared so
+    # it survives the save round-trip into Firestore and reaches shared/Brief.
+    showWatermark: bool | None = None
     trendDimension: AnyDimension | None = None
     trendTimeBucket: Literal["hour", "day", "week", "month"] | None = None
     trendCumulative: bool | None = None
