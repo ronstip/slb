@@ -1048,6 +1048,10 @@ interface FrameProps {
    * (natural width / height) once the image/video loads. The grid uses it to
    * size the cell to the media's proportions on compact (mobile) breakpoints. */
   onMediaAspect?: (i: string, ratio: number) => void;
+  /** True on non-lg (mobile/tablet) breakpoints, where widgets reflow to a
+   * single narrow column. HtmlWidget uses it to auto-size to its reflowed
+   * content instead of zoom-fitting into the desktop-authored cell. */
+  compact?: boolean;
 }
 
 // ── Sub-components (each calls hooks unconditionally) ─────────────────────────
@@ -1641,7 +1645,7 @@ function TextWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
 // CSS can't leak onto the rest of the dashboard. Like text/embed cards it
 // auto-fits its grid height to the rendered content. html2canvas-pro traverses
 // shadow roots, so it captures natively in the PNG/PDF export (no fallback).
-function HtmlWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize }: FrameProps) {
+function HtmlWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, onAutoSize, compact }: FrameProps) {
   const content = widget.htmlContent ?? '';
   const sanitized = useMemo(() => sanitizeWidgetHtml(content), [content]);
   const boxed = widgetContainerVisible(widget);
@@ -1664,7 +1668,11 @@ function HtmlWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
   // element's scrollHeight reflects the laid-out shadow content. Debounced to a
   // trailing timeout so a font swap / animation reflow can't storm re-renders.
   useEffect(() => {
-    if (!onAutoSize || !shouldAutoSizeWidget(widget) || !hostRef.current) return;
+    // On compact (mobile/tablet) breakpoints the snippet reflows to a single
+    // narrow column and its content height no longer matches the desktop cell,
+    // so auto-fit even when the widget is manually sized (manualHeight only
+    // governs the desktop lg layout, which is gated behind the lg breakpoint).
+    if (!onAutoSize || (!shouldAutoSizeWidget(widget) && !compact) || !hostRef.current) return;
     const ROW_HEIGHT_PX = 48;
     const MARGIN_Y_PX = 14; // keep in sync with SocialDashboardGrid MARGIN
     const BOTTOM_PAD_PX = autoSizeBottomPadPx(boxed);
@@ -1677,7 +1685,15 @@ function HtmlWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
         const cellPx = contentH + BOTTOM_PAD_PX;
         const targetH = Math.max(2, Math.ceil(cellPx / (ROW_HEIGHT_PX + MARGIN_Y_PX)));
         const delta = targetH - widget.h;
-        if (delta >= 1 || delta <= -2) {
+        // Grow eagerly; shrink conservatively. The desktop dead-band ignores a
+        // single excess row (delta -1) to avoid a shrink↔scrollbar↔grow
+        // oscillation. On a compact breakpoint there is no zoom-to-fit to mop up
+        // that leftover row, so a 1-row overshoot shows as visible dead space
+        // (the hero's ~44px bottom gap). Compact heights are local + disposable
+        // and a height-only change can't reflow the content width, so trimming a
+        // single row there is safe.
+        const shrinkThreshold = compact ? -1 : -2;
+        if (delta >= 1 || delta <= shrinkThreshold) {
           onAutoSize(widget.i, targetH);
         }
       }, 120);
@@ -1689,7 +1705,7 @@ function HtmlWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
       observer.disconnect();
       clearTimeout(timer);
     };
-  }, [widget.i, widget.h, widget.manualHeight, sanitized, boxed, onAutoSize]);
+  }, [widget.i, widget.h, widget.manualHeight, sanitized, boxed, onAutoSize, compact]);
 
   // When the user manually sizes the widget, grid-row quantization (62 px/row)
   // makes it impossible to land on a height that exactly fits the content:
@@ -1699,7 +1715,11 @@ function HtmlWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
   // before each measurement so scrollHeight always reflects the natural height.
   useEffect(() => {
     const host = hostRef.current;
-    if (!widget.manualHeight || !host) {
+    // On compact breakpoints the auto-size effect above grows/shrinks the cell
+    // to the reflowed content, so zoom-to-fit must stay off - otherwise it would
+    // shrink the taller mobile layout back into the (stale) cell, squashing the
+    // snippet. Reset any zoom left over from a desktop render.
+    if (!widget.manualHeight || compact || !host) {
       if (host) { host.style.zoom = ''; host.style.width = ''; }
       return;
     }
@@ -1769,7 +1789,7 @@ function HtmlWidget({ widget, isEditMode, onConfigure, onRemove, onDuplicate, on
       cancelAnimationFrame(animId);
       if (hostRef.current) { hostRef.current.style.zoom = ''; hostRef.current.style.width = ''; }
     };
-  }, [widget.manualHeight, sanitized]);
+  }, [widget.manualHeight, sanitized, compact]);
 
   // HTML widgets always clip overflow so neither a scrollbar (content too tall)
   // nor the scrollbar-gutter reservation (phantom right-side strip) appears.
@@ -2147,6 +2167,8 @@ interface SocialWidgetRendererProps {
   serverKpis?: DashboardKpis;
   onAutoSize?: (i: string, h: number) => void;
   onMediaAspect?: (i: string, ratio: number) => void;
+  /** True on non-lg (mobile/tablet) breakpoints. Forwarded to HtmlWidget. */
+  compact?: boolean;
   /** Report-level value colors (field → value → hex). Flattened and merged in
    *  as the base series-color layer; per-widget `seriesColors` win. */
   reportValueColors?: Record<string, Record<string, string>>;
@@ -2170,6 +2192,7 @@ function SocialWidgetRendererImpl({
   serverKpis,
   onAutoSize,
   onMediaAspect,
+  compact,
   reportValueColors,
   reportComputedFields,
 }: SocialWidgetRendererProps) {
@@ -2233,7 +2256,7 @@ function SocialWidgetRendererImpl({
     [onDuplicate, widget.i],
   );
 
-  const frameProps = { widget, isEditMode, onConfigure: handleConfigure, onRemove: handleRemove, onDuplicate: handleDuplicate, onAutoSize, onMediaAspect };
+  const frameProps = { widget, isEditMode, onConfigure: handleConfigure, onRemove: handleRemove, onDuplicate: handleDuplicate, onAutoSize, onMediaAspect, compact };
 
   if (widget.aggregation === 'text') {
     return <TextWidget {...frameProps} />;

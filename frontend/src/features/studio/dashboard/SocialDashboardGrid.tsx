@@ -158,6 +158,14 @@ export function SocialDashboardGrid({
   // (widgets, measured width, the mobile inset, or a media cell's measured
   // aspect). Without this the three buildCompactLayout passes ran on every
   // render — including each resize tick and every unrelated state change.
+  // Measured compact-breakpoint heights for content that reflows on a narrow
+  // viewport (text/embed/html snippets fit a different height than the desktop
+  // cell). Kept LOCAL and disposable: feeding these back into the persisted
+  // `widget.h` would let a mobile measurement corrupt the authored desktop
+  // layout (the cell would stay mobile-tall after the user widens back, and an
+  // edit could persist it). The lg layout always uses the authored `h`.
+  const [compactHeights, setCompactHeights] = useState<Record<string, number>>({});
+
   const layouts = useMemo(() => {
     // Pixel width of a full-width compact cell = grid width minus the horizontal
     // container padding (see `containerPadding` below - 4px each side on mobile).
@@ -165,6 +173,7 @@ export function SocialDashboardGrid({
     const compactOptions = {
       mediaAspect,
       fullWidthPx: Math.max(0, width - (isNarrowViewport ? 8 : 0)),
+      heightOverrides: compactHeights,
     };
     return {
       lg: lgLayout,
@@ -172,7 +181,7 @@ export function SocialDashboardGrid({
       sm: buildCompactLayout(widgets, COLS.sm, compactOptions),
       xs: buildCompactLayout(widgets, COLS.xs, compactOptions),
     };
-  }, [lgLayout, widgets, mediaAspect, width, isNarrowViewport]);
+  }, [lgLayout, widgets, mediaAspect, width, isNarrowViewport, compactHeights]);
 
   // Id of the widget the user just resized, captured on resize-stop and consumed
   // by the very next handleLayoutChange (RGL fires onResizeStop then
@@ -215,6 +224,30 @@ export function SocialDashboardGrid({
   );
 
   const canInteract = isEditMode && currentBreakpoint === 'lg';
+
+  // Non-lg breakpoints reflow each widget to a single narrow column. HTML
+  // marketing snippets reflow their own internal layout there too, so their
+  // content height no longer matches the desktop-authored cell. Flag it so
+  // HtmlWidget auto-sizes to the reflowed content (and skips zoom-to-fit, which
+  // would otherwise shrink the taller mobile layout into the desktop cell).
+  const compact = currentBreakpoint !== 'lg';
+
+  // Route auto-size measurements by breakpoint. On desktop (lg) they persist to
+  // the canonical `widget.h` via the parent handler. On a compact breakpoint
+  // they stay in local `compactHeights` so the disposable mobile layout never
+  // rewrites the authored desktop heights. Gate on the LIVE measured width (not
+  // the lagging `currentBreakpoint` state) for the same reason the persist
+  // guard does - RGL fires onBreakpointChange + the measurement together.
+  const handleWidgetAutoSize = useCallback(
+    (id: string, h: number) => {
+      if (widthRef.current >= LG_MIN_WIDTH) {
+        onAutoSize?.(id, h);
+      } else {
+        setCompactHeights((prev) => (prev[id] === h ? prev : { ...prev, [id]: h }));
+      }
+    },
+    [onAutoSize],
+  );
 
   // The vertical (A4 portrait) clamp is for desktop PDF parity. On a narrow
   // viewport it would shrink the dashboard to ~69% of an already small screen
@@ -328,8 +361,9 @@ export function SocialDashboardGrid({
                 onFilterToggle={onFilterToggle}
                 onTopicNavigate={onTopicNavigate}
                 serverKpis={serverKpis}
-                onAutoSize={onAutoSize}
+                onAutoSize={handleWidgetAutoSize}
                 onMediaAspect={handleMediaAspect}
+                compact={compact}
                 reportValueColors={reportValueColors}
                 reportComputedFields={reportComputedFields}
               />
