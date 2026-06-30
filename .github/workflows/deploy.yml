@@ -90,7 +90,11 @@ jobs:
 
       - name: Install Puppeteer Chromium (prerender)
         working-directory: frontend
-        run: for i in 1 2 3; do npx puppeteer browsers install chrome && break || sleep 10; done
+        # Cap each attempt at 5 min: a hung download (CDN stall) otherwise
+        # never returns, so the retry loop can't retry and the whole job
+        # burns its 30-min timeout -> "operation was canceled". timeout kills
+        # a stall fast so the next attempt actually runs.
+        run: for i in 1 2 3; do timeout 300 npx puppeteer browsers install chrome && break || sleep 10; done
 
       - name: Type-check
         working-directory: frontend
