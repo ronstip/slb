@@ -32,7 +32,7 @@ export function SharePageDefinitionRow({
   const sources = platforms ? toPlatformIconKeys(platforms) : [];
 
   return (
-    <div className="border-b border-border bg-background/60 mb-6">
+    <div className="border-b border-border bg-background/60 mb-3 sm:mb-6">
       {/* Single row on every breakpoint - the tagline collapses to a short form
           on mobile so it never wraps. Container width + padding match the rest
           of the share page (px-3 sm:px-7) so it aligns top-to-bottom. */}

@@ -19,6 +19,13 @@ export interface CompactLayoutOptions {
    *  horizontal padding). Combined with `mediaAspect` to derive the row count
    *  that keeps a media cell at its natural aspect ratio. */
   fullWidthPx?: number;
+  /** Widget id → measured compact-breakpoint row height. Content that reflows
+   *  on a narrow viewport (text/embed/html snippets) auto-sizes to a different
+   *  height than the desktop cell; the grid feeds those measurements back here
+   *  so the compact layout packs around the real heights. Kept separate from
+   *  the widget's authored `h` (the disposable compact layout must never
+   *  pollute the persisted desktop layout). */
+  heightOverrides?: Record<string, number>;
 }
 
 // Rows needed so a full-width media cell keeps the media's aspect ratio. Adds
@@ -81,17 +88,26 @@ export function buildCompactLayout(
       y += rowOffset + 2;
     } else {
       let h: number;
-      if (w.aggregation === 'media') {
+      const override = options.heightOverrides?.[w.i];
+      if (override != null) {
+        // A measured compact height takes precedence: the content already
+        // reported how many rows it needs on this narrow viewport.
+        h = Math.max(2, override);
+      } else if (w.aggregation === 'media') {
         // Size the cell to the media's own aspect ratio so a wide banner isn't
         // cropped into a near-square box on a narrow viewport. Falls back to
         // the desktop height (min 2) until the aspect ratio is measured.
         h = mediaRows(w, options) ?? Math.max(w.h, 2);
       } else {
         // Text cards auto-fit their height to content and can legitimately be a
-        // single row (a one-line title). Flooring them to the 4-row chart
-        // minimum leaves a big empty gap below them on mobile, so preserve their
-        // own h.
-        const minH = w.aggregation === 'text' ? 1 : 4;
+        // single row (a one-line title). HTML widgets likewise auto-fit on
+        // compact breakpoints (see HtmlWidget) - their content reflows to a
+        // different height on mobile than the desktop cell, so flooring them to
+        // the 4-row chart minimum either crams the content (zoom-to-fit shrinks
+        // it) or, for a thin divider, leaves a big dead gap below. Preserve the
+        // designer's own h as the starting estimate (auto-size refines it on
+        // mount); only true charts keep the 4-row floor.
+        const minH = w.aggregation === 'text' ? 1 : w.aggregation === 'html' ? 2 : 4;
         h = Math.max(w.h, minH);
       }
       layout.push({ i: w.i, x: 0, y, w: cols, h });
