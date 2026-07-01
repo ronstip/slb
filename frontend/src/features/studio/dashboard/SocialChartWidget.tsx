@@ -156,6 +156,7 @@ function getAxisStyle() {
 }
 
 function formatNumber(val: number): string {
+  if (val >= 1_000_000_000) return `${(val / 1_000_000_000).toFixed(1)}B`;
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
   if (val >= 1_000) return `${(val / 1_000).toFixed(1)}K`;
   if (Number.isInteger(val)) return val.toLocaleString();

@@ -2,8 +2,21 @@ import type { WidgetData } from './types-social-dashboard.ts';
 import { useTheme } from '../../../components/theme-provider.tsx';
 import { SENTIMENT_COLORS, PLATFORM_COLORS } from '../../../lib/constants.ts';
 import { getCategoricalPalette } from '../../../lib/accent-colors.ts';
+import { PlatformIcon } from '../../../components/PlatformIcon.tsx';
+
+// Aliases for platform labels that don't match a PlatformIcon case directly.
+const PLATFORM_ICON_ALIASES: Record<string, string> = { x: 'twitter' };
+
+/** Resolve a row label to a PlatformIcon key when it names a known platform,
+ *  else null. Platform rows show the brand logo instead of a color dot. */
+function platformIconKey(label: string): string | null {
+  const key = label.toLowerCase().trim();
+  const normalized = PLATFORM_ICON_ALIASES[key] ?? key;
+  return normalized in PLATFORM_COLORS ? normalized : null;
+}
 
 function fmt(val: number): string {
+  if (val >= 1_000_000_000) return `${(val / 1_000_000_000).toFixed(1)}B`;
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
   if (val >= 1_000) return `${(val / 1_000).toFixed(1)}K`;
   return Number.isInteger(val) ? val.toLocaleString() : val.toFixed(1);
@@ -188,7 +201,11 @@ export function SocialProgressListWidget({
                 <span className="text-[11px] text-muted-foreground w-5 text-right tabular-nums shrink-0 font-medium">
                   {index + 1}.
                 </span>
-                <div className="shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                {platformIconKey(label) ? (
+                  <PlatformIcon platform={platformIconKey(label)!} className="shrink-0 w-3.5 h-3.5" />
+                ) : (
+                  <div className="shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                )}
                 <span className="text-sm font-medium text-foreground truncate">{resolveLabel(label, seriesLabelOverrides)}</span>
               </div>
               <div className="flex items-center gap-2 ml-3 shrink-0">
