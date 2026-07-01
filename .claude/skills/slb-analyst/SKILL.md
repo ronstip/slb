@@ -18,6 +18,92 @@ wrap the platform in a CLI (that would freeze a second API and rot). Instead it
 points you at the **live source** and teaches the method. Always read the
 current source before acting — the map below is a pointer, the code is truth.
 
+## Core lessons (the method, not the steps)
+
+High-level moves distilled from building agents end to end (the hospitality
+agent was the origin case). The sections below are the procedure; these are the
+mindset that makes the procedure pay off. Read these first.
+
+1. **Ground in the real source before designing.** Read actual posts (fetch a
+   sample of the target group/feed) and web-ground the landscape. The single
+   most valuable insight usually comes from reading real content, not from the
+   brief.
+
+2. **Let the data reframe the product.** Distributions can rewrite the mission —
+   e.g. discovering 83% of posts were *requests*, not reviews, pivoted the
+   hospitality agent from reputation/sentiment to **demand intelligence**. Don't
+   marry the opening hypothesis; the first collection is allowed to rewrite it.
+
+3. **Collect once, iterate enrichment on a frozen sample.** The cheap loop is
+   `enrich_posts` over already-collected posts — no re-collection, no version
+   churn. Decouple expensive collection from cheap config iteration → many
+   improvement rounds for the price of one crawl.
+
+4. **Read distributions, not just samples.** Field histograms surface both
+   truths and bugs in one glance (an inherently sparse field vs. a real
+   canonicalization bug like "King Solomon" vs "King Solomon Hotel"). Always
+   pair a precision sample with a false-negative sample.
+
+5. **Separate inherent sparsity from real bugs.** Some sparsity is the group's
+   nature (not fixable in config); canon fragmentation and spurious labels are
+   bugs. Knowing which is which stops you over-tuning the unfixable.
+
+6. **Let real schema constraints drive the model — read source, don't assume.**
+   `list[object]` being one level deep (scalar leaves only) forces flatten
+   decisions. Verify the constraint in code before designing around a guess.
+
+7. **Watch for the lever outside the config.** Quality is sometimes capped by
+   *scope* (e.g. reviews living in uncollected comments), not enrichment.
+   Recognize when you've maxed the config and the next gain is a data-source
+   decision — surface it, don't keep polishing.
+
+8. **Gate spend, keep the human at the forks.** One small authorized collection,
+   then iterate for free; never scale or flip-to-recurring without a yes. Real
+   tradeoffs (buyer framing, schema shape) → ask with a recommendation, don't
+   silently pick.
+
+9. **For a breaking-event "first reactions" agent, add a timeline axis.** Keyword
+   search around a just-declared event pulls in *pre-event process coverage*
+   (negotiations, deadlock, "talks extended") alongside genuine reactions. Those
+   pre-event posts are on-topic (`is_related=true`) — NOT a relevance bug — but
+   they pollute a "reactions" read. Don't hard-drop them: add an `event_phase`
+   literal (`pre_declaration_process` / `reaction_to_declaration` / `unclear`) and
+   instruct the model to judge from the post's own wording (tense: "talks stalled"
+   vs "they signed"), not the timestamp. The briefing then filters to real
+   reactions while keeping the process posts as context. (Israel-Lebanon agent,
+   2026-06-27: a posted-at histogram showed volume exploding at the signing hour;
+   ~14.5% of related posts were pre-declaration process news, cleanly isolated.)
+
+10. **The comment layer is usually where the real opinion lives.** Top-of-feed
+    posts skew to media/neutral reporting (reach-ranked); the *reply threads* under
+    the loudest posts are far more polarized and surface the grassroots/UGC voice
+    that the post feed buries. Same event: post layer ~1.8:1 negative among
+    opinionated, reply layer **~6:1 negative** with `lebanese_public` the #1 voice.
+    If the question is "how does the public feel", fetching comments on the top
+    posts changes the answer — see the comments seam below.
+
+11. **Volume has a supply ceiling — name it, don't chase it.** Scaling `n_posts`
+    only yields what the platform actually has in the window. A 24h X window gave
+    ~278 EN but only ~119 HE on the same event; raising the cap won't manufacture
+    Hebrew posts that don't exist. Report the ceiling as a finding, don't read it
+    as a collection fault.
+
+12. **Read every distribution through the platform's nature — state which platform
+    the read is about.** A finding is platform-shaped, not universal; never
+    generalize "the public thinks X" from one network. Always name the platform and
+    its bias in the thesis + methodology. **X specifically:** keyword search skews
+    to **news/media/commentary and real-time hot-take** accounts (expect ~50–60%
+    straight reporting on a breaking event); it is **reach-ranked**, so a few
+    viral posts dominate views; the **reply threads are where the actual opinion
+    and grassroots/UGC voice live** (far more polarized than the post feed); and
+    politically charged threads carry heavy **hostile / hate content** (e.g.
+    antisemitic replies) — itself a discourse-quality signal, not noise to drop.
+    Other platforms invert this (IG/TikTok = visual/meme-first, FB groups =
+    demand/community, etc.). The same query on a different network would yield a
+    different population — say so. When the agent is single-platform, scope every
+    claim to that platform explicitly ("on X…"), and flag what it therefore
+    *misses* (e.g. the broad public that isn't on X).
+
 ## Prime directive: read live, mutate through the service layer
 
 1. **Read the current source before any mutation.** Schemas and service
@@ -122,6 +208,17 @@ target; model memory is stale by definition. Search first, then decide.
      deterministic; state it in the field `description`.
    - **Literal options double as canonicalization** — a fixed roster (e.g.
      figure names) gives clean aggregation for free.
+   - **One identity dimension per field — never fuse who-they-are axes.** A
+     "who is speaking" field that mixes *nationality* + *alignment/camp* +
+     *authority* (official vs media vs ordinary) is not trustworthy: a single
+     misclassified figure lands in the "public" bucket and silently corrupts any
+     "the public thinks X" read. Split into orthogonal fields — e.g.
+     `speaker_alignment` (the camp/worldview) and `speaker_authority`
+     (official / media / political_figure / influencer-activist / ordinary_user /
+     unknown). Only the cross-tab (`authority=ordinary_user` × stance) is a
+     defensible grassroots signal; the fused field is a trap. This is the axis
+     model applied to identity, and it's what lets you answer "is this really the
+     public, or partisans/figures?" instead of guessing.
    - Use `list[object]` for per-entity stance and for pulling numbers out of a
      post (poll seats); element leaves are scalar-only (one level deep).
 
@@ -237,6 +334,36 @@ copy them. The live flow (verify against `api/routers/explorer_layouts.py` +
   TRUE`. This is intentional — never try to bypass it or hand-join raw
   `enriched_posts` for a widget; design within it.
 
+### Render-layer lessons (config-correct ≠ visually-correct — VERIFY in the UI)
+
+The data and the layout doc can be perfect while the rendered report is wrong.
+Headers, fonts, colors, and value-merges are render concerns invisible from
+BQ/Firestore. **Open the actual report (Playwright or the app) and read it** — top
+to bottom — before declaring a report done. Root rule: verify the artifact, not
+just the spec.
+
+- **Encode structure in the content the renderer actually shows.** A renderer may
+  ignore a metadata field you assumed was visible — e.g. a dashboard **text
+  widget renders ONLY its `markdownContent`; the widget `title` is not shown**. So
+  every text section must **lead with a markdown header inside the body**
+  (`## …`). Reserve `#`/h1 for the page-title widget. Don't let a `>` blockquote
+  stand in as the section header — it reads as a pull-quote, not a heading.
+- **Color is information, not decoration.** Define `valueColors` so hue carries
+  meaning: group positives in one family and negatives in another, keep adjacent
+  categories perceptually distinct, and avoid low-contrast picks (pure yellow on
+  white). A single-series bar defaults to one flat color — give the dimension a
+  per-value palette so it reads semantically.
+- **Canonicalization is a multi-column cleaning step.** Free-text enrichment
+  labels fragment by case / transliteration / synonym / alt-code across *every*
+  multi-valued column — so set `CanonGroup.fields` across `entities`, `themes`,
+  `brands`, AND `language` (e.g. `iw→he`), not just entities. **But know whether
+  your stack applies the canon transform at render or merely persists it.** Here
+  it's persist-only (Phase 1) — the merges round-trip in `reportConfig` but won't
+  visibly collapse charts yet. When the transform isn't applied, do the visible
+  cleanup at the widget level instead (`topN` + `includeOthers` to bucket noise,
+  or a widget `filters`/`conditions` to exclude junk values). Verify which regime
+  you're in by checking whether a known duplicate actually merges in the UI.
+
 ## Data-quality review (read-only gate — run after every collection, before trusting analysis)
 
 After collection+enrichment finishes, **review the data itself**, not just row
@@ -266,6 +393,25 @@ Five checks:
 5. **`other`-bucket audit** — if any literal field's `other` is large, GROUP BY
    + sample what's landing there. Memes hiding in `other` = a design gap to fix
    (see the memes rule under good-set criteria), and a standing part of this gate.
+6. **Representativeness / authenticity audit** — before any "the public thinks X"
+   claim, stress-test whether the signal is real public sentiment or an artifact:
+   - **Dispersion check.** `distinct authors ÷ posts` for the bucket you're about
+     to headline. High dispersion (≈1 post/account) is the one cheap signal of
+     organic spread; a few accounts carrying a stance = loud minority or
+     coordination, not consensus. Always report it next to the claim.
+   - **Authority audit.** Sample the accounts behind a "public" bucket and read
+     who they actually are. Misclassified officials / media / known figures inside
+     a `public` label means the segmentation field is leaking (fix per the
+     orthogonal-identity rule). Don't headline "the public" off a leaky bucket.
+   - **Heterogeneous-opposition check.** The same "against" label can fuse
+     opposite worldviews (e.g. pro-resistance "betrayal" vs anti-establishment
+     suspicion). Break the negative bucket down by *frame* before aggregating — a
+     lone "negative %" can hide two enemies in one bar.
+   - **Non-representativeness is mandatory to state.** One platform's engaged/
+     activist/diaspora subset is never a poll. Say which platform, who it
+     over/under-represents, and that organic-vs-coordinated is unverifiable
+     without account metadata (age, cadence, network) — collect those if the
+     question matters. Calibrate every public-sentiment claim accordingly.
 
 Report a verdict (pass / issues) with the distributions + 2-3 concrete samples,
 and surface any flag (e.g. high `other`) for the user — don't silently pass.
@@ -356,6 +502,43 @@ These are the seams for *operating* an agent after it's built. Verify against
   "…"` invocation, not a committed script. Reserve `scripts/oneoff_*.py` files
   for things that are reusable or genuinely multi-step (e.g. a `--watch`
   monitor). Don't proliferate one-off files for actions a one-liner covers.
+
+### Fetching comments (the reply layer) — when & how
+
+**When to fetch comments.** Post-level enrichment answers "what was published";
+comments answer "how the crowd responded". Fetch them when the question is about
+*public/grassroots sentiment*, when the post layer is media/neutral-skewed, or when
+the brief needs pull-quotes of real voices. Don't fetch indiscriminately — it's
+per-post provider spend (X bills ≈ `n_replies + 1` search reads per post). Pick the
+**top N reaction posts by `comments_count` (and views)**, not the whole set.
+
+**⚠️ `include_comments=True` on an agent run is a SILENT NO-OP for X.** The
+collection/agent pipeline never enqueues the comments worker — `include_comments`
+only flows into config + cost estimate. The ONLY wired trigger is the manual
+per-post path. FB comments populate only because Apify scrapes them inline. So
+after an X run, `social_listening.comments` stays empty even with the flag set, and
+the data-page "comments" toggle shows nothing. (See
+`docs/bugs/api-x-url-fetch-comments-not-collected.md`.)
+
+**How to actually get + persist X comments** (until the pipeline is fixed): call
+the comments worker directly per post — it writes `comments` + `channels` to BQ:
+
+```python
+from workers.comments.worker import fetch_post_comments  # ENVIRONMENT=production
+fetch_post_comments({"post_id": pid, "platform": "twitter", "post_url": url,
+    "collection_id": cid, "agent_id": aid, "user_id": uid, "org_id": org,
+    "crawl_provider": "x_api"})
+```
+
+The adapter itself is healthy — `DataProviderWrapper().fetch_comments("twitter",
+{post_id, platform, post_url})` returns the reply batch live (use it for a quick
+in-memory read without persisting). To **analyze** comments without BQ, build one
+`PostData` per reply with `parent_context=ParentContext(parent_ai_summary=…)` and
+call `enrich_posts(..., comment_mode=True)` (search is auto-disabled, parent
+summary cached). To make them show **enriched** in the product, `enriched_comments`
+must be populated by the comment-enrichment stage — raw `fetch_post_comments`
+alone fills only `comments`. `enriched_comments` mirrors `enriched_posts` (same
+custom_fields); dedupe latest by `(comment_id, agent_version)`.
 
 ### BQ query gotchas (analysis/monitoring)
 
