@@ -2,12 +2,13 @@
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import requests as http_requests
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import Response, StreamingResponse
 
 from api.auth.dependencies import CurrentUser, get_current_user
 from api.deps import get_fs, get_gcs
@@ -32,10 +33,36 @@ MEDIA_EXTENSIONS: dict[str, tuple[str, str]] = {
 }
 MAX_MEDIA_BYTES = 50 * 1024 * 1024  # 50MB - covers short clips and large images
 
+# `bytes=start-end` (either bound optional). `bytes=-N` is a suffix range (last
+# N bytes); `bytes=N-` runs to EOF.
+_RANGE_RE = re.compile(r"^\s*bytes=(\d*)-(\d*)\s*$")
+
+
+def _media_content_type(path: str, blob_content_type: str | None) -> str:
+    """Content-Type for a served media file, derived from the extension first.
+
+    GCS objects mirrored from platform CDNs are frequently stored as
+    `application/octet-stream`; iOS Safari picks its `<video>` decoder from this
+    header (desktop Chrome sniffs the bytes and is forgiving), so an `.mp4` MUST
+    be advertised as `video/mp4` or the clip silently fails to play on iPhone.
+    """
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    mapped = MEDIA_EXTENSIONS.get(ext)
+    if mapped:
+        return mapped[0]
+    return blob_content_type or "application/octet-stream"
+
 
 @router.get("/media/{path:path}")
-async def serve_media(path: str):
-    """Proxy media files from GCS to avoid CORS issues with original platform URLs."""
+async def serve_media(path: str, request: Request):
+    """Proxy media files from GCS to avoid CORS issues with original platform URLs.
+
+    Honours HTTP `Range` requests with a real `206 Partial Content` response.
+    iOS Safari refuses to play a `<video>` whose server answers a Range request
+    with a full-body `200` (it treats that as "no range support"), so serving
+    the whole blob unconditionally - even while advertising `Accept-Ranges` -
+    breaks video playback on iPhone/iPad while working fine on desktop.
+    """
     settings = get_settings()
     bucket_name = settings.gcs_media_bucket
 
@@ -47,20 +74,58 @@ async def serve_media(path: str):
         if not blob.exists():
             raise HTTPException(status_code=404, detail="Media not found")
 
-        content_type = blob.content_type or "application/octet-stream"
+        blob.reload()  # populate blob.size (exists() alone doesn't fetch metadata)
+        size = blob.size or 0
+        content_type = _media_content_type(path, blob.content_type)
+        base_headers = {
+            "Cache-Control": "public, max-age=86400",
+            "Accept-Ranges": "bytes",
+        }
+
+        # Resolve the requested byte window. Absent/invalid Range -> whole file.
+        start, end, is_range = 0, size - 1, False
+        range_header = request.headers.get("range")
+        if range_header and size > 0:
+            m = _RANGE_RE.match(range_header)
+            if m and (m.group(1) or m.group(2)):
+                if m.group(1) == "":  # suffix range: last N bytes
+                    start = max(0, size - int(m.group(2)))
+                    end = size - 1
+                else:
+                    start = int(m.group(1))
+                    end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+                is_range = True
+                if start > end or start >= size:
+                    return Response(
+                        status_code=416,
+                        headers={**base_headers, "Content-Range": f"bytes */{size}"},
+                    )
+
+        length = end - start + 1 if size > 0 else 0
 
         def stream():
             with blob.open("rb") as f:
-                while chunk := f.read(256 * 1024):
+                if start:
+                    f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(256 * 1024, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
                     yield chunk
+
+        headers = {**base_headers, "Content-Length": str(length)}
+        status = 200
+        if is_range:
+            headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+            status = 206
 
         return StreamingResponse(
             stream(),
+            status_code=status,
             media_type=content_type,
-            headers={
-                "Cache-Control": "public, max-age=86400",
-                "Accept-Ranges": "bytes",
-            },
+            headers=headers,
         )
     except HTTPException:
         raise
