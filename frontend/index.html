@@ -81,8 +81,12 @@
       (function () {
         try {
           var t = localStorage.getItem('sl-theme') || 'system';
-          var isDark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+          // Public share deliverables (/shared/…) are authored light-only; never
+          // follow the viewer's dark theme there (keep in sync with isPublicShareRoute).
+          var isShared = location.pathname.indexOf('/shared/') === 0;
+          var isDark = !isShared && (t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches));
           if (isDark) document.documentElement.classList.add('dark');
+          if (isShared) document.documentElement.style.colorScheme = 'light';
 
           var accent = localStorage.getItem('sl-accent-color');
           if (accent) document.documentElement.style.setProperty('--color-accent-vibrant', accent);
