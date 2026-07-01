@@ -39,6 +39,25 @@ describe('sanitizeWidgetHtml', () => {
     expect(out).toContain('style="color:red;padding:8px"');
   });
 
+  it('preserves target="_blank" so CTA links open in a new tab', () => {
+    const out = sanitizeWidgetHtml(
+      '<a class="primary" href="https://calendly.com/ron-scolto/30min" target="_blank">Book a demo</a>',
+    );
+    expect(out).toContain('href="https://calendly.com/ron-scolto/30min"');
+    expect(out).toContain('target="_blank"');
+  });
+
+  it('forces rel="noopener noreferrer" on new-tab links (reverse-tabnabbing guard)', () => {
+    const out = sanitizeWidgetHtml('<a href="https://x.com" target="_blank">x</a>');
+    expect(out).toContain('rel="noopener noreferrer"');
+  });
+
+  it('does not add target/rel to same-tab links', () => {
+    const out = sanitizeWidgetHtml('<a href="https://scolto.com/#pricing">See pricing</a>');
+    expect(out).not.toContain('target=');
+    expect(out).not.toContain('rel=');
+  });
+
   it('handles empty / nullish input', () => {
     expect(sanitizeWidgetHtml('')).toBe('');
     // @ts-expect-error - guard against runtime null from untyped callers
