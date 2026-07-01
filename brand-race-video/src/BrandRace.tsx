@@ -29,7 +29,10 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // Day 1 = Thu 11 Jun 2026 → weekday anchor index 4 (Thu).
 function datelineFor(day: number): { matchday: string; dateLabel: string } {
   const dow = DOW[(4 + (day - 1)) % 7];
-  return { matchday: `Day ${day}`, dateLabel: `${dow} ${10 + day} Jun 2026` };
+  // Day 1 = 11 Jun; day-of-month = 10 + day, rolling over into July past the 30th.
+  const dom = 10 + day;
+  const [d, mon] = dom > 30 ? [dom - 30, 'Jul'] : [dom, 'Jun'];
+  return { matchday: `Day ${day}`, dateLabel: `${dow} ${d} ${mon} 2026` };
 }
 
 const SCOPE = { event: 'Opening run', segment: 'All brands' } as const;
@@ -108,7 +111,7 @@ export const BrandRace: React.FC = () => {
               marginTop: 14,
             }}
           >
-            Brand exposure
+            Social exposure
           </div>
         </div>
 

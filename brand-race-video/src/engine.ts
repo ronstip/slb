@@ -3,8 +3,8 @@ import { CHECKPOINTS, type Brand } from './checkpoints';
 export const FPS = 30;
 export const VISIBLE = 12; // rows shown (boards slice top-12)
 
-// Which day each checkpoint represents (pre / day4 / day7 / day11 / day12 / day14).
-const CHECKPOINT_DAYS = [1, 4, 7, 11, 12, 14];
+// Which day each checkpoint represents (pre / day4 / day7 / day11 / day12 / day14 / jul1).
+const CHECKPOINT_DAYS = [1, 4, 7, 11, 12, 14, 21];
 export const FIRST_DAY = CHECKPOINT_DAYS[0]; // Day 1 = Thu 11 Jun 2026
 export const NUM_DAYS = CHECKPOINT_DAYS[CHECKPOINT_DAYS.length - 1];
 
@@ -33,50 +33,41 @@ const rankOf = (i: number, name: string) => rankByCp[i].get(name) ?? OFF;
 const sovOf = (i: number, name: string) => sovByCp[i].get(name) ?? 0;
 
 // ── Timeline ─────────────────────────────────────────────────────────────────
-// Built from segments: an intro hold on day 1, then for each pair of checkpoints
-// a MOVE (rows glide to the next standings) followed by a HOLD (dwell on them).
-// A MOVE's length is proportional to the largest rank change in it, so the
-// fastest-moving row travels at ONE constant rate across the whole video — a big
-// reshuffle simply gets more time instead of zipping. Rank is interpolated
-// LINEARLY, so rows navigate at constant speed (no easing accel mid-flight).
-const INTRO = 20; // hold on the opening standings (~0.7s)
-const HOLD = 24; // dwell at each intermediate checkpoint (~0.8s)
+// The video is ONE continuous, constant-rate roll of the day counter from the
+// first checkpoint day to the last. Real time on screen is proportional to
+// ELAPSED DAYS, not to how big a reshuffle is — so every day ticks past at the
+// same pace and the standings morph smoothly the whole way through, with no
+// intermediate holds to make it feel stuck. A short intro hold eases in and a
+// longer end hold lets the final board land.
+const INTRO = 18; // brief hold on the opening standings before the roll begins (~0.6s)
 const END_HOLD = 72; // freeze on the final standings (~2.4s)
-const FRAMES_PER_ROW = 17; // time for the fastest row to advance one position (~0.57s) — the speed cap
+const FRAMES_PER_DAY = 18; // constant day-roll pace (~0.6s per day)
 
-const maxMove = (i: number): number => {
-  let m = 0;
-  for (const n of ALL_BRANDS) {
-    const d = Math.abs(rankOf(i + 1, n) - rankOf(i, n));
-    if (d > m) m = d;
-  }
-  return m;
-};
+const SPAN_DAYS = NUM_DAYS - FIRST_DAY; // total days the counter rolls across
+const ROLL_FRAMES = SPAN_DAYS * FRAMES_PER_DAY;
+export const TOTAL_FRAMES = INTRO + ROLL_FRAMES + END_HOLD;
 
-interface Seg {
-  kind: 'hold' | 'move';
-  cp: number; // checkpoint shown (hold) or being approached (move)
-  from: number;
-  to: number;
-  len: number;
+// Continuous day for a frame: hold on day 1 through the intro, roll linearly,
+// then rest on the final day for the end hold.
+function dayAt(frame: number): number {
+  if (frame <= INTRO) return FIRST_DAY;
+  if (frame >= INTRO + ROLL_FRAMES) return NUM_DAYS;
+  return FIRST_DAY + (frame - INTRO) / FRAMES_PER_DAY;
 }
-const segs: Seg[] = [{ kind: 'hold', cp: 0, from: 0, to: 0, len: INTRO }];
-for (let i = 0; i < CHECKPOINTS.length - 1; i++) {
-  const len = Math.max(1, maxMove(i)) * FRAMES_PER_ROW;
-  segs.push({ kind: 'move', cp: i + 1, from: i, to: i + 1, len });
-  const last = i === CHECKPOINTS.length - 2;
-  segs.push({ kind: 'hold', cp: i + 1, from: i + 1, to: i + 1, len: last ? END_HOLD : HOLD });
-}
-export const TOTAL_FRAMES = segs.reduce((a, s) => a + s.len, 0);
 
-function locate(frame: number): { s: Seg; p: number } {
-  let f = frame;
-  for (const s of segs) {
-    if (f < s.len) return { s, p: s.len ? f / s.len : 1 };
-    f -= s.len;
+// Which checkpoint pair surrounds a given day, and how far between them (0..1).
+// `cp` is the checkpoint being approached — it drives the live move/viral flags.
+function locate(frame: number): { from: number; to: number; p: number; cp: number } {
+  const day = dayAt(frame);
+  for (let i = 0; i < CHECKPOINT_DAYS.length - 1; i++) {
+    if (day <= CHECKPOINT_DAYS[i + 1]) {
+      const span = CHECKPOINT_DAYS[i + 1] - CHECKPOINT_DAYS[i];
+      const p = span ? (day - CHECKPOINT_DAYS[i]) / span : 1;
+      return { from: i, to: i + 1, p, cp: i + 1 };
+    }
   }
-  const last = segs[segs.length - 1];
-  return { s: last, p: 1 };
+  const last = CHECKPOINT_DAYS.length - 1;
+  return { from: last, to: last, p: 1, cp: last };
 }
 
 export interface BrandFrame {
@@ -108,12 +99,12 @@ export interface RaceState {
 }
 
 export function stateAt(frame: number): RaceState {
-  const { s, p } = locate(frame);
-  const day = s.kind === 'move' ? lerp(CHECKPOINT_DAYS[s.from], CHECKPOINT_DAYS[s.to], p) : CHECKPOINT_DAYS[s.cp];
+  const { from, to, p, cp } = locate(frame);
+  const day = dayAt(frame);
 
   // Linear rank per brand (constant speed) between the two checkpoint orderings.
   const lin = new Map<string, number>();
-  for (const name of ALL_BRANDS) lin.set(name, lerp(rankOf(s.from, name), rankOf(s.to, name), p));
+  for (const name of ALL_BRANDS) lin.set(name, lerp(rankOf(from, name), rankOf(to, name), p));
 
   const frames = ALL_BRANDS.map((name) => {
     const l = lin.get(name)!;
@@ -123,10 +114,10 @@ export function stateAt(frame: number): RaceState {
       if (other === name) continue;
       rank += smoothstep((l - lin.get(other)! + SWAP_W) / (2 * SWAP_W));
     }
-    const sov = lerp(sovOf(s.from, name), sovOf(s.to, name), p);
+    const sov = lerp(sovOf(from, name), sovOf(to, name), p);
     return { brand: meta.get(name)!, sov, rank, opacity: opacityFor(rank) };
   });
-  return { day, cpIndex: s.cp, frames };
+  return { day, cpIndex: cp, frames };
 }
 
 /** Max sov among currently-visible brands (per-frame axis, like the static boards). */

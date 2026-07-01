@@ -171,4 +171,28 @@ export const CHECKPOINTS: Checkpoint[] = [
       { name: "McDonald's", mono: 'M', logo: LOGO('mcdonalds.com'), color: '#FFBC0D', fg: '#DA291C', sov: 4.9, move: 'down' },
     ],
   },
+  {
+    key: 'jul1',
+    matchday: 'Days 1–21',
+    dateLabel: 'Wed 1 Jul 2026',
+    scope: { event: 'Opening run', segment: 'All brands' },
+    totalMentions: '+8B',
+    unit: 'views',
+    moverNote:
+      "Verizon is the efficiency story — 105.4K avg views per post, the only brand going viral. Hisense & McDonald's also punch far above their share (81.8K / 76.7K).",
+    brands: [
+      { name: 'adidas', icon: 'adidas', mono: 'a', color: '#0A0A0A', fg: '#FFFFFF', sov: 16.0, move: 'same' },
+      { name: 'Nike', icon: 'nike', mono: 'N', color: '#111111', fg: '#FFFFFF', sov: 12.0, move: 'same' },
+      { name: 'Visa', icon: 'visa', mono: 'V', color: '#1A1F71', fg: '#FFFFFF', sov: 11.0, move: 'same' },
+      { name: 'Coca-Cola', icon: 'cocacola', mono: 'C', color: '#E61A27', fg: '#FFFFFF', sov: 9.8, move: 'same' },
+      { name: 'Puma', icon: 'puma', mono: 'P', color: '#1B1B1B', fg: '#FFFFFF', sov: 9.1, move: 'up' },
+      { name: 'Hisense', mono: 'H', logo: LOGO('hisense.com'), color: '#006837', fg: '#FFFFFF', sov: 7.2, move: 'down' },
+      { name: 'Qatar Airways', icon: 'qatarairways', mono: 'Q', color: '#5C0632', fg: '#FFFFFF', sov: 6.6, move: 'same' },
+      { name: 'Hyundai', icon: 'hyundai', mono: 'H', color: '#002C5F', fg: '#FFFFFF', sov: 6.3, move: 'up' },
+      { name: 'Verizon', mono: 'V', logo: LOGO('verizon.com'), color: '#000000', fg: '#FFFFFF', sov: 6.2, move: 'down', viral: true },
+      { name: 'Lenovo', mono: 'L', logo: LOGO('lenovo.com'), color: '#E2231A', fg: '#FFFFFF', sov: 6.0, move: 'down' },
+      { name: 'Aramco', mono: 'A', logo: LOGO('aramco.com'), color: '#00843D', fg: '#FFFFFF', sov: 5.2, move: 'down' },
+      { name: "McDonald's", mono: 'M', logo: LOGO('mcdonalds.com'), color: '#FFBC0D', fg: '#DA291C', sov: 4.3, move: 'same' },
+    ],
+  },
 ];
