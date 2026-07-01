@@ -99,7 +99,7 @@ export function SharedArtifactPage() {
       className="min-h-screen bg-background flex flex-col"
       style={{
         backgroundImage:
-          'radial-gradient(1200px 1200px at 50% 0%, color-mix(in oklab, var(--primary) 12%, transparent) 0%, transparent 60%)',
+          'radial-gradient(1200px 1200px at 50% 0%, color-mix(in oklab, var(--primary) 3%, transparent) 0%, transparent 60%)',
       }}
     >
       <header className="sticky top-0 z-10 border-b border-border bg-background/80 backdrop-blur-sm shrink-0">

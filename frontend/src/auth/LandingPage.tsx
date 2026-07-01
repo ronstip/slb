@@ -3304,11 +3304,11 @@ export function LandingPage() {
   return (
     <div className="lp-root" style={{
       background: [
-        `radial-gradient(1100px 800px at 15% 8%,  ${LP_BRAND.orange}33 0%, transparent 55%)`,
-        `radial-gradient(1100px 800px at 85% 24%, ${LP_BRAND.orange}33 0%, transparent 55%)`,
-        `radial-gradient(1100px 800px at 15% 46%, ${LP_BRAND.orange}33 0%, transparent 55%)`,
-        `radial-gradient(1100px 800px at 85% 66%, ${LP_BRAND.orange}33 0%, transparent 55%)`,
-        `radial-gradient(1100px 800px at 15% 88%, ${LP_BRAND.orange}33 0%, transparent 55%)`,
+        `radial-gradient(1100px 800px at 15% 8%,  ${LP_BRAND.orange}0d 0%, transparent 55%)`,
+        `radial-gradient(1100px 800px at 85% 24%, ${LP_BRAND.orange}0d 0%, transparent 55%)`,
+        `radial-gradient(1100px 800px at 15% 46%, ${LP_BRAND.orange}0d 0%, transparent 55%)`,
+        `radial-gradient(1100px 800px at 85% 66%, ${LP_BRAND.orange}0d 0%, transparent 55%)`,
+        `radial-gradient(1100px 800px at 15% 88%, ${LP_BRAND.orange}0d 0%, transparent 55%)`,
         LP_BRAND.cream,
       ].join(', '),
       color: LP_BRAND.ink,
