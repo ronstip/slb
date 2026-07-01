@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { DEFAULT_ACCENT, generateAccentVariants } from '../lib/accent-colors.ts';
+import { isPublicShareRoute } from '../lib/public-share-route.ts';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -21,6 +22,9 @@ const STORAGE_KEY = 'sl-theme';
 const ACCENT_STORAGE_KEY = 'sl-accent-color';
 
 function resolveIsDark(t: Theme): boolean {
+  // Public share deliverables are authored light-only — never follow the
+  // viewer's dark theme there (it makes the fixed-dark headings invisible).
+  if (isPublicShareRoute(window.location.pathname)) return false;
   return t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 }
 
