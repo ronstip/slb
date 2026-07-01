@@ -50,7 +50,7 @@
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: compact ? 9 : 12 }}>
             <Dateline matchday={D.matchday} dateLabel={D.dateLabel} align="center" size={compact ? 14 : 15.5} />
           </div>
-          <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: compact ? 50 : 64, lineHeight: 0.96, letterSpacing: '-0.04em', color: C.ink, marginTop: compact ? 8 : 11 }}>Brand exposure</div>
+          <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: compact ? 50 : 64, lineHeight: 0.96, letterSpacing: '-0.04em', color: C.ink, marginTop: compact ? 8 : 11 }}>Social exposure</div>
           <div style={{ fontFamily: F.serif, fontWeight: 300, fontSize: compact ? 17 : 19, lineHeight: 1.3, color: C.slate, marginTop: compact ? 7 : 9 }}>
             Who owns the conversation — <span style={{ fontStyle: 'italic', color: C.orangeDeep }}>share of voice</span> across {D.totalMentions} {D.unit || 'mentions'}.
           </div>

@@ -27,7 +27,7 @@
         {/* title band */}
         <div style={{ marginTop: compact ? 20 : 30, position: 'relative' }}>
           <Dateline matchday={D.matchday} dateLabel={D.dateLabel} align="left" size={compact ? 14 : 15.5} />
-          <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: compact ? 58 : 76, lineHeight: 0.96, letterSpacing: '-0.04em', color: C.ink, marginTop: compact ? 11 : 14 }}>Brand exposure</div>
+          <div style={{ fontFamily: F.display, fontWeight: 500, fontSize: compact ? 58 : 76, lineHeight: 0.96, letterSpacing: '-0.04em', color: C.ink, marginTop: compact ? 11 : 14 }}>Social exposure</div>
         </div>
 
         {/* scope strip + sources */}
